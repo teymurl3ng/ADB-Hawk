@@ -1,0 +1,26 @@
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+
+# Frontend build output (copied to src/AdbView/wwwroot by scripts/build.ps1)
+ui/dist/
+src/AdbView/wwwroot/
+
+# Node
+node_modules/
+
+# Playwright run artifacts (committed baselines are NOT ignored)
+ui/test-results/
+ui/playwright-report/
+
+# Visual Studio / Rider / VS Code local state
+.vs/
+.idea/
+*.user
+*.suo
+
+# OS noise
+Thumbs.db
+.DS_Store

@@ -1,0 +1,32 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pinned .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.401'
+
+      - name: Install pinned Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+          cache-dependency-path: 'ui/package-lock.json'
+
+      - name: Install pinned npm
+        run: npm install -g npm@11.19.0
+
+      - name: Run the full gate
+        shell: pwsh
+        run: ./scripts/verify.ps1

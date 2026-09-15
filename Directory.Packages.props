@@ -1,0 +1,25 @@
+<Project>
+
+  <!--
+    Central package management. Every version is an exact pin; there is no floating
+    range anywhere in this repository (AGENTS.md R-09). The allowed set is defined by
+    ENGINEERING.md §15 together with research/2026-09-16-toolchain-and-gates.md, and
+    the boundary tests in tests/AdbView.Tests assert that this file matches those pins
+    exactly. Adding a row requires a research note and an ENGINEERING.md §15 edit in
+    the same change.
+
+    Deliberately absent (ENGINEERING.md §15 avoid-list is binding):
+    Microsoft.NET.Test.Sdk, xunit.runner.visualstudio, System.Net.Http,
+    AdvancedSharpAdbClient, Google.Protobuf, Microsoft.WindowsAppSDK, and every
+    DI/tray/mocking/notification helper. Microsoft.CodeAnalysis.NetAnalyzers is
+    provided by the SDK and is intentionally not re-referenced.
+  -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+    <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.333" />
+    <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.0" />
+  </ItemGroup>
+
+</Project>
