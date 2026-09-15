@@ -221,7 +221,7 @@
 
 | Phase | Completed (date) | Commit | Notes |
 |---|---|---|---|
-| 0 | | | |
+| 0 | 2026-09-16 | c21ece2 | Implemented and verified locally: `scripts/verify.ps1` green (clean clone 105 s; warm ≈25–31 s); all 10 boundary invariants plus format/build/lint/typecheck/vitest/prettier/toolchain-pin gates deliberately violated once and observed failing (17 break tests); CI: pending until GitHub Actions run completes |
 | 1 | | | |
 | 2 | | | |
 | 3 | | | |
