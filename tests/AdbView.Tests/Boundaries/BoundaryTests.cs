@@ -149,7 +149,20 @@ public sealed class BoundaryTests {
         Assert.True(File.Exists(authorityFile), "docs/DESIGN.sha256 is missing; it is the committed design authority hash");
 
         var expected = ReadText(authorityFile).Trim();
-        var actual = Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(RootFile("DESIGN.md"))));
+
+        // Hash the canonical LF-normalized content. `.gitattributes` (`* text=auto`)
+        // stores DESIGN.md LF-normalized in git, but a checkout may materialize CRLF
+        // (e.g. GitHub Actions windows runners default to autocrlf=true). The
+        // authority hash pins the versioned content, so it is computed over the
+        // normalized bytes, independent of how the working copy was materialized.
+        var raw = File.ReadAllBytes(RootFile("DESIGN.md"));
+        using var normalized = new MemoryStream(raw.Length);
+        for (var i = 0; i < raw.Length; i++) {
+            if (raw[i] == (byte)'\r' && i + 1 < raw.Length && raw[i + 1] == (byte)'\n')
+                continue;
+            normalized.WriteByte(raw[i]);
+        }
+        var actual = Convert.ToHexString(SHA256.HashData(normalized.ToArray()));
 
         Assert.True(
             string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase),

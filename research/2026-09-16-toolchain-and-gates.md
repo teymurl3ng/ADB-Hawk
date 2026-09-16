@@ -204,3 +204,17 @@ Executed on the Windows development machine; CI still pending (requires a push).
 - Deliberate-violation pass: all ten boundary invariants plus format/build/lint/typecheck/vitest/
   prettier/toolchain-pin gates were each violated once and observed failing; all violations were
   reverted (record in the Phase 0 PR description).
+
+## CI validation results (2026-09-16, run #1)
+
+- First CI run (`windows-latest`, commit `e2a7d4d`) failed one test: `DesignAuthorityHashMatches`.
+  The runner checked out `DESIGN.md` with **CRLF** line endings (Git for Windows `autocrlf`
+  default on GitHub Actions runners), so hashing the raw working-copy bytes produced
+  `D8193CC8…` instead of the committed LF hash `d6178583…` — even though the git blob is
+  identical (`.gitattributes` `* text=auto` normalizes on checkin).
+- Fix: the authority-hash test now hashes **LF-normalized content** (strips `\r` before `\n`),
+  matching what git versions. This is checkout-materialization independence, not a loosening:
+  any real content change to `DESIGN.md` still fails the gate. Verified locally that
+  CRLF-materialized DESIGN.md hashes to exactly the value CI reported.
+- All other gates (toolchain pins, format, build, MTP tests, lint, prettier, tsc, vitest,
+  publish smoke) passed on the runner as-is.
