@@ -10,6 +10,7 @@ src/AdbView/wwwroot/
 
 # Node
 node_modules/
+node_tool/
 
 # Playwright run artifacts (committed baselines are NOT ignored)
 ui/test-results/

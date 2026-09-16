@@ -12,7 +12,13 @@ namespace AdbView;
 internal static class Program {
     [STAThread]
     private static int Main(string[] args) {
-        using var host = new AppHost(System.Diagnostics.Process.GetCurrentProcess().SessionId);
+        string fixtureSuffix = "";
+        foreach (var arg in args) {
+            if (arg.StartsWith("--test-fixture=", System.StringComparison.Ordinal)) {
+                fixtureSuffix = string.Concat("?fixture=", arg.AsSpan("--test-fixture=".Length));
+            }
+        }
+        using var host = new AppHost(System.Diagnostics.Process.GetCurrentProcess().SessionId, fixtureSuffix);
         host.Run();
         return 0;
     }

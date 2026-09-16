@@ -35,10 +35,13 @@ internal sealed class TrayIcon : IDisposable {
         _taskbarCreatedMessageId = PInvoke.RegisterWindowMessage("TaskbarCreated");
         _messageSink = new MessageSink(this);
 
+        var assembly = typeof(TrayIcon).Assembly;
+        var iconStream = assembly.GetManifestResourceStream("AdbView.Resources.aperture-link-idle.ico");
+
 #pragma warning disable CA1303 // Do not pass literals as localized parameters
         _notifyIcon = new NotifyIcon {
-            Text = "ADB View (Phase 1)",
-            Icon = SystemIcons.Application, // Temporary placeholder icon
+            Text = "ADB View",
+            Icon = iconStream != null ? new Icon(iconStream) : SystemIcons.Application,
             Visible = true
         };
 #pragma warning restore CA1303

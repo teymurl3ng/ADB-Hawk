@@ -1,1 +1,132 @@
 @import 'tailwindcss';
+
+@theme {
+  --font-sans:
+    'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', -apple-system, BlinkMacSystemFont,
+    system-ui, sans-serif;
+  --font-mono: 'Segoe UI Variable Small', ui-monospace, Cascadia Code, Consolas, monospace;
+
+  --color-win-base: #202329;
+  --color-win-card: rgba(255, 255, 255, 0.04);
+  --color-win-cardHover: rgba(255, 255, 255, 0.065);
+  --color-win-cardBorder: rgba(255, 255, 255, 0.08);
+  --color-win-borderSubtle: rgba(255, 255, 255, 0.05);
+
+  --color-win-accent: #60a5fa;
+  --color-win-accentHover: #3b82f6;
+  --color-win-accentSurface: rgba(96, 165, 250, 0.08);
+  --color-win-accentBorder: rgba(96, 165, 250, 0.28);
+
+  --color-win-green: #4ade80;
+  --color-win-greenSurface: rgba(74, 222, 128, 0.09);
+
+  --color-win-red: #f87171;
+  --color-win-redSurface: rgba(248, 113, 113, 0.09);
+  --color-win-redBorder: rgba(248, 113, 113, 0.28);
+
+  --surface-flyout: rgba(32, 35, 41, 0.94);
+}
+
+@layer base {
+  body {
+    background-color: #202329;
+    color: #e6edf3;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-win-base: #ffffff;
+    --color-win-card: rgba(0, 0, 0, 0.02);
+    --color-win-cardHover: rgba(0, 0, 0, 0.04);
+    --color-win-cardBorder: rgba(0, 0, 0, 0.08);
+    --color-win-borderSubtle: rgba(0, 0, 0, 0.05);
+
+    --color-win-accent: #2563eb;
+    --color-win-accentHover: #1d4ed8;
+    --color-win-accentSurface: rgba(37, 99, 235, 0.08);
+    --color-win-accentBorder: rgba(37, 99, 235, 0.28);
+
+    --color-win-green: #16a34a;
+    --color-win-greenSurface: rgba(22, 163, 74, 0.09);
+
+    --color-win-red: #dc2626;
+    --color-win-redSurface: rgba(220, 38, 38, 0.09);
+    --color-win-redBorder: rgba(220, 38, 38, 0.28);
+
+    --surface-flyout: rgba(255, 255, 255, 0.94);
+  }
+  body {
+    background-color: var(--surface-flyout);
+    color: #111827;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --color-win-base: Canvas;
+    --color-win-card: Canvas;
+    --color-win-cardHover: Canvas;
+    --color-win-cardBorder: CanvasText;
+    --color-win-borderSubtle: CanvasText;
+
+    --color-win-accent: Highlight;
+    --color-win-accentHover: Highlight;
+    --color-win-accentSurface: Canvas;
+    --color-win-accentBorder: Highlight;
+
+    --color-win-green: CanvasText;
+    --color-win-greenSurface: Canvas;
+
+    --color-win-red: CanvasText;
+    --color-win-redSurface: Canvas;
+    --color-win-redBorder: CanvasText;
+  }
+  body {
+    background-color: Canvas;
+    color: CanvasText;
+  }
+}
+
+@layer utilities {
+  .hit-area-40 {
+    position: relative;
+  }
+  .hit-area-40::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 40px;
+    height: 40px;
+    transform: translate(-50%, -50%);
+    pointer-events: auto;
+  }
+
+  .fluent-btn {
+    transition:
+      background-color 83ms ease,
+      border-color 83ms ease,
+      color 83ms ease,
+      opacity 83ms ease;
+  }
+
+  .static-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+
+  .animate-spin-quiet {
+    animation: spin-quiet 0.85s linear infinite;
+  }
+}
+
+@keyframes spin-quiet {
+  to {
+    transform: rotate(360deg);
+  }
+}

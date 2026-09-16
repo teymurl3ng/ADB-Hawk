@@ -21,7 +21,8 @@ internal static class LogConfig {
                 rollingInterval: RollingInterval.Day,
                 fileSizeLimitBytes: 4_194_304,
                 rollOnFileSizeLimit: true,
-                retainedFileCountLimit: 7)
+                retainedFileCountLimit: 7,
+                buffered: false)
             .CreateLogger();
     }
 }

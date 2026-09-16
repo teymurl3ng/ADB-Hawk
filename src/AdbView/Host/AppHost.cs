@@ -15,10 +15,12 @@ internal sealed class AppHost : IDisposable {
     private readonly PowerAndSession? _powerAndSession;
     private readonly FlyoutWindow? _flyoutWindow;
     private readonly WebViewHost? _webViewHost;
+    private readonly string _fixtureSuffix;
 
     private bool _isVisible;
 
-    public AppHost(int sessionId) {
+    public AppHost(int sessionId, string fixtureSuffix = "") {
+        _fixtureSuffix = fixtureSuffix;
         LogConfig.Initialize();
         Log.Information("AppHost starting in session {SessionId}", sessionId);
 
@@ -69,9 +71,17 @@ internal sealed class AppHost : IDisposable {
             return;
         }
 
+        // Force handle creation so OnHandleCreated/ApplyBackdrop runs before WebView2 init
+        var _ = _flyoutWindow!.Handle;
+        Log.Information("FlyoutWindow handle forced: {Handle}", _flyoutWindow.Handle);
+
 #pragma warning disable CA2008 // TaskScheduler
-        _webViewHost?.InitializeAsync().ContinueWith(t => {
+        _webViewHost?.InitializeAsync(_fixtureSuffix).ContinueWith(t => {
             if (t.IsFaulted) Log.Error(t.Exception, "WebView initialization failed in background.");
+            else if (!string.IsNullOrEmpty(_fixtureSuffix)) {
+                // Headed Native Visual Harness hook
+                _flyoutWindow?.Invoke(new Action(ShowFlyout));
+            }
         });
 #pragma warning restore CA2008
 
@@ -97,6 +107,7 @@ internal sealed class AppHost : IDisposable {
         if (_flyoutWindow == null || _trayIcon == null) return;
 
         var placement = _trayIcon.GetPlacementInfo();
+        Log.Information("ShowFlyout: trayRect={Rect}, edge={Edge}", placement.Rect, placement.Edge);
         var monitor = Screen.FromRectangle(placement.Rect);
 
         var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
@@ -109,6 +120,7 @@ internal sealed class AppHost : IDisposable {
             new Size(376, 500)
         );
 
+        Log.Information("ShowFlyout: physicalBounds={Bounds}, monitorWorkArea={WorkArea}", physicalBounds, monitor.WorkingArea);
         _flyoutWindow.Bounds = physicalBounds;
         _flyoutWindow.TopMost = true;
         _flyoutWindow.Show();

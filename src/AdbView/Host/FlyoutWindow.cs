@@ -39,6 +39,9 @@ internal sealed class FlyoutWindow : Form {
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         BackColor = Color.Black;
+#pragma warning disable CA1303 // Window title for native identification, not user-facing localized string
+        Text = "ADB View";
+#pragma warning restore CA1303
     }
 
     protected override CreateParams CreateParams {
@@ -53,6 +56,14 @@ internal sealed class FlyoutWindow : Form {
     }
 
     protected override void OnHandleCreated(EventArgs e) {
+        // Direct file diagnostic (bypasses Serilog buffering)
+        var diagPath = System.IO.Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ADBView", "logs", "dwm-diag.log");
+        System.IO.File.AppendAllText(diagPath,
+            $"[{DateTime.Now:O}] OnHandleCreated: Handle={Handle}\n");
+
+        Log.Information("FlyoutWindow.OnHandleCreated: Handle={Handle}", Handle);
         base.OnHandleCreated(e);
         ApplyBackdrop();
     }
@@ -60,13 +71,46 @@ internal sealed class FlyoutWindow : Form {
     private unsafe void ApplyBackdrop() {
         int backdropType = DWMSBT_TRANSIENTWINDOW;
         try {
-            var hr = PInvoke.DwmSetWindowAttribute(
+            int useDarkMode = 1;
+            try {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+                if (key != null && key.GetValue("AppsUseLightTheme") is int lightTheme && lightTheme == 1) {
+                    useDarkMode = 0;
+                }
+            }
+#pragma warning disable CA1031
+            catch (Exception ex) {
+                Log.Warning(ex, "Failed to read light-theme registry value; defaulting to dark mode");
+            }
+#pragma warning restore CA1031
+
+            // Direct file diagnostic (bypasses Serilog buffering)
+            var diagPath = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ADBView", "logs", "dwm-diag.log");
+            System.IO.File.AppendAllText(diagPath,
+                $"[{DateTime.Now:O}] applyBackdrop: useDarkMode={useDarkMode}, backdropType={backdropType}, BackColor={BackColor}\n");
+
+            Log.Information("DWM applyBackdrop: useDarkMode={UseDarkMode}, backdropType={BackdropType}, BackColor={BackColor}",
+                useDarkMode, backdropType, BackColor);
+
+            // Set backdrop type FIRST, then dark mode (order matters for DWM)
+            var hrBackdrop = PInvoke.DwmSetWindowAttribute(
                 new HWND(Handle),
-                Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE.DWMWA_SYSTEMBACKDROP_TYPE,
+                (Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE)38, // DWMWA_SYSTEMBACKDROP_TYPE
                 &backdropType,
                 sizeof(int));
 
-            if (hr.Value < 0) {
+            var hrDark = PInvoke.DwmSetWindowAttribute(
+                new HWND(Handle),
+                (Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE)20, // DWMWA_USE_IMMERSIVE_DARK_MODE
+                &useDarkMode,
+                sizeof(int));
+
+            Log.Information("DWM results: backdrop=0x{BackdropHR:X8}, darkMode=0x{DarkHR:X8}",
+                hrBackdrop.Value, hrDark.Value);
+
+            if (hrBackdrop.Value < 0) {
                 Log.Information("DWM backdrop unsupported or failed. Using opaque fallback.");
                 BackColor = Color.FromArgb(255, 30, 30, 30); // Opaque fallback
             }

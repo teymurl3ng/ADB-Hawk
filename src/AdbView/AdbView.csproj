@@ -8,7 +8,12 @@
     <RootNamespace>AdbView</RootNamespace>
     <AssemblyName>AdbView</AssemblyName>
     <PlatformTarget>x64</PlatformTarget>
+    <ApplicationIcon>..\..\assets\icons\aperture-link-idle.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\icons\*.ico" Link="Resources\%(Filename)%(Extension)" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Serilog" />

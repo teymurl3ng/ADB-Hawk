@@ -14,12 +14,14 @@ internal sealed class WebViewHost : IDisposable {
     private WebView2? _webView;
     private int _recoveryAttempts;
     private const int MaxRecoveryAttempts = 3;
+    private string _initialUrlSuffix = "";
 
     public WebViewHost(Control parent) {
         _parent = parent;
     }
 
-    public async Task InitializeAsync() {
+    public async Task InitializeAsync(string initialUrlSuffix = "") {
+        _initialUrlSuffix = initialUrlSuffix;
         try {
             _webView = new WebView2 {
                 Dock = DockStyle.Fill,
@@ -52,7 +54,7 @@ internal sealed class WebViewHost : IDisposable {
                     wwwroot,
                     CoreWebView2HostResourceAccessKind.Allow);
 
-                var targetUri = new Uri("https://app.adbview.local/index.html");
+                var targetUri = new Uri("https://app.adbview.local/index.html" + initialUrlSuffix);
                 Log.Information("Navigating to: {Uri}", targetUri);
                 _webView.Source = targetUri;
             }
@@ -100,13 +102,36 @@ internal sealed class WebViewHost : IDisposable {
             Log.Information("WebView2 NavigationStarting: {Uri}", e.Uri);
         };
 
-        _webView.CoreWebView2.NavigationCompleted += (s, e) => {
+        _webView.CoreWebView2.NavigationCompleted += async (s, e) => {
             if (e.IsSuccess) {
                 Log.Information("WebView2 NavigationCompleted successfully: {Id}", e.NavigationId);
                 _recoveryAttempts = 0;
                 if (_parent is FlyoutWindow flyout) {
                     _webView.CoreWebView2.PostWebMessageAsString(flyout.IsPinned ? "pinned:true" : "pinned:false");
                 }
+
+                // Diagnostic: log the WebView's computed prefers-color-scheme
+                try {
+                    var darkResult = await _webView.CoreWebView2.ExecuteScriptAsync(
+                        "window.matchMedia('(prefers-color-scheme: dark)').matches").ConfigureAwait(false);
+                    var lightResult = await _webView.CoreWebView2.ExecuteScriptAsync(
+                        "window.matchMedia('(prefers-color-scheme: light)').matches").ConfigureAwait(false);
+                    var forcedResult = await _webView.CoreWebView2.ExecuteScriptAsync(
+                        "window.matchMedia('(forced-colors: active)').matches").ConfigureAwait(false);
+                    var htmlBg = await _webView.CoreWebView2.ExecuteScriptAsync(
+                        "getComputedStyle(document.documentElement).backgroundColor").ConfigureAwait(false);
+                    var bodyBg = await _webView.CoreWebView2.ExecuteScriptAsync(
+                        "getComputedStyle(document.body).backgroundColor").ConfigureAwait(false);
+                    var bodyColor = await _webView.CoreWebView2.ExecuteScriptAsync(
+                        "getComputedStyle(document.body).color").ConfigureAwait(false);
+                    Log.Information("WebView theme diagnostic: prefers-dark={Dark}, prefers-light={Light}, forced-colors={Forced}, html-bg={HtmlBg}, body-bg={BodyBg}, body-color={BodyColor}",
+                        darkResult, lightResult, forcedResult, htmlBg, bodyBg, bodyColor);
+                }
+#pragma warning disable CA1031
+                catch (Exception ex) {
+                    Log.Warning(ex, "Failed to evaluate WebView theme diagnostic");
+                }
+#pragma warning restore CA1031
             }
             else {
                 Log.Error("WebView2 NavigationCompleted failed. Status: {Status}, Error: {Error}", e.WebErrorStatus, e.WebErrorStatus);
@@ -175,7 +200,7 @@ internal sealed class WebViewHost : IDisposable {
         DisposeWebView();
         // Wait briefly before recreating
         await Task.Delay(1000).ConfigureAwait(true);
-        await InitializeAsync().ConfigureAwait(true);
+        await InitializeAsync(_initialUrlSuffix).ConfigureAwait(true);
     }
 
     private void DisposeWebView() {
