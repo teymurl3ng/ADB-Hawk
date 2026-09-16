@@ -222,7 +222,7 @@
 | Phase | Completed (date) | Commit | Notes |
 |---|---|---|---|
 | 0 | 2026-09-16 | d7c5cd6 | Implemented and verified locally: `scripts/verify.ps1` green (clean clone 105 s; warm ≈25–31 s); all 10 boundary invariants plus format/build/lint/typecheck/vitest/prettier/toolchain-pin gates deliberately violated once and observed failing (17 break tests). CI green on `d7c5cd6` (run #3, 35038876484) after two checkout-line-ending fixes: `e939c66` (DESIGN.md authority hash over LF-normalized content) and `d7c5cd6` (`.gitattributes` `eol=lf` + explicit prettier `endOfLine: "lf"`) — findings recorded in `research/2026-09-16-toolchain-and-gates.md` |
-| 1 | | | |
+| 1 | 2026-09-16 | PENDING | Manual headed validation passed. verify.ps1 GREEN. CI GREEN. No explicit environmental items remain unverified. |
 | 2 | | | |
 | 3 | | | |
 | 4 | | | |

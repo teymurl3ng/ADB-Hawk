@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { App } from './App';
 
 describe('App placeholder', () => {
-  it('renders the phase 0 toolchain placeholder', () => {
+  it('renders the phase 1 toolchain placeholder', () => {
     render(<App />);
-    expect(screen.getByText('ADB View toolchain placeholder')).toBeInTheDocument();
+    expect(screen.getByText(/Native Windows shell placeholder/i)).toBeInTheDocument();
   });
 });

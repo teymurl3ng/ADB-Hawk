@@ -96,7 +96,7 @@ if ($smokeProcess.ExitCode -ne 0) {
 
 $logFile = Join-Path $env:LOCALAPPDATA "ADBView\logs\adbview-$(Get-Date -Format yyyyMMdd).log"
 Assert-Condition "smoke run must write its startup line to $logFile" {
-    (Test-Path $logFile) -and (Select-String -Path $logFile -Pattern 'phase 0 skeleton started' -Quiet)
+    (Test-Path $logFile) -and (Select-String -Path $logFile -Pattern 'AppHost starting' -Quiet)
 }
 
 Write-Host 'verify: ALL GATES GREEN.'

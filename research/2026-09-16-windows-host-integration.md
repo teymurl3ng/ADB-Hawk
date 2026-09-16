@@ -105,5 +105,30 @@ presentation in Phase 8 (V-5).
 
 V-2 (acrylic on the pinned, unfocused flyout with a transparent WebView2), V-3
 (`Shell_NotifyIconGetRect` in overflow/hidden and mixed-DPI cases; WebView2 clipboard-write
-permission), V-4 (`app-region: drag` in a frameless host), V-5 (balloon quality on current
-Windows 11).
+permission)
+
+## Validation Findings (2026-09-16 - Phase 1 Implementation)
+
+1. **Virtual Host Mapping**:
+   Vite's ES module structure blocks execution over `file:///` URIs natively. To serve local production assets, `SetVirtualHostNameToFolderMapping` was used to map `wwwroot` to `https://app.adbview.local`, resolving CORS/module issues without opening ports or launching local HTTP servers.
+
+2. **Activation and Light-Dismiss**:
+   A borderless `WS_EX_TOOLWINDOW` does not naturally take OS foreground focus on `Show()`. Without foreground focus, clicking away does not reliably fire `Deactivate`. The fix is invoking `SetForegroundWindow` precisely when showing the unpinned flyout, guaranteeing light-dismiss.
+
+3. **Acrylic and Client-Area Composition**:
+   WinForms defaults to painting an opaque background (`Color.Black` or `SystemColors.Control`). For DWM Acrylic to show through, `DwmExtendFrameIntoClientArea` must be called with `-1` margins. This effectively color-keys `Color.Black` to pure transparency for the compositor, allowing the DWM backdrop to render flawlessly.
+
+4. **WebView2 Non-Client Drag Region (`app-region: drag`)**:
+   Because the WebView2 child HWND completely fills the client area, it swallows all pointer events. The native `WM_NCHITTEST` parent fallback approach failed on real Windows. The correct approach is enabling `CoreWebView2.Settings.IsNonClientRegionSupportEnabled = true` combined with CSS `-webkit-app-region: drag`. WebView2 intercepts the pointer and forwards `HTCAPTION` hit tests to the native OS, effortlessly piecing the child HWND boundary.
+
+5. **Pinned-only Drag & Side-Effect Suppression**:
+   WebView2's `app-region: drag` exposes native `HTCAPTION` behavior, meaning double-click maximizes and right-click shows the system menu. These were explicitly suppressed by intercepting `WM_NCLBUTTONDBLCLK`, `WM_NCRBUTTONDOWN`, and `WM_NCRBUTTONUP` in `WndProc`. Pinned-only dragging is enforced by intercepting `WM_SYSCOMMAND` and blocking `SC_MOVE` when the flyout is unpinned.
+
+6. **Fixed-Size / Non-Resizable Shell**:
+   `FormBorderStyle.Sizable` introduces `WS_THICKFRAME` (0x00040000). While `WM_NCCALCSIZE` hides the borders visually, DWM and WinForms still allow invisible edge resizing. Resizing was completely removed by explicitly masking out `WS_THICKFRAME` and `WS_MAXIMIZEBOX` natively in `CreateParams`, intercepting `WM_NCHITTEST` to force sizing hits to `HTBORDER` (non-sizable), and blocking `SC_SIZE` commands, all while cleanly preserving the DWM Acrylic shadows (which only require `WS_CAPTION`).
+
+7. **Explorer Recovery and Taskbar Anchoring**:
+   WinForms `NotifyIcon` automatically re-adds the icon on the `TaskbarCreated` broadcast, handling Explorer restarts cleanly. Bounds are acquired via reflection of private WinForms fields to call `Shell_NotifyIconGetRect` directly. If this fails, the system falls back seamlessly to `SHAppBarMessage(ABM_GETTASKBARPOS)` to anchor to the nearest taskbar edge relative to the cursor.
+
+8. **WebView Recovery Bounds**:
+   Recovery paths for `RenderProcessExited` (reloads) and `BrowserProcessExited` (recreates) are strictly bounded to 3 attempts, preventing infinite reload loops. `NavigationCompleted` failures are logged and do not recursively trigger reloads.

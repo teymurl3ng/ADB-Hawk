@@ -51,16 +51,35 @@ public sealed class BoundaryTests {
             }
 
             var text = ReadText(file);
-            foreach (Match match in pattern.Matches(text)) {
+
+            // False positive correction: allow the exact IPC contract string (AdbView.Control.<session-id>)
+            // without weakening the rule against actual WinForms Control type usage.
+            var scrubbedText = text.Replace("\"AdbView.Control.", "\"AdbView.IPC_CONTRACT.", StringComparison.Ordinal);
+
+            foreach (Match match in pattern.Matches(scrubbedText)) {
                 violations.Add($"{Path.GetRelativePath(Root, file)}: WinForms type '{match.Value}' outside Host/");
             }
 
-            if (text.Contains("System.Windows.Forms", StringComparison.Ordinal)) {
+            if (scrubbedText.Contains("System.Windows.Forms", StringComparison.Ordinal)) {
                 violations.Add($"{Path.GetRelativePath(Root, file)}: 'System.Windows.Forms' referenced outside Host/");
             }
         }
 
         AssertNoViolations(violations);
+    }
+
+    [Fact]
+    public void BoundaryTestAllowsIpcContractButRejectsWinFormsControl() {
+        var textAllowed = "var pipe = \"AdbView.Control.123\";";
+        var textRejected = "public class MyControl : Control { }";
+
+        var scrubbedAllowed = textAllowed.Replace("\"AdbView.Control.", "\"AdbView.IPC_CONTRACT.", StringComparison.Ordinal);
+        var scrubbedRejected = textRejected.Replace("\"AdbView.Control.", "\"AdbView.IPC_CONTRACT.", StringComparison.Ordinal);
+
+        var pattern = new Regex(@"\b(Control)\b");
+
+        Assert.Empty(pattern.Matches(scrubbedAllowed));
+        Assert.Single(pattern.Matches(scrubbedRejected));
     }
 
     // 2. No System.Net.Http usage or reference anywhere in application source (R-13).
