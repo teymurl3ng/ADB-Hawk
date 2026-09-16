@@ -1,5 +1,8 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Auto detect text files and normalize to LF in the repo and the working tree.
+# `eol=lf` is required: gates hash and lint over LF (DESIGN.md authority hash,
+# prettier endOfLine=lf), and Windows checkouts with autocrlf would otherwise
+# materialize CRLF and fail them (observed on GitHub Actions windows runners).
+* text=auto eol=lf
 
 # Binaries
 *.png binary

@@ -218,3 +218,9 @@ Executed on the Windows development machine; CI still pending (requires a push).
   CRLF-materialized DESIGN.md hashes to exactly the value CI reported.
 - All other gates (toolchain pins, format, build, MTP tests, lint, prettier, tsc, vitest,
   publish smoke) passed on the runner as-is.
+- Second CI run (`e939c66`) fixed the hash test but exposed the same root cause one gate later:
+  **prettier** flagged all 13 frontend files, because its default `endOfLine: "lf"` disagrees
+  with the runner's CRLF materialization. Repo-level fix: `.gitattributes` now declares
+  `* text=auto eol=lf` (LF in repo *and* working tree on every platform) and `ui/.prettierrc`
+  pins `endOfLine: "lf"` explicitly. `git add --renormalize .` confirmed no blob content
+  changed — the fix only pins checkout materialization.
