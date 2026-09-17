@@ -70,8 +70,9 @@ finally {
     Pop-Location
 }
 
-# --- 6. Contract regeneration check (no generated contract until Phase 3) ---
-& (Join-Path $PSScriptRoot 'gen-contract.ps1')
+# --- 6. Contract regeneration check (ENGINEERING.md §4.2) ---
+& (Join-Path $PSScriptRoot 'gen-contract.ps1') -Verify
+Assert-LastExitCode 'gen-contract'
 
 # --- 7. Visual regression (no specs/baselines until Phase 2) ---
 & (Join-Path $PSScriptRoot 'visual.ps1')

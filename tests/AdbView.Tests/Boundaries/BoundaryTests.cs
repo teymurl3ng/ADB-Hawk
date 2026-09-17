@@ -54,7 +54,8 @@ public sealed class BoundaryTests {
 
             // False positive correction: allow the exact IPC contract string (AdbView.Control.<session-id>)
             // without weakening the rule against actual WinForms Control type usage.
-            var scrubbedText = text.Replace("\"AdbView.Control.", "\"AdbView.IPC_CONTRACT.", StringComparison.Ordinal);
+            var scrubbedText = text.Replace("\"AdbView.Control.", "\"AdbView.IPC_CONTRACT.", StringComparison.Ordinal)
+                .Replace("string Label", "string FIELD_LABEL", StringComparison.Ordinal);
 
             foreach (Match match in pattern.Matches(scrubbedText)) {
                 violations.Add($"{Path.GetRelativePath(Root, file)}: WinForms type '{match.Value}' outside Host/");
@@ -77,6 +78,20 @@ public sealed class BoundaryTests {
         var scrubbedRejected = textRejected.Replace("\"AdbView.Control.", "\"AdbView.IPC_CONTRACT.", StringComparison.Ordinal);
 
         var pattern = new Regex(@"\b(Control)\b");
+
+        Assert.Empty(pattern.Matches(scrubbedAllowed));
+        Assert.Single(pattern.Matches(scrubbedRejected));
+    }
+
+    [Fact]
+    public void BoundaryTestAllowsStringLabelPropertyButRejectsWinFormsLabelControl() {
+        var textAllowed = "public required string Label { get; init; }";
+        var textRejected = "public class MyLabel : Label { }";
+
+        var scrubbedAllowed = textAllowed.Replace("string Label", "string FIELD_LABEL", StringComparison.Ordinal);
+        var scrubbedRejected = textRejected.Replace("string Label", "string FIELD_LABEL", StringComparison.Ordinal);
+
+        var pattern = new Regex(@"\b(Label)\b");
 
         Assert.Empty(pattern.Matches(scrubbedAllowed));
         Assert.Single(pattern.Matches(scrubbedRejected));

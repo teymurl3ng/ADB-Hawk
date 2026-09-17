@@ -1,0 +1,470 @@
+{
+  "connected-usb": {
+    "type": "snapshot",
+    "protocol": 1,
+    "snapshot": {
+      "protocol": 1,
+      "revision": 1,
+      "generatedAt": "2026-09-17T12:00:00.000Z",
+      "health": {
+        "kind": "healthy",
+        "title": "Connected",
+        "detail": "USB device ready",
+        "hint": null,
+        "tray": "connected",
+        "trayTooltip": "Connected: Pixel 8 (USB)"
+      },
+      "shell": {
+        "pinned": false,
+        "theme": "dark",
+        "transparencyEnabled": true,
+        "forcedColors": false,
+        "reducedMotion": false
+      },
+      "devices": [
+        {
+          "id": "dev-pixel-8",
+          "displayName": "Pixel 8",
+          "state": "connected",
+          "severity": "positive",
+          "stateLabel": "Connected",
+          "statusLine": "Connected \u00B7 USB",
+          "guidance": null,
+          "transport": "usb",
+          "transportLabel": "USB",
+          "batteryPercent": 85,
+          "metaTemplate": "Connected {age} ago",
+          "stateSince": "2026-09-17T11:00:00.000Z",
+          "connectedSince": "2026-09-17T11:00:00.000Z",
+          "detail": {
+            "serial": "SERIAL-USB-1",
+            "exactModel": "Pixel 8",
+            "androidVersion": "15",
+            "address": null,
+            "copyFields": [
+              {
+                "key": "serial",
+                "label": "Serial",
+                "value": "SERIAL-USB-1"
+              }
+            ]
+          }
+        }
+      ],
+      "pairingOffers": [],
+      "pairing": null,
+      "warnings": [],
+      "deviceCountLabel": null
+    }
+  },
+  "connected-wifi": {
+    "type": "snapshot",
+    "protocol": 1,
+    "snapshot": {
+      "protocol": 1,
+      "revision": 2,
+      "generatedAt": "2026-09-17T12:00:00.000Z",
+      "health": {
+        "kind": "healthy",
+        "title": "Connected",
+        "detail": "Wi-Fi device ready",
+        "hint": null,
+        "tray": "connected",
+        "trayTooltip": "Connected: Galaxy S24 (Wi-Fi)"
+      },
+      "shell": {
+        "pinned": false,
+        "theme": "dark",
+        "transparencyEnabled": true,
+        "forcedColors": false,
+        "reducedMotion": false
+      },
+      "devices": [
+        {
+          "id": "dev-galaxy-s24",
+          "displayName": "Galaxy S24",
+          "state": "connected",
+          "severity": "positive",
+          "stateLabel": "Connected",
+          "statusLine": "Connected \u00B7 Wi-Fi",
+          "guidance": null,
+          "transport": "wifi",
+          "transportLabel": "Wi-Fi",
+          "batteryPercent": 90,
+          "metaTemplate": "Connected {age} ago",
+          "stateSince": "2026-09-17T11:30:00.000Z",
+          "connectedSince": "2026-09-17T11:30:00.000Z",
+          "detail": {
+            "serial": "192.168.1.50:5555",
+            "exactModel": "SM-S921B",
+            "androidVersion": "14",
+            "address": "192.168.1.50:5555",
+            "copyFields": [
+              {
+                "key": "serial",
+                "label": "Serial",
+                "value": "192.168.1.50:5555"
+              },
+              {
+                "key": "address",
+                "label": "Wi-Fi address",
+                "value": "192.168.1.50:5555"
+              }
+            ]
+          }
+        }
+      ],
+      "pairingOffers": [],
+      "pairing": null,
+      "warnings": [],
+      "deviceCountLabel": null
+    }
+  },
+  "multi-device": {
+    "type": "snapshot",
+    "protocol": 1,
+    "snapshot": {
+      "protocol": 1,
+      "revision": 3,
+      "generatedAt": "2026-09-17T12:00:00.000Z",
+      "health": {
+        "kind": "healthy",
+        "title": "3 devices",
+        "detail": "Active ADB connections",
+        "hint": null,
+        "tray": "connected",
+        "trayTooltip": "3 devices connected"
+      },
+      "shell": {
+        "pinned": false,
+        "theme": "dark",
+        "transparencyEnabled": true,
+        "forcedColors": false,
+        "reducedMotion": false
+      },
+      "devices": [
+        {
+          "id": "dev-pixel-8",
+          "displayName": "Pixel 8",
+          "state": "connected",
+          "severity": "positive",
+          "stateLabel": "Connected",
+          "statusLine": "Connected \u00B7 USB",
+          "guidance": null,
+          "transport": "usb",
+          "transportLabel": "USB",
+          "batteryPercent": 85,
+          "metaTemplate": "Connected {age} ago",
+          "stateSince": "2026-09-17T11:00:00.000Z",
+          "connectedSince": "2026-09-17T11:00:00.000Z",
+          "detail": {
+            "serial": "SERIAL-1",
+            "exactModel": "Pixel 8",
+            "androidVersion": "15",
+            "address": null,
+            "copyFields": [
+              {
+                "key": "serial",
+                "label": "Serial",
+                "value": "SERIAL-1"
+              }
+            ]
+          }
+        },
+        {
+          "id": "dev-galaxy-s24",
+          "displayName": "Galaxy S24",
+          "state": "connected",
+          "severity": "positive",
+          "stateLabel": "Connected",
+          "statusLine": "Connected \u00B7 Wi-Fi",
+          "guidance": null,
+          "transport": "wifi",
+          "transportLabel": "Wi-Fi",
+          "batteryPercent": 90,
+          "metaTemplate": "Connected {age} ago",
+          "stateSince": "2026-09-17T11:30:00.000Z",
+          "connectedSince": "2026-09-17T11:30:00.000Z",
+          "detail": {
+            "serial": "192.168.1.50:5555",
+            "exactModel": null,
+            "androidVersion": null,
+            "address": "192.168.1.50:5555",
+            "copyFields": [
+              {
+                "key": "serial",
+                "label": "Serial",
+                "value": "192.168.1.50:5555"
+              },
+              {
+                "key": "address",
+                "label": "Wi-Fi address",
+                "value": "192.168.1.50:5555"
+              }
+            ]
+          }
+        },
+        {
+          "id": "dev-nexus-5",
+          "displayName": "Nexus 5",
+          "state": "unauthorized",
+          "severity": "attention",
+          "stateLabel": "Unauthorized",
+          "statusLine": "Unauthorized \u00B7 USB",
+          "guidance": "Check the phone and allow USB debugging.",
+          "transport": "usb",
+          "transportLabel": "USB",
+          "batteryPercent": null,
+          "metaTemplate": "Detected {age} ago",
+          "stateSince": "2026-09-17T11:50:00.000Z",
+          "connectedSince": null,
+          "detail": {
+            "serial": "SERIAL-UNAUTH",
+            "exactModel": null,
+            "androidVersion": null,
+            "address": null,
+            "copyFields": [
+              {
+                "key": "serial",
+                "label": "Serial",
+                "value": "SERIAL-UNAUTH"
+              }
+            ]
+          }
+        }
+      ],
+      "pairingOffers": [],
+      "pairing": null,
+      "warnings": [],
+      "deviceCountLabel": "3 devices"
+    }
+  },
+  "pairing": {
+    "type": "snapshot",
+    "protocol": 1,
+    "snapshot": {
+      "protocol": 1,
+      "revision": 4,
+      "generatedAt": "2026-09-17T12:00:00.000Z",
+      "health": {
+        "kind": "healthy",
+        "title": "Pairing ready",
+        "detail": "Wireless pairing service discovered",
+        "hint": null,
+        "tray": "pairingAvailable",
+        "trayTooltip": "Wireless pairing available"
+      },
+      "shell": {
+        "pinned": false,
+        "theme": "dark",
+        "transparencyEnabled": true,
+        "forcedColors": false,
+        "reducedMotion": false
+      },
+      "devices": [],
+      "pairingOffers": [
+        {
+          "id": "mdns-1",
+          "displayName": "Pixel Tablet",
+          "heading": "Wireless pairing available",
+          "detail": "Waiting for a pairing code",
+          "actionLabel": "Pair"
+        },
+        {
+          "id": "mdns-2",
+          "displayName": "Galaxy Tab",
+          "heading": "Wireless pairing available",
+          "detail": "Waiting for a pairing code",
+          "actionLabel": "Pair"
+        }
+      ],
+      "pairing": {
+        "offerId": "mdns-1",
+        "displayName": "Pixel Tablet",
+        "phase": "awaitingCode",
+        "title": "Pairing with Pixel Tablet\u2026",
+        "detail": "Enter the six-digit code shown on the phone.",
+        "canSubmitCode": true,
+        "canCancel": true,
+        "canRetry": false,
+        "codeLength": 6
+      },
+      "warnings": [],
+      "deviceCountLabel": null
+    }
+  },
+  "nullables": {
+    "type": "snapshot",
+    "protocol": 1,
+    "snapshot": {
+      "protocol": 1,
+      "revision": 5,
+      "generatedAt": "2026-09-17T12:00:00.000Z",
+      "health": {
+        "kind": "healthy",
+        "title": null,
+        "detail": null,
+        "hint": null,
+        "tray": "idle",
+        "trayTooltip": "ADB View"
+      },
+      "shell": {
+        "pinned": false,
+        "theme": "light",
+        "transparencyEnabled": false,
+        "forcedColors": false,
+        "reducedMotion": false
+      },
+      "devices": [
+        {
+          "id": "dev-bare",
+          "displayName": "Bare Device",
+          "state": "connected",
+          "severity": "positive",
+          "stateLabel": "Connected",
+          "statusLine": "Connected \u00B7 USB",
+          "guidance": null,
+          "transport": "usb",
+          "transportLabel": "USB",
+          "batteryPercent": null,
+          "metaTemplate": "Connected {age} ago",
+          "stateSince": "2026-09-17T12:00:00.000Z",
+          "connectedSince": null,
+          "detail": {
+            "serial": "BARE-SERIAL",
+            "exactModel": null,
+            "androidVersion": null,
+            "address": null,
+            "copyFields": [
+              {
+                "key": "serial",
+                "label": "Serial",
+                "value": "BARE-SERIAL"
+              }
+            ]
+          }
+        }
+      ],
+      "pairingOffers": [],
+      "pairing": null,
+      "warnings": [],
+      "deviceCountLabel": null
+    }
+  },
+  "max-revision": {
+    "type": "snapshot",
+    "protocol": 1,
+    "snapshot": {
+      "protocol": 1,
+      "revision": 9007199254740991,
+      "generatedAt": "2026-09-17T12:00:00.000Z",
+      "health": {
+        "kind": "healthy",
+        "title": "All good",
+        "detail": "Connected and ready",
+        "hint": "No action required",
+        "tray": "connected",
+        "trayTooltip": "Connected: Pixel 8 (USB)"
+      },
+      "shell": {
+        "pinned": false,
+        "theme": "dark",
+        "transparencyEnabled": true,
+        "forcedColors": false,
+        "reducedMotion": false
+      },
+      "devices": [
+        {
+          "id": "dev-pixel-8",
+          "displayName": "Pixel 8",
+          "state": "connected",
+          "severity": "positive",
+          "stateLabel": "Connected",
+          "statusLine": "Connected \u00B7 USB",
+          "guidance": "Ready to use",
+          "transport": "usb",
+          "transportLabel": "USB",
+          "batteryPercent": 85,
+          "metaTemplate": "Connected {age} ago",
+          "stateSince": "2026-09-17T11:00:00.000Z",
+          "connectedSince": "2026-09-17T11:00:00.000Z",
+          "detail": {
+            "serial": "SERIAL12345",
+            "exactModel": "Pixel 8 Pro",
+            "androidVersion": "15",
+            "address": null,
+            "copyFields": [
+              {
+                "key": "serial",
+                "label": "Serial",
+                "value": "SERIAL12345"
+              }
+            ]
+          }
+        },
+        {
+          "id": "dev-s24",
+          "displayName": "Galaxy S24",
+          "state": "connected",
+          "severity": "positive",
+          "stateLabel": "Connected",
+          "statusLine": "Connected \u00B7 Wi-Fi",
+          "guidance": null,
+          "transport": "wifi",
+          "transportLabel": "Wi-Fi",
+          "batteryPercent": 90,
+          "metaTemplate": "Connected {age} ago",
+          "stateSince": "2026-09-17T11:30:00.000Z",
+          "connectedSince": "2026-09-17T11:30:00.000Z",
+          "detail": {
+            "serial": "192.168.1.50:5555",
+            "exactModel": "SM-S921B",
+            "androidVersion": "14",
+            "address": "192.168.1.50:5555",
+            "copyFields": [
+              {
+                "key": "serial",
+                "label": "Serial",
+                "value": "192.168.1.50:5555"
+              },
+              {
+                "key": "address",
+                "label": "Wi-Fi address",
+                "value": "192.168.1.50:5555"
+              }
+            ]
+          }
+        }
+      ],
+      "pairingOffers": [
+        {
+          "id": "mdns-offer-1",
+          "displayName": "Pixel Tablet",
+          "heading": "Wireless pairing available",
+          "detail": "Waiting for a pairing code",
+          "actionLabel": "Pair"
+        }
+      ],
+      "pairing": {
+        "offerId": "mdns-offer-1",
+        "displayName": "Pixel Tablet",
+        "phase": "awaitingCode",
+        "title": "Pairing with Pixel Tablet\u2026",
+        "detail": "Enter the six-digit code shown on the phone.",
+        "canSubmitCode": true,
+        "canCancel": true,
+        "canRetry": false,
+        "codeLength": 6
+      },
+      "warnings": [
+        {
+          "subsystem": "wirelessDiscovery",
+          "severity": "informational",
+          "title": "Wireless discovery active",
+          "detail": "mDNS service tracker is monitoring for devices."
+        }
+      ],
+      "deviceCountLabel": "2 devices"
+    }
+  }
+}
