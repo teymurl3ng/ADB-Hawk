@@ -223,7 +223,7 @@
 |---|---|---|---|
 | 0 | 2026-09-16 | d7c5cd6 | Implemented and verified locally: `scripts/verify.ps1` green (clean clone 105 s; warm ≈25–31 s); all 10 boundary invariants plus format/build/lint/typecheck/vitest/prettier/toolchain-pin gates deliberately violated once and observed failing (17 break tests). CI green on `d7c5cd6` (run #3, 35038876484) after two checkout-line-ending fixes: `e939c66` (DESIGN.md authority hash over LF-normalized content) and `d7c5cd6` (`.gitattributes` `eol=lf` + explicit prettier `endOfLine: "lf"`) — findings recorded in `research/2026-09-16-toolchain-and-gates.md` |
 | 1 | 2026-09-16 | 6b730db | Manual headed validation passed. verify.ps1 GREEN. CI GREEN. No explicit environmental items remain unverified. |
-| 2 | 2026-09-17 | a83f10e | Complete frozen UI implemented and verified locally across 16 fixtures; scripts/verify.ps1 green (27 C# tests, ESLint, Prettier, tsc, 3 Vitest, 16 Playwright visual tests, Release smoke); scripts/audit-phase2.ps1 green (417/417 checks passed across all fixtures and user interactions); 11 mutation proofs verified; native Acrylic backdrop, shell placement, and drag/pin interactions accepted. |
+| 2 | 2026-09-17 | aaf74e7 | Complete frozen UI implemented and verified locally across 16 fixtures; scripts/verify.ps1 green (27 C# tests, ESLint, Prettier, tsc, 3 Vitest, 16 Playwright visual tests, Release smoke); scripts/audit-phase2.ps1 green (417/417 checks passed across all fixtures and user interactions); 11 mutation proofs verified; native Acrylic backdrop, shell placement, and drag/pin interactions accepted. |
 | 3 | | | |
 | 4 | | | |
 | 5 | | | |
