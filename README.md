@@ -4,7 +4,7 @@ ADB View is a small Windows 11 system-tray utility for observing, explaining, no
 
 ## Repository status
 
-**Phase 0 complete: repository skeleton with enforceable gates.** There is no product behavior yet — no window, no tray icon, no WebView2 initialization, no ADB code. The next step is Phase 1 from `PHASES.md`.
+**Phase 2 complete: frozen UI implemented from fixtures in WebView2 with native shell integration and autonomous audit suite.** All 16 frozen design fixtures rendered, themed (dark/light/forced-colors), accessible, and interaction-tested; native Acrylic backdrop, taskbar placement, light dismiss, and pinned drag verified. The next step is Phase 3 (The bridge) from `PHASES.md`.
 
 ## Governing documents
 

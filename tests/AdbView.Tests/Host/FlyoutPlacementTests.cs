@@ -96,4 +96,137 @@ public class FlyoutPlacementTests {
 
         Assert.True(result.Right <= 0 - 12);
     }
+
+    [Fact]
+    public void DefaultTrayAnchor_Bottom_CalculatesValidPlacement() {
+        TestDefaultTrayAnchorForEdge(FlyoutPlacement.TaskbarEdge.Bottom);
+    }
+
+    [Fact]
+    public void DefaultTrayAnchor_Top_CalculatesValidPlacement() {
+        TestDefaultTrayAnchorForEdge(FlyoutPlacement.TaskbarEdge.Top);
+    }
+
+    [Fact]
+    public void DefaultTrayAnchor_Left_CalculatesValidPlacement() {
+        TestDefaultTrayAnchorForEdge(FlyoutPlacement.TaskbarEdge.Left);
+    }
+
+    [Fact]
+    public void DefaultTrayAnchor_Right_CalculatesValidPlacement() {
+        TestDefaultTrayAnchorForEdge(FlyoutPlacement.TaskbarEdge.Right);
+    }
+
+    private static void TestDefaultTrayAnchorForEdge(FlyoutPlacement.TaskbarEdge edge) {
+        var monitorBounds = new Rectangle(0, 0, 1920, 1080);
+        var monitorWorkArea = edge switch {
+            FlyoutPlacement.TaskbarEdge.Bottom => new Rectangle(0, 0, 1920, 1040),
+            FlyoutPlacement.TaskbarEdge.Top => new Rectangle(0, 40, 1920, 1040),
+            FlyoutPlacement.TaskbarEdge.Left => new Rectangle(40, 0, 1880, 1080),
+            FlyoutPlacement.TaskbarEdge.Right => new Rectangle(0, 0, 1880, 1080),
+            _ => monitorBounds
+        };
+
+        var anchor = FlyoutPlacement.GetDefaultTrayAnchor(monitorWorkArea, monitorBounds, edge, 1.0);
+        var result = FlyoutPlacement.CalculatePlacement(
+            anchor,
+            edge,
+            monitorWorkArea,
+            1.0,
+            EffectiveSize);
+
+        Assert.True(result.Left >= monitorWorkArea.Left);
+        Assert.True(result.Top >= monitorWorkArea.Top);
+        Assert.True(result.Right <= monitorWorkArea.Right);
+        Assert.True(result.Bottom <= monitorWorkArea.Bottom);
+        Assert.Equal(EffectiveSize.Width, result.Width);
+        Assert.Equal(EffectiveSize.Height, result.Height);
+    }
+
+    [Fact]
+    public void ResolveAnchor_WithValidExactRect_UsesExactRect() {
+        var exactRect = new Rectangle(1200, 1040, 16, 16);
+        var monitorWorkArea = new Rectangle(0, 0, 1920, 1040);
+        var monitorBounds = new Rectangle(0, 0, 1920, 1080);
+
+        var anchor = FlyoutPlacement.ResolveAnchor(
+            exactRect,
+            monitorWorkArea,
+            monitorBounds,
+            FlyoutPlacement.TaskbarEdge.Bottom,
+            1.0);
+
+        Assert.Equal(exactRect, anchor);
+    }
+
+    [Fact]
+    public void ResolveAnchor_WithInvalidOrEmptyRect_UsesDefaultTrayAnchor_NotCursorPosition() {
+        // When Shell_NotifyIconGetRect is unavailable or returns empty rect:
+        // Must yield GetDefaultTrayAnchor, NEVER defaulting to cursor position (0,0) or top-left (12,12)
+        var emptyOrUnavailableRect = Rectangle.Empty;
+        var monitorWorkArea = new Rectangle(0, 0, 1920, 1040);
+        var monitorBounds = new Rectangle(0, 0, 1920, 1080);
+
+        var expectedDefault = FlyoutPlacement.GetDefaultTrayAnchor(
+            monitorWorkArea,
+            monitorBounds,
+            FlyoutPlacement.TaskbarEdge.Bottom,
+            1.0);
+
+        var anchor = FlyoutPlacement.ResolveAnchor(
+            emptyOrUnavailableRect,
+            monitorWorkArea,
+            monitorBounds,
+            FlyoutPlacement.TaskbarEdge.Bottom,
+            1.0);
+
+        Assert.Equal(expectedDefault, anchor);
+
+        // Resulting placement must be near taskbar notification area, NOT clamped to top-left (12, 12)
+        var placement = FlyoutPlacement.CalculatePlacement(
+            anchor,
+            FlyoutPlacement.TaskbarEdge.Bottom,
+            monitorWorkArea,
+            1.0,
+            EffectiveSize);
+
+        Assert.True(placement.X > 1000, $"Expected placement near right taskbar edge, got X={placement.X}");
+        Assert.Equal(anchor.Top - EffectiveSize.Height - 12, placement.Y);
+    }
+
+    [Fact]
+    public void ResolveAnchor_Fallback_SupportsAllTaskbarEdges() {
+        foreach (var edge in Enum.GetValues<FlyoutPlacement.TaskbarEdge>()) {
+            var monitorBounds = new Rectangle(0, 0, 1920, 1080);
+            var monitorWorkArea = edge switch {
+                FlyoutPlacement.TaskbarEdge.Bottom => new Rectangle(0, 0, 1920, 1040),
+                FlyoutPlacement.TaskbarEdge.Top => new Rectangle(0, 40, 1920, 1040),
+                FlyoutPlacement.TaskbarEdge.Left => new Rectangle(40, 0, 1880, 1080),
+                FlyoutPlacement.TaskbarEdge.Right => new Rectangle(0, 0, 1880, 1080),
+                _ => monitorBounds
+            };
+
+            var anchor = FlyoutPlacement.ResolveAnchor(
+                Rectangle.Empty,
+                monitorWorkArea,
+                monitorBounds,
+                edge,
+                1.0);
+
+            var placement = FlyoutPlacement.CalculatePlacement(
+                anchor,
+                edge,
+                monitorWorkArea,
+                1.0,
+                EffectiveSize);
+
+            Assert.True(placement.Left >= monitorWorkArea.Left);
+            Assert.True(placement.Top >= monitorWorkArea.Top);
+            Assert.True(placement.Right <= monitorWorkArea.Right);
+            Assert.True(placement.Bottom <= monitorWorkArea.Bottom);
+            Assert.Equal(EffectiveSize.Width, placement.Width);
+            Assert.Equal(EffectiveSize.Height, placement.Height);
+        }
+    }
 }
+

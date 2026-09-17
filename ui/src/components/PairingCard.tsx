@@ -18,8 +18,8 @@ interface PairingCardProps {
 export function PairingCard({ state, deviceName }: PairingCardProps) {
   if (state === 'pairing-success') {
     return (
-      <div className="rounded-lg bg-win-greenSurface border border-emerald-500/25 p-3.5 flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 flex-shrink-0">
+      <div className="rounded-lg bg-win-green-surface border border-win-green-border p-3.5 flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-win-green-surface border border-win-green-border flex items-center justify-center text-win-green-text flex-shrink-0">
           <svg
             fill="none"
             height="16"
@@ -34,10 +34,10 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
           </svg>
         </div>
         <div>
-          <h3 className="text-[14px] font-semibold text-white tracking-tight">
+          <h3 className="text-[14px] font-semibold text-win-text-primary tracking-tight">
             Paired with {deviceName}
           </h3>
-          <p className="text-[12px] text-emerald-300/80 mt-0.5">Waiting for ADB connection…</p>
+          <p className="text-[12px] text-win-text-secondary mt-0.5">Waiting for ADB connection…</p>
         </div>
       </div>
     );
@@ -45,16 +45,16 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
 
   if (state === 'pairing-progress') {
     return (
-      <div className="rounded-lg bg-win-accentSurface border border-win-accentBorder p-4 flex flex-col items-center text-center">
-        <div className="w-8 h-8 rounded-full border-2 border-blue-500/20 border-t-blue-400 animate-spin-quiet mb-3"></div>
-        <h3 className="text-[14px] font-semibold text-white tracking-tight mb-1">
+      <div className="rounded-lg bg-win-accent-surface border border-win-accent-border p-4 flex flex-col items-center text-center">
+        <div className="w-8 h-8 rounded-full border-2 border-win-accent/20 border-t-win-accent animate-spin-quiet mb-3"></div>
+        <h3 className="text-[14px] font-semibold text-win-text-primary tracking-tight mb-1">
           Pairing with {deviceName}…
         </h3>
-        <p className="text-[12px] text-neutral-400 max-w-[260px]">
+        <p className="text-[12px] text-win-text-secondary max-w-[260px]">
           Keep the phone nearby while pairing completes.
         </p>
-        <div className="hit-area-40 mt-3 pt-2.5 border-t border-white/[0.06] w-full flex justify-center">
-          <button className="text-[11.5px] text-neutral-400 hover:text-neutral-200 fluent-btn">
+        <div className="hit-area-40 mt-3 pt-2.5 border-t border-win-border-subtle w-full flex justify-center">
+          <button className="text-[11.5px] text-win-text-secondary hover:text-win-text-primary fluent-btn">
             Cancel pairing
           </button>
         </div>
@@ -64,10 +64,10 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
 
   if (state === 'pairing-offer') {
     return (
-      <div className="rounded-lg bg-win-accentSurface border border-win-accentBorder p-3.5">
+      <div className="rounded-lg bg-win-accent-surface border border-win-accent-border p-3.5">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-2.5">
-            <div className="w-8 h-8 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 flex-shrink-0 mt-0.5">
+            <div className="w-8 h-8 rounded bg-win-accent/10 border border-win-accent/20 flex items-center justify-center text-win-accent flex-shrink-0 mt-0.5">
               <svg
                 fill="none"
                 height="16"
@@ -87,17 +87,19 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="static-dot bg-blue-400"></span>
-                <h3 className="text-[13.5px] font-semibold text-white tracking-tight">
+                <span className="static-dot bg-win-accent"></span>
+                <h3 className="text-[13.5px] font-semibold text-win-text-primary tracking-tight">
                   Wireless pairing available
                 </h3>
               </div>
-              <p className="text-[14px] font-medium text-neutral-200 mt-1">{deviceName}</p>
-              <p className="text-[12px] text-neutral-400 mt-0.5">Waiting for a pairing code</p>
+              <p className="text-[14px] font-medium text-win-text-primary mt-1">{deviceName}</p>
+              <p className="text-[12px] text-win-text-secondary mt-0.5">
+                Waiting for a pairing code
+              </p>
             </div>
           </div>
           <div className="hit-area-40">
-            <button className="px-3 py-1.5 rounded bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white text-[12.5px] font-medium shadow-sm flex items-center gap-1.5 fluent-btn">
+            <button className="px-3 py-1.5 rounded bg-win-accent hover:bg-win-accent-hover active:bg-blue-700 text-white text-[12.5px] font-medium shadow-sm flex items-center gap-1.5 fluent-btn">
               <span>Pair</span>
               <svg
                 fill="none"
@@ -128,14 +130,14 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
     slots = [
       <div
         key="0"
-        className="h-9 rounded bg-black/40 border border-blue-400 ring-2 ring-blue-500/25 flex items-center justify-center font-mono text-[14px] text-white"
+        className="h-9 rounded bg-win-slot-bg border border-win-accent ring-2 ring-win-accent/25 flex items-center justify-center font-mono text-[14px] text-win-text-primary"
       >
-        <span className="inline-block w-1.5 h-4 bg-blue-400 animate-pulse"></span>
+        <span className="inline-block w-1.5 h-4 bg-win-accent animate-pulse"></span>
       </div>,
       ...Array.from({ length: 5 }).map((_, i) => (
         <div
           key={i + 1}
-          className="h-9 rounded bg-black/30 border border-white/10 flex items-center justify-center font-mono text-[14px] text-neutral-500"
+          className="h-9 rounded bg-win-slot-bg border border-win-slot-border flex items-center justify-center font-mono text-[14px] text-win-text-muted"
         >
           _
         </div>
@@ -145,26 +147,26 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
     slots = [
       <div
         key="0"
-        className="h-9 rounded bg-black/40 border border-white/20 flex items-center justify-center font-mono text-[15px] font-semibold text-white"
+        className="h-9 rounded bg-win-slot-bg border border-win-slot-border flex items-center justify-center font-mono text-[15px] font-semibold text-win-text-primary"
       >
         2
       </div>,
       <div
         key="1"
-        className="h-9 rounded bg-black/40 border border-white/20 flex items-center justify-center font-mono text-[15px] font-semibold text-white"
+        className="h-9 rounded bg-win-slot-bg border border-win-slot-border flex items-center justify-center font-mono text-[15px] font-semibold text-win-text-primary"
       >
         4
       </div>,
       <div
         key="2"
-        className="h-9 rounded bg-black/40 border border-blue-400 ring-2 ring-blue-500/25 flex items-center justify-center font-mono text-[14px] text-white"
+        className="h-9 rounded bg-win-slot-bg border border-win-accent ring-2 ring-win-accent/25 flex items-center justify-center font-mono text-[14px] text-win-text-primary"
       >
-        <span className="inline-block w-1.5 h-4 bg-blue-400 animate-pulse"></span>
+        <span className="inline-block w-1.5 h-4 bg-win-accent animate-pulse"></span>
       </div>,
       ...Array.from({ length: 3 }).map((_, i) => (
         <div
           key={i + 3}
-          className="h-9 rounded bg-black/30 border border-white/10 flex items-center justify-center font-mono text-[14px] text-neutral-500"
+          className="h-9 rounded bg-win-slot-bg border border-win-slot-border flex items-center justify-center font-mono text-[14px] text-win-text-muted"
         >
           _
         </div>
@@ -174,7 +176,7 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
     slots = ['2', '4', '8', '1', '7', '3'].map((char, i) => (
       <div
         key={i}
-        className="h-9 rounded bg-black/40 border border-white/20 flex items-center justify-center font-mono text-[15px] font-semibold text-white"
+        className="h-9 rounded bg-win-slot-bg border border-win-slot-border flex items-center justify-center font-mono text-[15px] font-semibold text-win-text-primary"
       >
         {char}
       </div>
@@ -183,7 +185,7 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
     slots = ['2', '4', '8', '1', '7', '9'].map((char, i) => (
       <div
         key={i}
-        className="h-9 rounded bg-black/40 border border-red-400/40 flex items-center justify-center font-mono text-[14.5px] font-medium text-neutral-300"
+        className="h-9 rounded bg-win-slot-bg border border-win-red-border flex items-center justify-center font-mono text-[14.5px] font-medium text-win-red-text"
       >
         {char}
       </div>
@@ -192,11 +194,11 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
 
   return (
     <div
-      className={`rounded-lg ${isFailure ? 'bg-win-redSurface border-win-redBorder' : 'bg-win-accentSurface border-win-accentBorder'} border p-3.5`}
+      className={`rounded-lg ${isFailure ? 'bg-win-red-surface border-win-red-border' : 'bg-win-accent-surface border-win-accent-border'} border p-3.5`}
     >
       {isFailure ? (
         <div className="flex items-start gap-2.5 mb-2.5">
-          <div className="w-7 h-7 rounded bg-red-500/15 border border-red-500/30 flex items-center justify-center text-red-400 flex-shrink-0 mt-0.5">
+          <div className="w-7 h-7 rounded bg-win-red-surface border border-win-red-border flex items-center justify-center text-win-red-text flex-shrink-0 mt-0.5">
             <svg
               fill="none"
               height="14"
@@ -213,17 +215,23 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
             </svg>
           </div>
           <div>
-            <h3 className="text-[14px] font-semibold text-white tracking-tight">Pairing failed</h3>
-            <p className="text-[12px] text-neutral-300 mt-0.5">Check the code and try again.</p>
+            <h3 className="text-[14px] font-semibold text-win-text-primary tracking-tight">
+              Pairing failed
+            </h3>
+            <p className="text-[12px] text-win-text-secondary mt-0.5">
+              Check the code and try again.
+            </p>
           </div>
         </div>
       ) : (
         <>
           <div className="flex items-center justify-between mb-1.5">
-            <h3 className="text-[14.5px] font-semibold text-white tracking-tight">{deviceName}</h3>
-            <span className="text-[11px] text-blue-400 font-medium">Wi-Fi Pairing</span>
+            <h3 className="text-[14.5px] font-semibold text-win-text-primary tracking-tight">
+              {deviceName}
+            </h3>
+            <span className="text-[11px] text-win-accent font-medium">Wi-Fi Pairing</span>
           </div>
-          <p className="text-[12px] text-neutral-400 mb-3 leading-relaxed">
+          <p className="text-[12px] text-win-text-secondary mb-3 leading-relaxed">
             Enter the six-digit code shown on the phone.
           </p>
         </>
@@ -231,15 +239,15 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
 
       <div className="grid grid-cols-6 gap-2 mb-3.5">{slots}</div>
 
-      <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/[0.06]">
+      <div className="flex items-center justify-end gap-2 pt-2 border-t border-win-border-subtle">
         <div className="hit-area-40">
-          <button className="px-2.5 py-1 rounded text-[12px] font-medium text-neutral-400 hover:text-white hover:bg-white/[0.06] fluent-btn">
+          <button className="px-2.5 py-1 rounded text-[12px] font-medium text-win-text-secondary hover:text-win-text-primary hover:bg-win-btn-hover fluent-btn">
             Cancel
           </button>
         </div>
         <div className="hit-area-40">
           {isFailure ? (
-            <button className="px-3.5 py-1 rounded text-[12px] font-medium bg-red-500/90 hover:bg-red-600 text-white shadow-sm flex items-center gap-1.5 fluent-btn">
+            <button className="px-3.5 py-1 rounded text-[12px] font-medium bg-win-red hover:bg-red-600 text-white shadow-sm flex items-center gap-1.5 fluent-btn">
               <span>Retry</span>
               <svg
                 fill="none"
@@ -258,7 +266,7 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
               </svg>
             </button>
           ) : isReady ? (
-            <button className="px-3.5 py-1 rounded text-[12px] font-medium bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white shadow-sm flex items-center gap-1.5 fluent-btn">
+            <button className="px-3.5 py-1 rounded text-[12px] font-medium bg-win-accent hover:bg-win-accent-hover active:bg-blue-700 text-white shadow-sm flex items-center gap-1.5 fluent-btn">
               <span>Pair</span>
               <svg
                 fill="none"
@@ -275,7 +283,7 @@ export function PairingCard({ state, deviceName }: PairingCardProps) {
             </button>
           ) : (
             <button
-              className="px-3 py-1 rounded text-[12px] font-medium bg-white/[0.06] text-neutral-500 border border-white/[0.04] cursor-not-allowed"
+              className="px-3 py-1 rounded text-[12px] font-medium bg-win-btn-hover text-win-text-muted border border-win-border-subtle cursor-not-allowed"
               disabled
             >
               Pair

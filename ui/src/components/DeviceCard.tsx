@@ -12,52 +12,52 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
 
   const stateColors = {
     connected: {
-      text: 'text-emerald-400',
-      bg: 'bg-emerald-500/10',
-      border: 'border-emerald-500/20',
-      dot: 'bg-emerald-400',
+      text: 'text-win-green-text',
+      bg: 'bg-win-green-surface',
+      border: 'border-win-green-border',
+      dot: 'bg-win-green',
       label: 'Connected',
     },
     unauthorized: {
-      text: 'text-amber-400',
-      bg: 'bg-amber-500/10',
-      border: 'border-amber-500/20',
-      dot: 'bg-amber-400',
+      text: 'text-win-amber-text',
+      bg: 'bg-win-amber-surface',
+      border: 'border-win-amber-border',
+      dot: 'bg-win-amber',
       label: 'Unauthorized',
     },
     offline: {
-      text: 'text-neutral-400',
-      bg: 'bg-neutral-500/10',
-      border: 'border-neutral-500/20',
-      dot: 'bg-neutral-400',
+      text: 'text-win-text-secondary',
+      bg: 'bg-win-card',
+      border: 'border-win-card-border',
+      dot: 'bg-win-text-secondary',
       label: 'Offline',
     },
     recovery: {
-      text: 'text-sky-400',
-      bg: 'bg-sky-500/10',
-      border: 'border-sky-500/20',
-      dot: 'bg-sky-400',
+      text: 'text-win-sky-text',
+      bg: 'bg-win-sky-surface',
+      border: 'border-win-sky-border',
+      dot: 'bg-win-sky',
       label: 'Recovery',
     },
     bootloader: {
-      text: 'text-sky-400',
-      bg: 'bg-sky-500/10',
-      border: 'border-sky-500/20',
-      dot: 'bg-sky-400',
+      text: 'text-win-sky-text',
+      bg: 'bg-win-sky-surface',
+      border: 'border-win-sky-border',
+      dot: 'bg-win-sky',
       label: 'Bootloader',
     },
     sideload: {
-      text: 'text-sky-400',
-      bg: 'bg-sky-500/10',
-      border: 'border-sky-500/20',
-      dot: 'bg-sky-400',
+      text: 'text-win-sky-text',
+      bg: 'bg-win-sky-surface',
+      border: 'border-win-sky-border',
+      dot: 'bg-win-sky',
       label: 'Sideload',
     },
     unknown: {
-      text: 'text-sky-400',
-      bg: 'bg-sky-500/10',
-      border: 'border-sky-500/20',
-      dot: 'bg-sky-400',
+      text: 'text-win-sky-text',
+      bg: 'bg-win-sky-surface',
+      border: 'border-win-sky-border',
+      dot: 'bg-win-sky',
       label: 'Unknown',
     },
   };
@@ -66,7 +66,8 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
 
   return (
     <div
-      className={`rounded-lg bg-win-card border border-win-cardBorder p-3 transition-colors ${!isExpanded ? 'hover:bg-win-cardHover cursor-pointer group' : ''}`}
+      data-testid="device-card"
+      className={`rounded-lg bg-win-card border border-win-card-border p-3 transition-colors ${!isExpanded ? 'hover:bg-win-card-hover cursor-pointer group' : ''}`}
       onClick={() => {
         if (!isExpanded && onToggleExpand) {
           onToggleExpand(device.id);
@@ -75,7 +76,7 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
     >
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-neutral-300">
+          <div className="w-8 h-8 rounded bg-win-glyph-bg border border-win-glyph-border flex items-center justify-center text-win-glyph-text">
             <svg
               fill="none"
               height="16"
@@ -91,16 +92,17 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
             </svg>
           </div>
           <div>
-            <h3 className="text-[15px] font-semibold text-white tracking-tight leading-tight">
+            <h3 className="text-[15px] font-semibold text-win-text-primary tracking-tight leading-tight">
               {device.name}
             </h3>
-            <p className="text-[12px] text-neutral-400 mt-0.5">{device.stateAgeText}</p>
+            <p className="text-[12px] text-win-text-secondary mt-0.5">{device.stateAgeText}</p>
           </div>
         </div>
 
         {isExpanded ? (
           <div
-            className="hit-area-40 w-6 h-6 flex items-center justify-center text-neutral-300 hover:text-white transition-colors cursor-pointer"
+            data-testid="chevron-expanded"
+            className="hit-area-40 w-6 h-6 flex items-center justify-center text-win-glyph-text hover:text-win-text-primary transition-colors cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand?.(device.id);
@@ -120,7 +122,14 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
             </svg>
           </div>
         ) : (
-          <div className="hit-area-40 w-6 h-6 flex items-center justify-center text-neutral-500 group-hover:text-neutral-300 transition-colors">
+          <div
+            data-testid="chevron-collapsed"
+            className="hit-area-40 w-6 h-6 flex items-center justify-center text-win-text-muted group-hover:text-win-glyph-text transition-colors cursor-pointer"
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleExpand?.(device.id);
+            }}
+          >
             <svg
               fill="none"
               height="14"
@@ -137,7 +146,7 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
         )}
       </div>
 
-      <div className="flex items-center justify-between pt-2 border-t border-win-borderSubtle">
+      <div className="flex items-center justify-between pt-2 border-t border-win-border-subtle">
         <div className="flex items-center gap-2">
           <div
             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full ${style.bg} border ${style.border} ${style.text} text-[12px] font-medium`}
@@ -147,7 +156,7 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
           </div>
 
           {device.transport !== 'unknown' && (
-            <div className="flex items-center gap-1 text-[12px] text-neutral-400 px-1.5 py-0.5">
+            <div className="flex items-center gap-1 text-[12px] text-win-text-secondary px-1.5 py-0.5">
               {device.transport === 'wifi' ? (
                 <svg
                   fill="none"
@@ -188,10 +197,10 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
         </div>
 
         {typeof device.battery === 'number' && (
-          <div className="flex items-center gap-1.5 text-[12px] text-neutral-300 font-medium">
+          <div className="flex items-center gap-1.5 text-[12px] text-win-text-value font-medium">
             <span>{device.battery}%</span>
             <svg
-              className="text-neutral-400"
+              className="text-win-text-secondary"
               fill="none"
               height="15"
               stroke="currentColor"
@@ -212,42 +221,48 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
       </div>
 
       {isExpanded && (
-        <div className="mt-2.5 pt-2.5 border-t border-white/[0.06] space-y-2">
+        <div
+          data-testid="device-card-details"
+          className="mt-2.5 pt-2.5 border-t border-win-border-subtle space-y-2"
+        >
           {device.model && (
             <div className="flex items-center justify-between text-[12px]">
-              <span className="text-neutral-500 font-normal">Model</span>
-              <span className="text-neutral-300 font-mono text-[12px]">{device.model}</span>
+              <span className="text-win-text-muted font-normal">Model</span>
+              <span className="text-win-text-value font-mono text-[12px]">{device.model}</span>
             </div>
           )}
           {device.androidVersion && (
             <div className="flex items-center justify-between text-[12px]">
-              <span className="text-neutral-500 font-normal">Android</span>
-              <span className="text-neutral-300 font-mono text-[12px]">
+              <span className="text-win-text-muted font-normal">Android</span>
+              <span className="text-win-text-value font-mono text-[12px]">
                 {device.androidVersion}
               </span>
             </div>
           )}
           {device.address && (
             <div
-              className={`flex items-center justify-between text-[12px] ${copiedId === 'address' ? 'bg-emerald-500/[0.05] -mx-1 px-1 py-0.5 rounded transition-all' : 'group/item'}`}
+              className={`flex items-center justify-between text-[12px] ${copiedId === 'address' ? 'bg-win-green-surface -mx-1 px-1 py-0.5 rounded transition-all' : 'group/item'}`}
             >
               <span
                 className={
                   copiedId === 'address'
-                    ? 'text-neutral-400 font-normal'
-                    : 'text-neutral-500 font-normal'
+                    ? 'text-win-text-secondary font-normal'
+                    : 'text-win-text-muted font-normal'
                 }
               >
                 Address
               </span>
               <div className="flex items-center gap-1.5">
                 <span
-                  className={`${copiedId === 'address' ? 'text-emerald-400' : 'text-neutral-300'} font-mono text-[11.5px]`}
+                  className={`${copiedId === 'address' ? 'text-win-green-text' : 'text-win-text-value'} font-mono text-[11.5px]`}
                 >
                   {device.address}
                 </span>
                 {copiedId === 'address' ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                  <span
+                    data-testid="copied-badge"
+                    className="inline-flex items-center gap-1 text-[11px] text-win-green-text font-medium bg-win-green-surface border border-win-green-border px-1.5 py-0.5 rounded"
+                  >
                     <svg
                       fill="none"
                       height="10"
@@ -268,8 +283,9 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
                       e.stopPropagation();
                       onCopy?.(device.address!, 'address');
                     }}
-                    className="hit-area-40 w-5 h-5 rounded flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/[0.08] fluent-btn"
+                    className="hit-area-40 w-5 h-5 rounded flex items-center justify-center text-win-text-muted hover:text-win-text-primary hover:bg-win-btn-hover fluent-btn"
                     title="Copy Address"
+                    aria-label="Copy Address"
                   >
                     <svg
                       fill="none"
@@ -291,25 +307,28 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
           )}
           {device.serial && (
             <div
-              className={`flex items-center justify-between text-[12px] ${copiedId === 'serial' ? 'bg-emerald-500/[0.05] -mx-1 px-1 py-0.5 rounded transition-all' : 'group/item'}`}
+              className={`flex items-center justify-between text-[12px] ${copiedId === 'serial' ? 'bg-win-green-surface -mx-1 px-1 py-0.5 rounded transition-all' : 'group/item'}`}
             >
               <span
                 className={
                   copiedId === 'serial'
-                    ? 'text-neutral-400 font-normal'
-                    : 'text-neutral-500 font-normal'
+                    ? 'text-win-text-secondary font-normal'
+                    : 'text-win-text-muted font-normal'
                 }
               >
                 Serial
               </span>
               <div className="flex items-center gap-1.5">
                 <span
-                  className={`${copiedId === 'serial' ? 'text-emerald-400' : 'text-neutral-300'} font-mono text-[11.5px]`}
+                  className={`${copiedId === 'serial' ? 'text-win-green-text' : 'text-win-text-value'} font-mono text-[11.5px]`}
                 >
                   {device.serial}
                 </span>
                 {copiedId === 'serial' ? (
-                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400 font-medium bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                  <span
+                    data-testid="copied-badge"
+                    className="inline-flex items-center gap-1 text-[11px] text-win-green-text font-medium bg-win-green-surface border border-win-green-border px-1.5 py-0.5 rounded"
+                  >
                     <svg
                       fill="none"
                       height="10"
@@ -330,8 +349,9 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
                       e.stopPropagation();
                       onCopy?.(device.serial!, 'serial');
                     }}
-                    className="hit-area-40 w-5 h-5 rounded flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/[0.08] fluent-btn"
+                    className="hit-area-40 w-5 h-5 rounded flex items-center justify-center text-win-text-muted hover:text-win-text-primary hover:bg-win-btn-hover fluent-btn"
                     title="Copy Serial"
+                    aria-label="Copy Serial"
                   >
                     <svg
                       fill="none"

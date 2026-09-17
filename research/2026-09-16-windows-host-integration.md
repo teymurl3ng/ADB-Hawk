@@ -132,3 +132,9 @@ permission)
 
 8. **WebView Recovery Bounds**:
    Recovery paths for `RenderProcessExited` (reloads) and `BrowserProcessExited` (recreates) are strictly bounded to 3 attempts, preventing infinite reload loops. `NavigationCompleted` failures are logged and do not recursively trigger reloads.
+
+9. **Native DWM Caption Button and System Menu Suppression**:
+   When `DwmExtendFrameIntoClientArea` is used, Windows 11 DWM paints native caption buttons (minimize and red close buttons) into the client area if `WS_SYSMENU` (`0x00080000`) is present in `GWL_STYLE`. Explicitly stripping `WS_SYSMENU`, `WS_CAPTION`, `WS_THICKFRAME`, `WS_MINIMIZEBOX`, and `WS_MAXIMIZEBOX` while setting WinForms `ControlBox = false`, `MinimizeBox = false`, `MaximizeBox = false` eliminates all native titlebar and caption chrome without breaking WebView2 non-client drag or Win32 `SC_MOVE`.
+
+10. **Tray Placement Fallback Order & Cursor Independence**:
+    When `Shell_NotifyIconGetRect` is unavailable, taskbar anchor calculation falls back directly to `FlyoutPlacement.GetDefaultTrayAnchor` (the notification cluster area of the taskbar edge), ensuring cursor independence and preventing unexpected jumps to (12,12) or cursor-relative coordinates.

@@ -5,6 +5,27 @@ import { DeviceCard } from './components/DeviceCard';
 import { PairingCard } from './components/PairingCard';
 import type { FixtureName, DeviceInfo } from './types';
 
+const FIXTURES: FixtureName[] = [
+  'empty',
+  'connected-usb',
+  'connected-wifi',
+  'expanded',
+  'unauthorized',
+  'offline',
+  'recovery',
+  'bootloader',
+  'sideload',
+  'unknown',
+  'multi-device',
+  'pairing-offer',
+  'pairing-code',
+  'pairing-incomplete',
+  'pairing-ready',
+  'pairing-progress',
+  'pairing-success',
+  'pairing-failure',
+];
+
 export function App() {
   const [isPinned, setIsPinned] = React.useState(false);
 
@@ -17,8 +38,21 @@ export function App() {
     return 'connected-wifi';
   });
 
+  const [expandedIds, setExpandedIds] = React.useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const f = params.get('fixture') as FixtureName;
+      if (f === 'expanded') return new Set(['d1']);
+    }
+    return new Set<string>();
+  });
+
   const [showFixtureMenu, setShowFixtureMenu] = React.useState(false);
   const [copiedId, setCopiedId] = React.useState<'serial' | 'address' | null>(null);
+
+  React.useEffect(() => {
+    setExpandedIds(fixture === 'expanded' ? new Set(['d1']) : new Set());
+  }, [fixture]);
 
   React.useEffect(() => {
     const handler = (e: MessageEvent) => {
@@ -31,11 +65,19 @@ export function App() {
     return () => window.chrome?.webview?.removeEventListener('message', handler);
   }, []);
 
-  // Fixture toggle hotkey Ctrl+Shift+F
+  // Fixture toggle hotkey Ctrl+Shift+F and Escape (gated to test/fixture mode)
   React.useEffect(() => {
     const keydown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
+      const isTestMode =
+        new URLSearchParams(window.location.search).has('fixture') ||
+        import.meta.env.MODE === 'test';
+      if (!isTestMode) return;
+
+      if (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'f' || e.code === 'KeyF')) {
+        e.preventDefault();
         setShowFixtureMenu((prev) => !prev);
+      } else if (e.key === 'Escape') {
+        setShowFixtureMenu(false);
       }
     };
     window.addEventListener('keydown', keydown);
@@ -43,9 +85,20 @@ export function App() {
   }, []);
 
   const handleCopy = (_text: string, type: 'serial' | 'address') => {
-    // In production we'd use native clipboard APIs via Bridge
     setCopiedId(type);
     setTimeout(() => setCopiedId(null), 1200);
+  };
+
+  const handleToggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const getFixtureDevices = (): DeviceInfo[] => {
@@ -60,37 +113,89 @@ export function App() {
       androidVersion: '16',
       address: '192.168.1.144:39421',
       serial: 'R5CW••••••••',
-      isExpanded: fixture === 'expanded',
     };
 
     switch (fixture) {
       case 'empty':
         return [];
       case 'connected-usb':
-        return [{ ...galaxyS24, transport: 'usb', stateAgeText: 'Connected Just now' }];
+        return [
+          {
+            ...galaxyS24,
+            transport: 'usb',
+            address: undefined, // USB device must NOT have Address
+            stateAgeText: 'Connected Just now',
+          },
+        ];
       case 'connected-wifi':
         return [galaxyS24];
       case 'expanded':
-        return [{ ...galaxyS24, stateAgeText: 'Connected 2 minutes ago' }];
+        return [
+          {
+            ...galaxyS24,
+            stateAgeText: 'Connected 2 minutes ago',
+          },
+        ];
       case 'unauthorized':
         return [
-          { ...galaxyS24, state: 'unauthorized', battery: undefined, stateAgeText: 'Just now' },
+          {
+            ...galaxyS24,
+            state: 'unauthorized',
+            battery: undefined,
+            stateAgeText: 'Just now',
+          },
         ];
       case 'offline':
-        return [{ ...galaxyS24, state: 'offline', battery: undefined, stateAgeText: '4m ago' }];
+        return [
+          {
+            ...galaxyS24,
+            state: 'offline',
+            battery: undefined,
+            stateAgeText: '4m ago',
+          },
+        ];
       case 'recovery':
-        return [{ ...galaxyS24, state: 'recovery', battery: undefined, stateAgeText: '8m ago' }];
+        return [
+          {
+            ...galaxyS24,
+            state: 'recovery',
+            battery: undefined,
+            stateAgeText: '8m ago',
+          },
+        ];
       case 'bootloader':
         return [
-          { ...galaxyS24, state: 'bootloader', battery: undefined, stateAgeText: 'Just now' },
+          {
+            ...galaxyS24,
+            state: 'bootloader',
+            battery: undefined,
+            stateAgeText: 'Just now',
+          },
         ];
       case 'sideload':
-        return [{ ...galaxyS24, state: 'sideload', battery: undefined, stateAgeText: 'Just now' }];
+        return [
+          {
+            ...galaxyS24,
+            state: 'sideload',
+            battery: undefined,
+            stateAgeText: 'Just now',
+          },
+        ];
       case 'unknown':
-        return [{ ...galaxyS24, state: 'unknown', battery: undefined, stateAgeText: 'Just now' }];
+        return [
+          {
+            ...galaxyS24,
+            state: 'unknown',
+            battery: undefined,
+            stateAgeText: 'Just now',
+          },
+        ];
       case 'multi-device':
         return [
-          { ...galaxyS24, stateAgeText: '1m ago' },
+          {
+            ...galaxyS24,
+            stateAgeText: '1m ago',
+          },
           {
             id: 'd2',
             name: 'Pixel 8',
@@ -98,6 +203,9 @@ export function App() {
             transport: 'usb',
             battery: 67,
             stateAgeText: '3m ago',
+            model: 'Pixel 8',
+            androidVersion: '15',
+            serial: '3928••••••••',
           },
           {
             id: 'd3',
@@ -105,6 +213,9 @@ export function App() {
             state: 'unauthorized',
             transport: 'usb',
             stateAgeText: 'Just now',
+            model: 'Pixel 5',
+            androidVersion: '14',
+            serial: '1924••••••••',
           },
           {
             id: 'd4',
@@ -112,6 +223,9 @@ export function App() {
             state: 'recovery',
             transport: 'usb',
             stateAgeText: '10m ago',
+            model: 'SM-X920',
+            androidVersion: '15',
+            serial: 'R52X••••••••',
           },
           {
             id: 'd5',
@@ -119,6 +233,10 @@ export function App() {
             state: 'offline',
             transport: 'wifi',
             stateAgeText: '22m ago',
+            model: 'CPH2653',
+            androidVersion: '15',
+            address: '192.168.1.189:41235',
+            serial: 'OP13••••••••',
           },
           {
             id: 'd6',
@@ -127,15 +245,22 @@ export function App() {
             transport: 'usb',
             battery: 74,
             stateAgeText: 'Just now',
+            model: 'A063',
+            androidVersion: '14',
+            serial: 'NP2A••••••••',
           },
         ];
       default:
-        return []; // pairing states
+        return []; // pairing states have 0 devices
     }
   };
 
   const isPairingState = fixture.startsWith('pairing');
-  const devices = getFixtureDevices();
+  const rawDevices = isPairingState ? [] : getFixtureDevices();
+  const devices = rawDevices.map((d) => ({
+    ...d,
+    isExpanded: expandedIds.has(d.id),
+  }));
 
   return (
     <main className="h-screen w-full flex flex-col p-4 box-border">
@@ -160,55 +285,51 @@ export function App() {
             device={d}
             copiedId={copiedId}
             onCopy={handleCopy}
-            onToggleExpand={() => {
-              if (fixture === 'expanded') {
-                setFixture('connected-wifi');
-              } else if (fixture === 'connected-wifi') {
-                setFixture('expanded');
-              }
-            }}
+            onToggleExpand={handleToggleExpand}
           />
         ))}
       </div>
 
-      {showFixtureMenu && (
-        <div
-          className="absolute top-14 right-4 bg-win-base border border-win-borderSubtle rounded shadow-xl p-2 z-50 text-xs w-48 max-h-64 overflow-y-auto"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <div className="font-semibold text-neutral-400 mb-2 px-1">Fixtures (Ctrl+Shift+F)</div>
-          {(
-            [
-              'empty',
-              'connected-usb',
-              'connected-wifi',
-              'expanded',
-              'unauthorized',
-              'offline',
-              'recovery',
-              'bootloader',
-              'sideload',
-              'unknown',
-              'pairing-offer',
-              'pairing-code',
-              'pairing-incomplete',
-              'pairing-ready',
-              'pairing-progress',
-              'pairing-success',
-              'pairing-failure',
-              'multi-device',
-            ] as FixtureName[]
-          ).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFixture(f)}
-              className={`block w-full text-left px-2 py-1 rounded transition-colors ${fixture === f ? 'bg-blue-500/20 text-blue-400' : 'hover:bg-white/10 text-neutral-300'}`}
+      {(new URLSearchParams(window.location.search).has('fixture') ||
+        import.meta.env.MODE === 'test') &&
+        showFixtureMenu && (
+          <div
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => setShowFixtureMenu(false)}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
+            <div
+              className="bg-win-base border border-win-card-border rounded-xl shadow-2xl p-4 w-80 max-h-[80vh] flex flex-col text-xs"
+              onClick={(e) => e.stopPropagation()}
             >
-              {f}
-            </button>
-          ))}
-        </div>
-      )}
+              <div className="flex items-center justify-between pb-3 border-b border-win-border-subtle mb-3">
+                <span className="font-semibold text-win-text-primary text-[13px]">
+                  Fixture Browser
+                </span>
+                <span className="text-win-text-muted text-[11px]">Esc to close</span>
+              </div>
+              <div className="overflow-y-auto space-y-1 pr-1 flex-1">
+                {FIXTURES.map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => {
+                      setFixture(f);
+                      setShowFixtureMenu(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-1.5 rounded-md font-mono text-[11.5px] transition-colors flex items-center justify-between ${
+                      fixture === f
+                        ? 'bg-win-btn-hover text-win-text-primary font-medium'
+                        : 'text-win-text-secondary hover:text-win-text-primary hover:bg-win-btn-hover'
+                    }`}
+                  >
+                    <span>{f}</span>
+                    {fixture === f && <span className="text-win-green text-[10px]">●</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
     </main>
   );
 }

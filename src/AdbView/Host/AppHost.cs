@@ -108,21 +108,32 @@ internal sealed class AppHost : IDisposable {
 
         var placement = _trayIcon.GetPlacementInfo();
         Log.Information("ShowFlyout: trayRect={Rect}, edge={Edge}", placement.Rect, placement.Edge);
-        var monitor = Screen.FromRectangle(placement.Rect);
+
+        var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
+            ? Screen.FromRectangle(placement.Rect)
+            : TrayIcon.GetTaskbarScreen();
 
         var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
 
-        var physicalBounds = FlyoutPlacement.CalculatePlacement(
+        var anchor = FlyoutPlacement.ResolveAnchor(
             placement.Rect,
+            monitor.WorkingArea,
+            monitor.Bounds,
+            placement.Edge,
+            dpiScale
+        );
+
+        var physicalBounds = FlyoutPlacement.CalculatePlacement(
+            anchor,
             placement.Edge,
             monitor.WorkingArea,
             dpiScale,
             new Size(376, 500)
         );
 
-        Log.Information("ShowFlyout: physicalBounds={Bounds}, monitorWorkArea={WorkArea}", physicalBounds, monitor.WorkingArea);
+        Log.Information("ShowFlyout: physicalBounds={Bounds}, anchor={Anchor}, monitorWorkArea={WorkArea}", physicalBounds, anchor, monitor.WorkingArea);
         _flyoutWindow.Bounds = physicalBounds;
-        _flyoutWindow.TopMost = true;
+        _flyoutWindow.TopMost = _flyoutWindow.IsPinned;
         _flyoutWindow.Show();
 
         // Take foreground explicitly so we actually receive Deactivate when clicking away
@@ -139,6 +150,7 @@ internal sealed class AppHost : IDisposable {
     }
 
     private void OnFlyoutDeactivate(object? sender, EventArgs e) {
+        Log.Information("OnFlyoutDeactivate: isPinned={IsPinned}", _flyoutWindow?.IsPinned);
         if (_flyoutWindow != null && !_flyoutWindow.IsPinned) {
             HideFlyout();
         }

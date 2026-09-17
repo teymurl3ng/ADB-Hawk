@@ -6,31 +6,120 @@
     system-ui, sans-serif;
   --font-mono: 'Segoe UI Variable Small', ui-monospace, Cascadia Code, Consolas, monospace;
 
-  --color-win-base: #202329;
-  --color-win-card: rgba(255, 255, 255, 0.04);
-  --color-win-cardHover: rgba(255, 255, 255, 0.065);
-  --color-win-cardBorder: rgba(255, 255, 255, 0.08);
-  --color-win-borderSubtle: rgba(255, 255, 255, 0.05);
+  --color-win-base: var(--win-base);
+  --color-win-card: var(--win-card);
+  --color-win-card-hover: var(--win-card-hover);
+  --color-win-cardHover: var(--win-card-hover);
+  --color-win-card-border: var(--win-card-border);
+  --color-win-cardBorder: var(--win-card-border);
+  --color-win-border-subtle: var(--win-border-subtle);
+  --color-win-borderSubtle: var(--win-border-subtle);
 
-  --color-win-accent: #60a5fa;
-  --color-win-accentHover: #3b82f6;
-  --color-win-accentSurface: rgba(96, 165, 250, 0.08);
-  --color-win-accentBorder: rgba(96, 165, 250, 0.28);
+  --color-win-text-primary: var(--win-text-primary);
+  --color-win-text-secondary: var(--win-text-secondary);
+  --color-win-text-muted: var(--win-text-muted);
+  --color-win-text-value: var(--win-text-value);
 
-  --color-win-green: #4ade80;
-  --color-win-greenSurface: rgba(74, 222, 128, 0.09);
+  --color-win-glyph-bg: var(--win-glyph-bg);
+  --color-win-glyph-border: var(--win-glyph-border);
+  --color-win-glyph-text: var(--win-glyph-text);
 
-  --color-win-red: #f87171;
-  --color-win-redSurface: rgba(248, 113, 113, 0.09);
-  --color-win-redBorder: rgba(248, 113, 113, 0.28);
+  --color-win-btn-hover: var(--win-btn-hover);
 
-  --surface-flyout: rgba(32, 35, 41, 0.94);
+  --color-win-accent: var(--win-accent);
+  --color-win-accent-hover: var(--win-accent-hover);
+  --color-win-accent-surface: var(--win-accent-surface);
+  --color-win-accentSurface: var(--win-accent-surface);
+  --color-win-accent-border: var(--win-accent-border);
+  --color-win-accentBorder: var(--win-accent-border);
+
+  --color-win-green: var(--win-green);
+  --color-win-green-surface: var(--win-green-surface);
+  --color-win-greenSurface: var(--win-green-surface);
+  --color-win-green-border: var(--win-green-border);
+  --color-win-green-text: var(--win-green-text);
+
+  --color-win-amber: var(--win-amber);
+  --color-win-amber-surface: var(--win-amber-surface);
+  --color-win-amber-border: var(--win-amber-border);
+  --color-win-amber-text: var(--win-amber-text);
+
+  --color-win-red: var(--win-red);
+  --color-win-red-surface: var(--win-red-surface);
+  --color-win-redSurface: var(--win-red-surface);
+  --color-win-red-border: var(--win-red-border);
+  --color-win-redBorder: var(--win-red-border);
+  --color-win-red-text: var(--win-red-text);
+
+  --color-win-sky: var(--win-sky);
+  --color-win-sky-surface: var(--win-sky-surface);
+  --color-win-sky-border: var(--win-sky-border);
+  --color-win-sky-text: var(--win-sky-text);
+
+  --color-win-slot-bg: var(--win-slot-bg);
+  --color-win-slot-border: var(--win-slot-border);
+  --color-win-slot-text: var(--win-slot-text);
+
+  --surface-flyout: var(--win-surface-flyout);
 }
 
 @layer base {
+  :root {
+    color-scheme: dark;
+
+    --win-base: #202329;
+    --win-card: rgba(255, 255, 255, 0.04);
+    --win-card-hover: rgba(255, 255, 255, 0.065);
+    --win-card-border: rgba(255, 255, 255, 0.08);
+    --win-border-subtle: rgba(255, 255, 255, 0.05);
+
+    --win-text-primary: #ffffff;
+    --win-text-secondary: rgb(163, 163, 163);
+    --win-text-muted: rgb(115, 115, 115);
+    --win-text-value: rgb(212, 212, 212);
+
+    --win-glyph-bg: rgba(255, 255, 255, 0.04);
+    --win-glyph-border: rgba(255, 255, 255, 0.06);
+    --win-glyph-text: rgb(212, 212, 212);
+
+    --win-btn-hover: rgba(255, 255, 255, 0.06);
+
+    --win-accent: #60a5fa;
+    --win-accent-hover: #3b82f6;
+    --win-accent-surface: rgba(96, 165, 250, 0.08);
+    --win-accent-border: rgba(96, 165, 250, 0.28);
+
+    --win-green: #4ade80;
+    --win-green-surface: rgba(74, 222, 128, 0.09);
+    --win-green-border: rgba(74, 222, 128, 0.22);
+    --win-green-text: #4ade80;
+
+    --win-amber: #fbbf24;
+    --win-amber-surface: rgba(251, 191, 36, 0.09);
+    --win-amber-border: rgba(251, 191, 36, 0.22);
+    --win-amber-text: #fbbf24;
+
+    --win-red: #f87171;
+    --win-red-surface: rgba(248, 113, 113, 0.09);
+    --win-red-border: rgba(248, 113, 113, 0.28);
+    --win-red-text: #f87171;
+
+    --win-sky: #38bdf8;
+    --win-sky-surface: rgba(56, 189, 248, 0.09);
+    --win-sky-border: rgba(56, 189, 248, 0.22);
+    --win-sky-text: #38bdf8;
+
+    --win-slot-bg: rgba(0, 0, 0, 0.4);
+    --win-slot-border: rgba(255, 255, 255, 0.15);
+    --win-slot-text: #ffffff;
+
+    --win-surface-flyout: rgba(32, 35, 41, 0.94);
+  }
+
   body {
-    background-color: #202329;
-    color: #e6edf3;
+    color-scheme: inherit;
+    background-color: transparent;
+    color: var(--win-text-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
@@ -38,52 +127,114 @@
 
 @media (prefers-color-scheme: light) {
   :root {
-    --color-win-base: #ffffff;
-    --color-win-card: rgba(0, 0, 0, 0.02);
-    --color-win-cardHover: rgba(0, 0, 0, 0.04);
-    --color-win-cardBorder: rgba(0, 0, 0, 0.08);
-    --color-win-borderSubtle: rgba(0, 0, 0, 0.05);
+    color-scheme: light;
 
-    --color-win-accent: #2563eb;
-    --color-win-accentHover: #1d4ed8;
-    --color-win-accentSurface: rgba(37, 99, 235, 0.08);
-    --color-win-accentBorder: rgba(37, 99, 235, 0.28);
+    --win-base: #ffffff;
+    --win-card: #ffffff;
+    --win-card-hover: rgba(0, 0, 0, 0.02);
+    --win-card-border: rgba(0, 0, 0, 0.06);
+    --win-border-subtle: rgba(0, 0, 0, 0.05);
 
-    --color-win-green: #16a34a;
-    --color-win-greenSurface: rgba(22, 163, 74, 0.09);
+    --win-text-primary: #1f2328;
+    --win-text-secondary: #64748b;
+    --win-text-muted: #94a3b8;
+    --win-text-value: #334155;
 
-    --color-win-red: #dc2626;
-    --color-win-redSurface: rgba(220, 38, 38, 0.09);
-    --color-win-redBorder: rgba(220, 38, 38, 0.28);
+    --win-glyph-bg: #f1f5f9;
+    --win-glyph-border: rgba(0, 0, 0, 0.04);
+    --win-glyph-text: #475569;
 
-    --surface-flyout: rgba(255, 255, 255, 0.94);
+    --win-btn-hover: rgba(0, 0, 0, 0.05);
+
+    --win-accent: #2563eb;
+    --win-accent-hover: #1d4ed8;
+    --win-accent-surface: rgba(37, 99, 235, 0.06);
+    --win-accent-border: rgba(37, 99, 235, 0.22);
+
+    --win-green: #16a34a;
+    --win-green-surface: rgba(22, 163, 74, 0.08);
+    --win-green-border: rgba(22, 163, 74, 0.25);
+    --win-green-text: #15803d;
+
+    --win-amber: #d97706;
+    --win-amber-surface: rgba(217, 119, 6, 0.08);
+    --win-amber-border: rgba(217, 119, 6, 0.25);
+    --win-amber-text: #b45309;
+
+    --win-red: #dc2626;
+    --win-red-surface: rgba(220, 38, 38, 0.08);
+    --win-red-border: rgba(220, 38, 38, 0.25);
+    --win-red-text: #b91c1c;
+
+    --win-sky: #0284c7;
+    --win-sky-surface: rgba(2, 132, 199, 0.08);
+    --win-sky-border: rgba(2, 132, 199, 0.25);
+    --win-sky-text: #0369a1;
+
+    --win-slot-bg: #ffffff;
+    --win-slot-border: rgba(0, 0, 0, 0.15);
+    --win-slot-text: #1f2328;
+
+    --win-surface-flyout: rgba(243, 244, 246, 0.94);
   }
+
   body {
-    background-color: var(--surface-flyout);
-    color: #111827;
+    background-color: transparent;
+    color: var(--win-text-primary);
   }
 }
 
 @media (forced-colors: active) {
   :root {
-    --color-win-base: Canvas;
-    --color-win-card: Canvas;
-    --color-win-cardHover: Canvas;
-    --color-win-cardBorder: CanvasText;
-    --color-win-borderSubtle: CanvasText;
+    --win-base: Canvas;
+    --win-card: Canvas;
+    --win-card-hover: Canvas;
+    --win-card-border: CanvasText;
+    --win-border-subtle: CanvasText;
 
-    --color-win-accent: Highlight;
-    --color-win-accentHover: Highlight;
-    --color-win-accentSurface: Canvas;
-    --color-win-accentBorder: Highlight;
+    --win-text-primary: CanvasText;
+    --win-text-secondary: CanvasText;
+    --win-text-muted: GrayText;
+    --win-text-value: CanvasText;
 
-    --color-win-green: CanvasText;
-    --color-win-greenSurface: Canvas;
+    --win-glyph-bg: Canvas;
+    --win-glyph-border: CanvasText;
+    --win-glyph-text: CanvasText;
 
-    --color-win-red: CanvasText;
-    --color-win-redSurface: Canvas;
-    --color-win-redBorder: CanvasText;
+    --win-btn-hover: Highlight;
+
+    --win-accent: Highlight;
+    --win-accent-hover: Highlight;
+    --win-accent-surface: Canvas;
+    --win-accent-border: Highlight;
+
+    --win-green: CanvasText;
+    --win-green-surface: Canvas;
+    --win-green-border: CanvasText;
+    --win-green-text: CanvasText;
+
+    --win-amber: CanvasText;
+    --win-amber-surface: Canvas;
+    --win-amber-border: CanvasText;
+    --win-amber-text: CanvasText;
+
+    --win-red: CanvasText;
+    --win-red-surface: Canvas;
+    --win-red-border: CanvasText;
+    --win-red-text: CanvasText;
+
+    --win-sky: CanvasText;
+    --win-sky-surface: Canvas;
+    --win-sky-border: CanvasText;
+    --win-sky-text: CanvasText;
+
+    --win-slot-bg: Canvas;
+    --win-slot-border: CanvasText;
+    --win-slot-text: CanvasText;
+
+    --win-surface-flyout: Canvas;
   }
+
   body {
     background-color: Canvas;
     color: CanvasText;
@@ -118,6 +269,14 @@
     height: 6px;
     border-radius: 9999px;
     flex-shrink: 0;
+  }
+
+  .app-region-drag {
+    -webkit-app-region: drag;
+  }
+
+  .app-region-no-drag {
+    -webkit-app-region: no-drag;
   }
 
   .animate-spin-quiet {

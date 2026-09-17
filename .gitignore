@@ -3,6 +3,7 @@ bin/
 obj/
 artifacts/
 TestResults/
+audit-result.json
 
 # Frontend build output (copied to src/AdbView/wwwroot by scripts/build.ps1)
 ui/dist/

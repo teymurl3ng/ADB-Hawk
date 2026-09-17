@@ -74,4 +74,35 @@ internal static class FlyoutPlacement {
 
         return new Rectangle(x, y, physicalWidth, physicalHeight);
     }
+
+    public static Rectangle GetDefaultTrayAnchor(
+        Rectangle monitorWorkArea,
+        Rectangle monitorBounds,
+        TaskbarEdge edge,
+        double dpiScale) {
+        int iconSize = (int)Math.Round(16 * dpiScale);
+        int margin = (int)Math.Round(24 * dpiScale);
+
+        return edge switch {
+            TaskbarEdge.Bottom => new Rectangle(monitorWorkArea.Right - margin - iconSize, monitorWorkArea.Bottom + 4, iconSize, iconSize),
+            TaskbarEdge.Top => new Rectangle(monitorWorkArea.Right - margin - iconSize, monitorBounds.Top + 4, iconSize, iconSize),
+            TaskbarEdge.Left => new Rectangle(monitorBounds.Left + 4, monitorWorkArea.Bottom - margin - iconSize, iconSize, iconSize),
+            TaskbarEdge.Right => new Rectangle(monitorWorkArea.Right + 4, monitorWorkArea.Bottom - margin - iconSize, iconSize, iconSize),
+            _ => new Rectangle(monitorWorkArea.Right - margin - iconSize, monitorWorkArea.Bottom + 4, iconSize, iconSize)
+        };
+    }
+
+    public static Rectangle ResolveAnchor(
+        Rectangle exactIconRect,
+        Rectangle monitorWorkArea,
+        Rectangle monitorBounds,
+        TaskbarEdge edge,
+        double dpiScale) {
+        if (exactIconRect.Width > 0 && exactIconRect.Height > 0) {
+            return exactIconRect;
+        }
+
+        return GetDefaultTrayAnchor(monitorWorkArea, monitorBounds, edge, dpiScale);
+    }
 }
+

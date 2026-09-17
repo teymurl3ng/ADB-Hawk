@@ -20,8 +20,8 @@ internal static class LogConfig {
                 formatProvider: CultureInfo.InvariantCulture,
                 rollingInterval: RollingInterval.Day,
                 fileSizeLimitBytes: 4_194_304,
-                rollOnFileSizeLimit: true,
                 retainedFileCountLimit: 7,
+                shared: true,
                 buffered: false)
             .CreateLogger();
     }

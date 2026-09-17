@@ -21,6 +21,9 @@ internal sealed class FlyoutWindow : Form {
     private const int SC_MOVE = 0xF010;
     private const int SC_SIZE = 0xF000;
     private const int HTBORDER = 18;
+    private const int WM_ACTIVATE = 0x0006;
+    private const int WM_ACTIVATEAPP = 0x001C;
+    private const int WA_INACTIVE = 0;
     private const int DWMSBT_TRANSIENTWINDOW = 3;
 
     private bool _isPinned;
@@ -35,7 +38,10 @@ internal sealed class FlyoutWindow : Form {
     }
 
     public FlyoutWindow() {
-        FormBorderStyle = FormBorderStyle.Sizable; // Retain WS_CAPTION for backdrop support
+        FormBorderStyle = FormBorderStyle.Sizable; // Retain non-popup frame for backdrop support
+        ControlBox = false;
+        MinimizeBox = false;
+        MaximizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         BackColor = Color.Black;
@@ -48,21 +54,16 @@ internal sealed class FlyoutWindow : Form {
         get {
             var cp = base.CreateParams;
             cp.ExStyle |= 0x00000080; // WS_EX_TOOLWINDOW
-            cp.Style &= ~0x00080000; // WS_SYSMENU (removes DWM close button over extended frame)
+            cp.Style &= ~0x00C00000; // WS_CAPTION (removes native caption bar)
+            cp.Style &= ~0x00080000; // WS_SYSMENU (removes DWM close button / system menu)
             cp.Style &= ~0x00040000; // WS_THICKFRAME (removes native resize borders)
+            cp.Style &= ~0x00020000; // WS_MINIMIZEBOX (prevents minimize)
             cp.Style &= ~0x00010000; // WS_MAXIMIZEBOX (prevents maximize)
             return cp;
         }
     }
 
     protected override void OnHandleCreated(EventArgs e) {
-        // Direct file diagnostic (bypasses Serilog buffering)
-        var diagPath = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ADBView", "logs", "dwm-diag.log");
-        System.IO.File.AppendAllText(diagPath,
-            $"[{DateTime.Now:O}] OnHandleCreated: Handle={Handle}\n");
-
         Log.Information("FlyoutWindow.OnHandleCreated: Handle={Handle}", Handle);
         base.OnHandleCreated(e);
         ApplyBackdrop();
@@ -83,13 +84,6 @@ internal sealed class FlyoutWindow : Form {
                 Log.Warning(ex, "Failed to read light-theme registry value; defaulting to dark mode");
             }
 #pragma warning restore CA1031
-
-            // Direct file diagnostic (bypasses Serilog buffering)
-            var diagPath = System.IO.Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ADBView", "logs", "dwm-diag.log");
-            System.IO.File.AppendAllText(diagPath,
-                $"[{DateTime.Now:O}] applyBackdrop: useDarkMode={useDarkMode}, backdropType={backdropType}, BackColor={BackColor}\n");
 
             Log.Information("DWM applyBackdrop: useDarkMode={UseDarkMode}, backdropType={BackdropType}, BackColor={BackColor}",
                 useDarkMode, backdropType, BackColor);
@@ -137,6 +131,20 @@ internal sealed class FlyoutWindow : Form {
                     return;
                 }
                 break;
+
+            case WM_ACTIVATE:
+                base.WndProc(ref m);
+                if ((m.WParam.ToInt32() & 0xFFFF) == WA_INACTIVE && ActiveForm != this) {
+                    OnDeactivate(EventArgs.Empty);
+                }
+                return;
+
+            case WM_ACTIVATEAPP:
+                base.WndProc(ref m);
+                if (m.WParam == IntPtr.Zero && ActiveForm != this) {
+                    OnDeactivate(EventArgs.Empty);
+                }
+                return;
 
             case WM_NCACTIVATE:
                 // Keep the acrylic effect active even when unfocused

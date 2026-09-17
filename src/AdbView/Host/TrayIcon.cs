@@ -94,7 +94,10 @@ internal sealed class TrayIcon : IDisposable {
 
                 if (PInvoke.Shell_NotifyIconGetRect(in identifier, out var rect).Value == 0) // S_OK
                 {
-                    return (new Rectangle(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top), edge);
+                    var iconRect = new Rectangle(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+                    if (iconRect.Width > 0 && iconRect.Height > 0) {
+                        return (iconRect, edge);
+                    }
                 }
             }
         }
@@ -104,9 +107,15 @@ internal sealed class TrayIcon : IDisposable {
         }
 #pragma warning restore CA1031
 
-        // Fallback: Project cursor onto the detected taskbar edge
-        var cursor = Cursor.Position;
-        return (new Rectangle(cursor.X, cursor.Y, 1, 1), edge);
+        return (Rectangle.Empty, edge);
+    }
+
+    public static Screen GetTaskbarScreen() {
+        var hwnd = PInvoke.FindWindow("Shell_TrayWnd", null);
+        if (!hwnd.IsNull) {
+            return Screen.FromHandle((IntPtr)hwnd);
+        }
+        return Screen.PrimaryScreen ?? Screen.AllScreens[0];
     }
 
     public void Dispose() {
