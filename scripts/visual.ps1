@@ -19,6 +19,7 @@ if (-not $hasSpecs) {
 
 Push-Location (Join-Path $repo 'ui')
 try {
+    npx.cmd playwright install chromium
     if ($Accept) {
         Write-Host 'visual: updating baselines (-Accept). Record the WebView2 runtime version in the commit.'
         npx.cmd playwright test --update-snapshots
