@@ -4,7 +4,7 @@ ADB View is a small Windows 11 system-tray utility for observing, explaining, no
 
 ## Repository status
 
-**Phase 2 complete: frozen UI implemented from fixtures in WebView2 with native shell integration and autonomous audit suite.** All 16 frozen design fixtures rendered, themed (dark/light/forced-colors), accessible, and interaction-tested; native Acrylic backdrop, taskbar placement, light dismiss, and pinned drag verified. The next step is Phase 3 (The bridge) from `PHASES.md`.
+**Phase 3 complete: typed native↔WebView bridge implemented, UI migrated to authoritative native AppSnapshot.** Generated typed C#/TypeScript contract, runtime snapshot validation, monotonic revision/latest-wins semantics, native-authoritative pin/dismiss/resize state, native FixtureSnapshotProvider for all 16 canonical fixtures, and verified recovery. The next step is Phase 4 (ADB protocol core) from `PHASES.md`.
 
 ## Governing documents
 
@@ -19,11 +19,11 @@ Supporting current research lives in `research/`. The complete Stitch design sou
 
 ## Prerequisites (pinned)
 
-| Tool | Pin | Where |
-|---|---|---|
-| .NET SDK | 10.0.401 | `global.json` |
-| Node.js | 24.21.0 LTS | `.node-version` |
-| npm | 11.19.0 (bundled with Node 24.21.0) | `ui/package.json` (`packageManager`) |
+| Tool     | Pin                                 | Where                                |
+| -------- | ----------------------------------- | ------------------------------------ |
+| .NET SDK | 10.0.401                            | `global.json`                        |
+| Node.js  | 24.21.0 LTS                         | `.node-version`                      |
+| npm      | 11.19.0 (bundled with Node 24.21.0) | `ui/package.json` (`packageManager`) |
 
 NuGet versions are pinned in `Directory.Packages.props`; npm versions in `ui/package.json` + `ui/package-lock.json`. Every direct dependency is exact — no ranges, no wildcards. The boundary tests fail the build if any pin drifts from `ENGINEERING.md §15`.
 
