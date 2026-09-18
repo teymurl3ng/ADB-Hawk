@@ -17,6 +17,7 @@ internal sealed class WebViewHost : IDisposable {
     private int _recoveryAttempts;
     private const int MaxRecoveryAttempts = 3;
     private string _initialUrlSuffix = "";
+    private string _currentFixtureName = "";
 
     public WebViewHost(Control parent, BridgeCoordinator coordinator) {
         _parent = parent;
@@ -25,6 +26,15 @@ internal sealed class WebViewHost : IDisposable {
 
     public async Task InitializeAsync(string initialUrlSuffix = "") {
         _initialUrlSuffix = initialUrlSuffix;
+        if (!string.IsNullOrEmpty(initialUrlSuffix)) {
+            const string prefix = "?fixture=";
+            var idx = initialUrlSuffix.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0) {
+                var rawName = initialUrlSuffix[(idx + prefix.Length)..];
+                var amp = rawName.IndexOf('&', StringComparison.Ordinal);
+                _currentFixtureName = amp >= 0 ? rawName[..amp] : rawName;
+            }
+        }
         try {
             _webView = new WebView2 {
                 Dock = DockStyle.Fill,
@@ -103,6 +113,24 @@ internal sealed class WebViewHost : IDisposable {
 
         _webView.CoreWebView2.NavigationStarting += (s, e) => {
             Log.Information("WebView2 NavigationStarting: {Uri}", e.Uri);
+            if (!string.IsNullOrEmpty(_initialUrlSuffix) && Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri)) {
+                var query = uri.Query;
+                const string prefix = "?fixture=";
+                var idx = query.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0) {
+                    var fixtureName = query[(idx + prefix.Length)..];
+                    var amp = fixtureName.IndexOf('&', StringComparison.Ordinal);
+                    if (amp >= 0) fixtureName = fixtureName[..amp];
+                    if (!string.IsNullOrWhiteSpace(fixtureName) && !string.Equals(fixtureName, _currentFixtureName, StringComparison.OrdinalIgnoreCase)) {
+                        _currentFixtureName = fixtureName;
+                        var isPinned = _coordinator.CurrentSnapshot?.Shell.Pinned ?? false;
+                        var nextRev = _coordinator.NextRevision();
+                        var snapshot = FixtureSnapshotProvider.GetSnapshot(fixtureName, isPinned, nextRev);
+                        _coordinator.UpdateSnapshot(snapshot);
+                        Log.Information("Test fixture selected via navigation: {FixtureName}, revision {Revision}", fixtureName, nextRev);
+                    }
+                }
+            }
         };
 
         _webView.CoreWebView2.NavigationCompleted += async (s, e) => {

@@ -65,7 +65,22 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _flyoutWindow = new FlyoutWindow();
         _flyoutWindow.Deactivate += OnFlyoutDeactivate;
 
-        _coordinator = new BridgeCoordinator(this, isPinned: false);
+        string? initialFixture = null;
+        if (!string.IsNullOrEmpty(fixtureSuffix)) {
+            const string prefix = "?fixture=";
+            var idx = fixtureSuffix.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0) {
+                var rawName = fixtureSuffix[(idx + prefix.Length)..];
+                var amp = rawName.IndexOf('&', StringComparison.Ordinal);
+                initialFixture = amp >= 0 ? rawName[..amp] : rawName;
+            }
+        }
+
+        var initialSnapshot = !string.IsNullOrEmpty(initialFixture)
+            ? FixtureSnapshotProvider.GetSnapshot(initialFixture, isPinned: false, revision: 1)
+            : FixtureSnapshotProvider.GetSnapshot("empty", isPinned: false, revision: 1);
+
+        _coordinator = new BridgeCoordinator(this, isPinned: false, initialSnapshot);
         _webViewHost = new WebViewHost(_flyoutWindow, _coordinator);
     }
 

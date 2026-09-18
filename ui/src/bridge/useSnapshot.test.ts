@@ -235,4 +235,42 @@ describe('useSnapshot & bridge actions', () => {
 
     import.meta.env.MODE = originalMode;
   });
+
+  it('proves normal WebView mode never uses canonical fixture fallback', () => {
+    // Even if ?fixture=connected-usb is set in URL, presence of window.chrome.webview MUST prevent fallback
+    const originalSearch = window.location.search;
+    window.location.search = '?fixture=connected-usb';
+
+    try {
+      const { result } = renderHook(() => useSnapshot());
+      // In native WebView2, initial snapshot is always null until native PostWebMessageAsJson arrives
+      expect(result.current).toBeNull();
+    } finally {
+      window.location.search = originalSearch;
+    }
+  });
+
+  it('proves test/Vite fixture fallback is active only outside WebView in test mode', () => {
+    // 1. Outside WebView, in test mode (fixture query present): fallback provides fixture
+    // @ts-expect-error remove mock to simulate standalone browser/Playwright
+    delete window.chrome;
+    const originalSearch = window.location.search;
+    const originalMode = import.meta.env.MODE;
+
+    try {
+      window.location.search = '?fixture=connected-usb';
+      const { result: testResult } = renderHook(() => useSnapshot());
+      expect(testResult.current).not.toBeNull();
+      expect(testResult.current?.devices[0]?.displayName).toBe('Galaxy S24');
+
+      // 2. Outside WebView, but NOT in test mode (no fixture query, production mode): no fallback
+      window.location.search = '';
+      import.meta.env.MODE = 'production';
+      const { result: prodResult } = renderHook(() => useSnapshot());
+      expect(prodResult.current).toBeNull();
+    } finally {
+      window.location.search = originalSearch;
+      import.meta.env.MODE = originalMode;
+    }
+  });
 });

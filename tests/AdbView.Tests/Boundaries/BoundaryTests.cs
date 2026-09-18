@@ -55,7 +55,8 @@ public sealed class BoundaryTests {
             // False positive correction: allow the exact IPC contract string (AdbView.Control.<session-id>)
             // without weakening the rule against actual WinForms Control type usage.
             var scrubbedText = text.Replace("\"AdbView.Control.", "\"AdbView.IPC_CONTRACT.", StringComparison.Ordinal)
-                .Replace("string Label", "string FIELD_LABEL", StringComparison.Ordinal);
+                .Replace("string Label", "string FIELD_LABEL", StringComparison.Ordinal)
+                .Replace("Label =", "FIELD_LABEL =", StringComparison.Ordinal);
 
             foreach (Match match in pattern.Matches(scrubbedText)) {
                 violations.Add($"{Path.GetRelativePath(Root, file)}: WinForms type '{match.Value}' outside Host/");
@@ -411,4 +412,42 @@ public sealed class BoundaryTests {
 
         AssertNoViolations(violations);
     }
+
+    // 13. Production frontend sources contain no browser-owned fixture generators (R-07, Phase 3 Wave 3).
+    [Fact]
+    public void FrontendFixtureGeneratorsAreAbsentFromProductionSource() {
+        var forbiddenGenerators = new[] { "getFixtureDevices" };
+        var violations = new List<string>();
+
+        foreach (var file in SourceFiles(UiSourceRoot, FrontendExtensions)) {
+            if (file.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase) ||
+                file.EndsWith(".test.tsx", StringComparison.OrdinalIgnoreCase) ||
+                file.EndsWith(".spec.ts", StringComparison.OrdinalIgnoreCase) ||
+                file.Contains("__fixtures__", StringComparison.OrdinalIgnoreCase)) {
+                continue;
+            }
+
+            var text = ReadText(file);
+            foreach (var generator in forbiddenGenerators) {
+                if (text.Contains(generator, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: contains forbidden fixture generator '{generator}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
+    // 14. Native WebView authority guard in useSnapshot: production path must never fall back to static fixtures (R-06, R-07).
+    [Fact]
+    public void NativeWebViewAuthorityGuardIsEnforcedInUseSnapshot() {
+        var useSnapshotPath = RootFile("ui", "src", "bridge", "useSnapshot.ts");
+        var text = ReadText(useSnapshotPath);
+
+        // Prove that window.chrome?.webview presence explicitly blocks fixture fallback
+        Assert.Contains("if (window.chrome?.webview) return null;", text, StringComparison.Ordinal);
+        // Prove that standalone fixture fallback is gated behind isTestMode()
+        Assert.Contains("if (!isTestMode()) return null;", text, StringComparison.Ordinal);
+    }
 }
+

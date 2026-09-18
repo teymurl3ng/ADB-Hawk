@@ -16,10 +16,19 @@ internal sealed class BridgeCoordinator {
     public long Revision => _revision;
     public bool IsReady => _isReady;
 
-    public BridgeCoordinator(IBridgeHost host, bool isPinned = false) {
+    public BridgeCoordinator(IBridgeHost host, bool isPinned = false, AppSnapshot? initialSnapshot = null) {
         _host = host ?? throw new ArgumentNullException(nameof(host));
-        _revision = 1;
-        _currentSnapshot = CreateDefaultSnapshot(isPinned, _revision);
+        _currentSnapshot = initialSnapshot ?? CreateDefaultSnapshot(isPinned, 1);
+        _revision = _currentSnapshot.Revision;
+    }
+
+    public void UpdateSnapshot(AppSnapshot snapshot) {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        _currentSnapshot = snapshot;
+        _revision = snapshot.Revision;
+        if (_isReady) {
+            ResendCurrentSnapshot();
+        }
     }
 
     public static AppSnapshot CreateDefaultSnapshot(bool isPinned, long revision) {
@@ -159,7 +168,7 @@ internal sealed class BridgeCoordinator {
         _host.ResizeFlyout(clampedHeight);
     }
 
-    private long NextRevision() {
+    public long NextRevision() {
         if (_revision >= BridgeProtocol.MaxSafeRevision) {
             Log.Warning("Revision reached BridgeProtocol.MaxSafeRevision ({Max}); revision cannot increment further.", BridgeProtocol.MaxSafeRevision);
             return _revision;

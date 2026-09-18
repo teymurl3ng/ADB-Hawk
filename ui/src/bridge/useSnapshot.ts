@@ -2,14 +2,35 @@ import { useEffect, useRef, useState } from 'react';
 import type { AppSnapshot } from '../contract/snapshot';
 import { parseSnapshot } from '../contract/validate';
 import { isTestMode, sendReady } from './actions';
+import canonicalSnapshots from '../contract/__fixtures__/canonicalSnapshots.json';
+
+function getInitialBrowserSnapshot(): AppSnapshot | null {
+  if (typeof window === 'undefined') return null;
+  // Production native WebView2 path never uses static fixture fallback.
+  // The native BridgeCoordinator is the sole authoritative state source.
+  // @ts-expect-error WebView2 injects chrome.webview natively
+  if (window.chrome?.webview) return null;
+
+  // Standalone browser testing / Playwright harness fallback only
+  if (!isTestMode()) return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const fixtureName = params.get('fixture') || 'connected-wifi';
+  const raw = (canonicalSnapshots as Record<string, unknown>)[fixtureName];
+  if (raw) {
+    const parsed = parseSnapshot({ type: 'snapshot', protocol: 1, snapshot: raw });
+    return parsed;
+  }
+  return null;
+}
 
 /**
  * Manages native AppSnapshot synchronization over the WebView2 bridge.
  * Enforces revision monotonicity (revision > latest) and cleans up listeners on unmount.
  */
 export function useSnapshot(): AppSnapshot | null {
-  const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
-  const latestRevisionRef = useRef<number>(0);
+  const [snapshot, setSnapshot] = useState<AppSnapshot | null>(() => getInitialBrowserSnapshot());
+  const latestRevisionRef = useRef<number>(snapshot?.revision ?? 0);
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {

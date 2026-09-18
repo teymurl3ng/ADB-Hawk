@@ -59,7 +59,7 @@ const extraArg = process.argv[4];
         } else if (action === 'check-invariants') {
             result.details = await page.evaluate((fixture) => {
                 const violations = [];
-                const cards = Array.from(document.querySelectorAll('.flex-1.overflow-y-auto > div.rounded-lg'));
+                const cards = Array.from(document.querySelectorAll('.flex-1.overflow-y-auto [data-testid="device-card"]'));
 
                 cards.forEach((c, idx) => {
                     const hasExpandedChevron = !!c.querySelector('[data-testid="chevron-expanded"]') || !!c.querySelector('path[d*="18 15"]');
@@ -166,7 +166,7 @@ const extraArg = process.argv[4];
 
         } else if (action === 'card-expansion-detailed') {
             const cardIdx = parseInt(extraArg || '0', 10);
-            const cards = await page.$$('.flex-1.overflow-y-auto > div.rounded-lg');
+            const cards = await page.$$('.flex-1.overflow-y-auto [data-testid="device-card"]');
             if (cards.length <= cardIdx) {
                 throw new Error(`Card index ${cardIdx} not found. Total cards: ${cards.length}`);
             }
@@ -303,7 +303,7 @@ const extraArg = process.argv[4];
 
             const getCardState = async (idx) => {
                 return await page.evaluate((i) => {
-                    const cards = Array.from(document.querySelectorAll('.flex-1.overflow-y-auto > div.rounded-lg'));
+                    const cards = Array.from(document.querySelectorAll('.flex-1.overflow-y-auto [data-testid="device-card"]'));
                     const c = cards[i];
                     if (!c) return null;
                     const chevronUp = !!c.querySelector('[data-testid="chevron-expanded"]') || !!c.querySelector('path[d*="18 15"]');
@@ -326,7 +326,7 @@ const extraArg = process.argv[4];
             };
 
             const toggleCard = async (idx) => {
-                const cards = await page.$$('.flex-1.overflow-y-auto > div.rounded-lg');
+                const cards = await page.$$('.flex-1.overflow-y-auto [data-testid="device-card"]');
                 if (cards.length > idx) {
                     const chevron = await cards[idx].$('.hit-area-40');
                     if (chevron) await chevron.click();
@@ -391,7 +391,7 @@ const extraArg = process.argv[4];
             const layoutCheck = await page.evaluate(() => {
                 const container = document.querySelector('.flex-1.overflow-y-auto');
                 const header = document.querySelector('header');
-                const cards = Array.from(document.querySelectorAll('.flex-1.overflow-y-auto > div.rounded-lg'));
+                const cards = Array.from(document.querySelectorAll('.flex-1.overflow-y-auto [data-testid="device-card"]'));
                 const containerWidth = container.clientWidth;
                 const allFullSize = cards.every(c => Math.abs(c.getBoundingClientRect().width - containerWidth) <= 4);
 
@@ -437,7 +437,7 @@ const extraArg = process.argv[4];
 
         } else if (action === 'copy-interaction-test') {
             // Expand card 0 to reveal copy buttons
-            const cards = await page.$$('.flex-1.overflow-y-auto > div.rounded-lg');
+            const cards = await page.$$('.flex-1.overflow-y-auto [data-testid="device-card"]');
             if (cards.length === 0) throw new Error('No device cards found');
             const card = cards[0];
 
@@ -451,7 +451,7 @@ const extraArg = process.argv[4];
             }
 
             const copyResults = await page.evaluate(async () => {
-                const cardEl = document.querySelector('.flex-1.overflow-y-auto > div.rounded-lg');
+                const cardEl = document.querySelector('.flex-1.overflow-y-auto [data-testid="device-card"]');
                 const results = { address: null, serial: null };
 
                 // 1. Address copy test

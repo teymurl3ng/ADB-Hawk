@@ -6,7 +6,8 @@ import { PairingCard } from './components/PairingCard';
 import { useSnapshot } from './bridge/useSnapshot';
 import { useContentSize } from './bridge/useContentSize';
 import { isTestMode, requestDismiss } from './bridge/actions';
-import type { FixtureName, DeviceInfo } from './types';
+import { mapDeviceViewToDeviceInfo, derivePairingState } from './bridge/adapters';
+import type { FixtureName } from './types';
 
 const FIXTURES: FixtureName[] = [
   'empty',
@@ -22,8 +23,6 @@ const FIXTURES: FixtureName[] = [
   'multi-device',
   'pairing-offer',
   'pairing-code',
-  'pairing-incomplete',
-  'pairing-ready',
   'pairing-progress',
   'pairing-success',
   'pairing-failure',
@@ -33,20 +32,10 @@ export function App() {
   const snapshot = useSnapshot();
   const isPinned = snapshot?.shell.pinned ?? false;
 
-  const [fixture, setFixture] = React.useState<FixtureName>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const f = params.get('fixture') as FixtureName;
-      if (f) return f;
-    }
-    return 'connected-wifi';
-  });
-
   const [expandedIds, setExpandedIds] = React.useState<Set<string>>(() => {
-    if (typeof window !== 'undefined') {
+    if (isTestMode() && typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
-      const f = params.get('fixture') as FixtureName;
-      if (f === 'expanded') return new Set(['d1']);
+      if (params.get('fixture') === 'expanded') return new Set(['d1']);
     }
     return new Set<string>();
   });
@@ -57,11 +46,29 @@ export function App() {
   const headerRef = React.useRef<HTMLElement>(null);
   const contentWrapperRef = React.useRef<HTMLDivElement>(null);
 
-  useContentSize({ headerRef, contentRef: contentWrapperRef }, [fixture, expandedIds]);
+  useContentSize({ headerRef, contentRef: contentWrapperRef }, [snapshot, expandedIds]);
 
+  // Synchronize expansion state when snapshot updates:
+  // - Retain expansion for devices that still exist
+  // - Prune disappeared devices
+  // - Ensure initial expansion in test mode for 'expanded' fixture
   React.useEffect(() => {
-    setExpandedIds(fixture === 'expanded' ? new Set(['d1']) : new Set());
-  }, [fixture]);
+    if (!snapshot) return;
+    const currentDeviceIds = new Set(snapshot.devices.map((d) => d.id));
+    setExpandedIds((prev) => {
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (currentDeviceIds.has(id)) next.add(id);
+      }
+      if (isTestMode() && typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('fixture') === 'expanded' && currentDeviceIds.has('d1')) {
+          next.add('d1');
+        }
+      }
+      return next;
+    });
+  }, [snapshot]);
 
   // Handle Escape dismiss and fixture toggle hotkey Ctrl+Shift+F
   React.useEffect(() => {
@@ -103,166 +110,15 @@ export function App() {
     });
   };
 
-  const getFixtureDevices = (): DeviceInfo[] => {
-    const galaxyS24: DeviceInfo = {
-      id: 'd1',
-      name: 'Galaxy S24',
-      state: 'connected',
-      transport: 'wifi',
-      battery: 82,
-      stateAgeText: 'Connected 46s ago',
-      model: 'SM-S921W',
-      androidVersion: '16',
-      address: '192.168.1.144:39421',
-      serial: 'R5CW••••••••',
-    };
+  const devices = snapshot?.devices ?? [];
+  const pairingInfo = derivePairingState(snapshot);
+  const isEmpty = devices.length === 0 && !pairingInfo;
+  const nowIso = snapshot?.generatedAt ?? '';
 
-    switch (fixture) {
-      case 'empty':
-        return [];
-      case 'connected-usb':
-        return [
-          {
-            ...galaxyS24,
-            transport: 'usb',
-            address: undefined, // USB device must NOT have Address
-            stateAgeText: 'Connected Just now',
-          },
-        ];
-      case 'connected-wifi':
-        return [galaxyS24];
-      case 'expanded':
-        return [
-          {
-            ...galaxyS24,
-            stateAgeText: 'Connected 2 minutes ago',
-          },
-        ];
-      case 'unauthorized':
-        return [
-          {
-            ...galaxyS24,
-            state: 'unauthorized',
-            battery: undefined,
-            stateAgeText: 'Just now',
-          },
-        ];
-      case 'offline':
-        return [
-          {
-            ...galaxyS24,
-            state: 'offline',
-            battery: undefined,
-            stateAgeText: '4m ago',
-          },
-        ];
-      case 'recovery':
-        return [
-          {
-            ...galaxyS24,
-            state: 'recovery',
-            battery: undefined,
-            stateAgeText: '8m ago',
-          },
-        ];
-      case 'bootloader':
-        return [
-          {
-            ...galaxyS24,
-            state: 'bootloader',
-            battery: undefined,
-            stateAgeText: 'Just now',
-          },
-        ];
-      case 'sideload':
-        return [
-          {
-            ...galaxyS24,
-            state: 'sideload',
-            battery: undefined,
-            stateAgeText: 'Just now',
-          },
-        ];
-      case 'unknown':
-        return [
-          {
-            ...galaxyS24,
-            state: 'unknown',
-            battery: undefined,
-            stateAgeText: 'Just now',
-          },
-        ];
-      case 'multi-device':
-        return [
-          {
-            ...galaxyS24,
-            stateAgeText: '1m ago',
-          },
-          {
-            id: 'd2',
-            name: 'Pixel 8',
-            state: 'connected',
-            transport: 'usb',
-            battery: 67,
-            stateAgeText: '3m ago',
-            model: 'Pixel 8',
-            androidVersion: '15',
-            serial: '3928••••••••',
-          },
-          {
-            id: 'd3',
-            name: 'Pixel 5',
-            state: 'unauthorized',
-            transport: 'usb',
-            stateAgeText: 'Just now',
-            model: 'Pixel 5',
-            androidVersion: '14',
-            serial: '1924••••••••',
-          },
-          {
-            id: 'd4',
-            name: 'Galaxy Tab S10',
-            state: 'recovery',
-            transport: 'usb',
-            stateAgeText: '10m ago',
-            model: 'SM-X920',
-            androidVersion: '15',
-            serial: 'R52X••••••••',
-          },
-          {
-            id: 'd5',
-            name: 'OnePlus 13',
-            state: 'offline',
-            transport: 'wifi',
-            stateAgeText: '22m ago',
-            model: 'CPH2653',
-            androidVersion: '15',
-            address: '192.168.1.189:41235',
-            serial: 'OP13••••••••',
-          },
-          {
-            id: 'd6',
-            name: 'Nothing Phone',
-            state: 'connected',
-            transport: 'usb',
-            battery: 74,
-            stateAgeText: 'Just now',
-            model: 'A063',
-            androidVersion: '14',
-            serial: 'NP2A••••••••',
-          },
-        ];
-      default:
-        return []; // pairing states have 0 devices
-    }
-  };
-
-  const isPairingState = fixture.startsWith('pairing');
-  const rawDevices = isPairingState ? [] : getFixtureDevices();
-  const devices = rawDevices.map((d) => ({
-    ...d,
-    isExpanded: expandedIds.has(d.id),
-  }));
+  const activeFixture =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('fixture') || 'connected-wifi'
+      : 'connected-wifi';
 
   return (
     <main className="h-screen w-full flex flex-col p-4 box-border">
@@ -273,19 +129,16 @@ export function App() {
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <div ref={contentWrapperRef} className="space-y-3">
-          {fixture === 'empty' && <EmptyState />}
+          {isEmpty && <EmptyState />}
 
-          {isPairingState && (
-            <PairingCard
-              state={fixture as React.ComponentProps<typeof PairingCard>['state']}
-              deviceName="Galaxy S24"
-            />
+          {pairingInfo && (
+            <PairingCard state={pairingInfo.state} deviceName={pairingInfo.deviceName} />
           )}
 
           {devices.map((d) => (
             <DeviceCard
               key={d.id}
-              device={d}
+              device={mapDeviceViewToDeviceInfo(d, expandedIds.has(d.id), nowIso)}
               copiedId={copiedId}
               onCopy={handleCopy}
               onToggleExpand={handleToggleExpand}
@@ -315,17 +168,17 @@ export function App() {
                 <button
                   key={f}
                   onClick={() => {
-                    setFixture(f);
                     setShowFixtureMenu(false);
+                    window.location.search = `?fixture=${f}`;
                   }}
                   className={`w-full text-left px-2.5 py-1.5 rounded-md font-mono text-[11.5px] transition-colors flex items-center justify-between ${
-                    fixture === f
+                    activeFixture === f
                       ? 'bg-win-btn-hover text-win-text-primary font-medium'
                       : 'text-win-text-secondary hover:text-win-text-primary hover:bg-win-btn-hover'
                   }`}
                 >
                   <span>{f}</span>
-                  {fixture === f && <span className="text-win-green text-[10px]">●</span>}
+                  {activeFixture === f && <span className="text-win-green text-[10px]">●</span>}
                 </button>
               ))}
             </div>
