@@ -228,4 +228,24 @@ public sealed class BridgeCoordinatorTests {
         Assert.Equal(1, coordinator.Revision);
         Assert.Empty(host.SentSnapshots);
     }
+
+    [Fact]
+    public void NextRevision_AtMaxJsSafeInteger_ThrowsRatherThanClamping() {
+        var host = new TestBridgeHost();
+        var initial = StateEngine.CreateDefaultSnapshot(isPinned: false, revision: StateReducer.MaxJsSafeInteger);
+        var coordinator = new BridgeCoordinator(host, initialSnapshot: initial);
+
+        var ex = Assert.Throws<InvalidOperationException>(() => coordinator.NextRevision());
+        Assert.Contains(StateReducer.MaxJsSafeInteger.ToString(), ex.Message, StringComparison.Ordinal);
+        Assert.Equal(StateReducer.MaxJsSafeInteger, coordinator.Revision);
+    }
+
+    [Fact]
+    public void NextRevision_BelowMax_IncrementsMonotonically() {
+        var host = new TestBridgeHost();
+        var initial = StateEngine.CreateDefaultSnapshot(isPinned: false, revision: StateReducer.MaxJsSafeInteger - 1);
+        var coordinator = new BridgeCoordinator(host, initialSnapshot: initial);
+
+        Assert.Equal(StateReducer.MaxJsSafeInteger, coordinator.NextRevision());
+    }
 }

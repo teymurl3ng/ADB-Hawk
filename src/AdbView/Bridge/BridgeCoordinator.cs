@@ -144,10 +144,8 @@ internal sealed class BridgeCoordinator {
     }
 
     public long NextRevision() {
-        if (_revision >= BridgeProtocol.MaxSafeRevision) {
-            Log.Warning("Revision reached BridgeProtocol.MaxSafeRevision ({Max}); revision cannot increment further.", BridgeProtocol.MaxSafeRevision);
-            return _revision;
-        }
-        return _revision + 1;
+        // Fixture / harness path for meaningful snapshot changes. Must never silently
+        // clamp a changed snapshot to the same revision (Phase 4D revision invariant).
+        return StateReducer.NextRevision(_revision);
     }
 }

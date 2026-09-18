@@ -114,7 +114,7 @@ public sealed class StateEngineTests {
 
     [Fact]
     public async Task ScenarioT_GracefulShutdown_DrainsAllQueuedEventsInFifoOrder() {
-        var engine = new StateEngine();
+        await using var engine = new StateEngine();
         var publishedSnapshots = new List<AppSnapshot>();
         engine.SnapshotPublished += s => {
             lock (publishedSnapshots) {
@@ -171,7 +171,7 @@ public sealed class StateEngineTests {
 
     [Fact]
     public async Task ScenarioT_ForcedEmergencyCancellation_TerminatesProcessingTask() {
-        var engine = new StateEngine();
+        await using var engine = new StateEngine();
         using var emergencyCts = new CancellationTokenSource();
         await emergencyCts.CancelAsync();
 
