@@ -1,16 +1,22 @@
-import { togglePin } from '../bridge/actions';
+import { pin, unpin } from '../bridge/actions';
 
 interface HeaderProps {
   isPinned: boolean;
+  headerRef?: React.RefObject<HTMLElement | null>;
 }
 
-export function Header({ isPinned }: HeaderProps) {
+export function Header({ isPinned, headerRef }: HeaderProps) {
   const handlePinClick = () => {
-    togglePin();
+    if (isPinned) {
+      unpin();
+    } else {
+      pin();
+    }
   };
 
   return (
     <header
+      ref={headerRef}
       className={`h-10 flex items-center justify-between mb-2 select-none ${isPinned ? 'app-region-drag' : 'app-region-no-drag'}`}
     >
       <div className="flex items-center gap-2">

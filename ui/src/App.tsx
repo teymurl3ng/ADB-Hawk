@@ -3,6 +3,9 @@ import { Header } from './components/Header';
 import { EmptyState } from './components/EmptyState';
 import { DeviceCard } from './components/DeviceCard';
 import { PairingCard } from './components/PairingCard';
+import { useSnapshot } from './bridge/useSnapshot';
+import { useContentSize } from './bridge/useContentSize';
+import { isTestMode, requestDismiss } from './bridge/actions';
 import type { FixtureName, DeviceInfo } from './types';
 
 const FIXTURES: FixtureName[] = [
@@ -27,7 +30,8 @@ const FIXTURES: FixtureName[] = [
 ];
 
 export function App() {
-  const [isPinned, setIsPinned] = React.useState(false);
+  const snapshot = useSnapshot();
+  const isPinned = snapshot?.shell.pinned ?? false;
 
   const [fixture, setFixture] = React.useState<FixtureName>(() => {
     if (typeof window !== 'undefined') {
@@ -50,39 +54,37 @@ export function App() {
   const [showFixtureMenu, setShowFixtureMenu] = React.useState(false);
   const [copiedId, setCopiedId] = React.useState<'serial' | 'address' | null>(null);
 
+  const headerRef = React.useRef<HTMLElement>(null);
+  const contentWrapperRef = React.useRef<HTMLDivElement>(null);
+
+  useContentSize({ headerRef, contentRef: contentWrapperRef }, [fixture, expandedIds]);
+
   React.useEffect(() => {
     setExpandedIds(fixture === 'expanded' ? new Set(['d1']) : new Set());
   }, [fixture]);
 
-  React.useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data === 'pinned:true') setIsPinned(true);
-      if (e.data === 'pinned:false') setIsPinned(false);
-    };
-    // @ts-expect-error WebView2 injects chrome.webview natively
-    window.chrome?.webview?.addEventListener('message', handler);
-    // @ts-expect-error WebView2 injects chrome.webview natively
-    return () => window.chrome?.webview?.removeEventListener('message', handler);
-  }, []);
-
-  // Fixture toggle hotkey Ctrl+Shift+F and Escape (gated to test/fixture mode)
+  // Handle Escape dismiss and fixture toggle hotkey Ctrl+Shift+F
   React.useEffect(() => {
     const keydown = (e: KeyboardEvent) => {
-      const isTestMode =
-        new URLSearchParams(window.location.search).has('fixture') ||
-        import.meta.env.MODE === 'test';
-      if (!isTestMode) return;
+      if (e.key === 'Escape') {
+        if (showFixtureMenu) {
+          setShowFixtureMenu(false);
+          return;
+        }
+        requestDismiss();
+        return;
+      }
+
+      if (!isTestMode()) return;
 
       if (e.ctrlKey && e.shiftKey && (e.key.toLowerCase() === 'f' || e.code === 'KeyF')) {
         e.preventDefault();
         setShowFixtureMenu((prev) => !prev);
-      } else if (e.key === 'Escape') {
-        setShowFixtureMenu(false);
       }
     };
     window.addEventListener('keydown', keydown);
     return () => window.removeEventListener('keydown', keydown);
-  }, []);
+  }, [showFixtureMenu]);
 
   const handleCopy = (_text: string, type: 'serial' | 'address') => {
     setCopiedId(type);
@@ -264,72 +266,72 @@ export function App() {
 
   return (
     <main className="h-screen w-full flex flex-col p-4 box-border">
-      <Header isPinned={isPinned} />
+      <Header isPinned={isPinned} headerRef={headerRef} />
 
       <div
-        className="flex-1 overflow-y-auto space-y-3 pb-2"
+        className="flex-1 overflow-y-auto pb-2"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        {fixture === 'empty' && <EmptyState />}
+        <div ref={contentWrapperRef} className="space-y-3">
+          {fixture === 'empty' && <EmptyState />}
 
-        {isPairingState && (
-          <PairingCard
-            state={fixture as React.ComponentProps<typeof PairingCard>['state']}
-            deviceName="Galaxy S24"
-          />
-        )}
+          {isPairingState && (
+            <PairingCard
+              state={fixture as React.ComponentProps<typeof PairingCard>['state']}
+              deviceName="Galaxy S24"
+            />
+          )}
 
-        {devices.map((d) => (
-          <DeviceCard
-            key={d.id}
-            device={d}
-            copiedId={copiedId}
-            onCopy={handleCopy}
-            onToggleExpand={handleToggleExpand}
-          />
-        ))}
+          {devices.map((d) => (
+            <DeviceCard
+              key={d.id}
+              device={d}
+              copiedId={copiedId}
+              onCopy={handleCopy}
+              onToggleExpand={handleToggleExpand}
+            />
+          ))}
+        </div>
       </div>
 
-      {(new URLSearchParams(window.location.search).has('fixture') ||
-        import.meta.env.MODE === 'test') &&
-        showFixtureMenu && (
+      {isTestMode() && showFixtureMenu && (
+        <div
+          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+          onClick={() => setShowFixtureMenu(false)}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        >
           <div
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-            onClick={() => setShowFixtureMenu(false)}
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className="bg-win-base border border-win-card-border rounded-xl shadow-2xl p-4 w-80 max-h-[80vh] flex flex-col text-xs"
+            onClick={(e) => e.stopPropagation()}
           >
-            <div
-              className="bg-win-base border border-win-card-border rounded-xl shadow-2xl p-4 w-80 max-h-[80vh] flex flex-col text-xs"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-win-border-subtle mb-3">
-                <span className="font-semibold text-win-text-primary text-[13px]">
-                  Fixture Browser
-                </span>
-                <span className="text-win-text-muted text-[11px]">Esc to close</span>
-              </div>
-              <div className="overflow-y-auto space-y-1 pr-1 flex-1">
-                {FIXTURES.map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => {
-                      setFixture(f);
-                      setShowFixtureMenu(false);
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-md font-mono text-[11.5px] transition-colors flex items-center justify-between ${
-                      fixture === f
-                        ? 'bg-win-btn-hover text-win-text-primary font-medium'
-                        : 'text-win-text-secondary hover:text-win-text-primary hover:bg-win-btn-hover'
-                    }`}
-                  >
-                    <span>{f}</span>
-                    {fixture === f && <span className="text-win-green text-[10px]">●</span>}
-                  </button>
-                ))}
-              </div>
+            <div className="flex items-center justify-between pb-3 border-b border-win-border-subtle mb-3">
+              <span className="font-semibold text-win-text-primary text-[13px]">
+                Fixture Browser
+              </span>
+              <span className="text-win-text-muted text-[11px]">Esc to close</span>
+            </div>
+            <div className="overflow-y-auto space-y-1 pr-1 flex-1">
+              {FIXTURES.map((f) => (
+                <button
+                  key={f}
+                  onClick={() => {
+                    setFixture(f);
+                    setShowFixtureMenu(false);
+                  }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded-md font-mono text-[11.5px] transition-colors flex items-center justify-between ${
+                    fixture === f
+                      ? 'bg-win-btn-hover text-win-text-primary font-medium'
+                      : 'text-win-text-secondary hover:text-win-text-primary hover:bg-win-btn-hover'
+                  }`}
+                >
+                  <span>{f}</span>
+                  {fixture === f && <span className="text-win-green text-[10px]">●</span>}
+                </button>
+              ))}
             </div>
           </div>
-        )}
+        </div>
+      )}
     </main>
   );
 }

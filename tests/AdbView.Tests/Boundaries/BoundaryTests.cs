@@ -366,4 +366,49 @@ public sealed class BoundaryTests {
 
         AssertNoViolations(violations);
     }
+
+    // 11. Production sources contain zero legacy bridge strings (R-04, Phase 3 Wave 2).
+    [Fact]
+    public void LegacyBridgeStringsAreAbsentFromProductionSource() {
+        var legacyStrings = new[] { "toggle_pin", "pinned:true", "pinned:false" };
+        var violations = new List<string>();
+
+        foreach (var root in new[] { AppSourceRoot, UiSourceRoot }) {
+            foreach (var file in SourceFiles(root, [".cs", ".ts", ".tsx", ".js", ".jsx"])) {
+                if (file.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".test.tsx", StringComparison.OrdinalIgnoreCase) ||
+                    file.EndsWith(".spec.ts", StringComparison.OrdinalIgnoreCase)) {
+                    continue;
+                }
+
+                var text = ReadText(file);
+                foreach (var legacy in legacyStrings) {
+                    if (text.Contains(legacy, StringComparison.Ordinal)) {
+                        violations.Add($"{Path.GetRelativePath(Root, file)}: contains legacy bridge string '{legacy}'");
+                    }
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
+    // 12. React components do not access WebView2 APIs directly (Phase 3 Wave 2).
+    [Fact]
+    public void ReactComponentsDoNotAccessWebViewApisDirectly() {
+        var violations = new List<string>();
+        var componentsDir = RootFile("ui", "src", "components");
+        var appFile = RootFile("ui", "src", "App.tsx");
+
+        var filesToCheck = SourceFiles(componentsDir, FrontendExtensions).Append(appFile);
+        foreach (var file in filesToCheck) {
+            var text = ReadText(file);
+            if (text.Contains("chrome.webview", StringComparison.Ordinal) ||
+                text.Contains("window.chrome", StringComparison.Ordinal)) {
+                violations.Add($"{Path.GetRelativePath(Root, file)}: direct access to WebView API (must use bridge module)");
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
 }

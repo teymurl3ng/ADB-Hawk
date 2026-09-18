@@ -3,21 +3,26 @@ using System.Drawing;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using AdbView.App;
+using AdbView.Bridge;
 using AdbView.Diagnostics;
 using AdbView.Host;
 using Serilog;
 
 namespace AdbView.Host;
 
-internal sealed class AppHost : IDisposable {
+internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly SingleInstance _singleInstance;
     private readonly TrayIcon? _trayIcon;
     private readonly PowerAndSession? _powerAndSession;
     private readonly FlyoutWindow? _flyoutWindow;
     private readonly WebViewHost? _webViewHost;
+    private readonly BridgeCoordinator? _coordinator;
     private readonly string _fixtureSuffix;
 
     private bool _isVisible;
+    private int _currentEffectiveHeight = 500;
+    private int _lastAppliedHeight;
+    public BridgeCoordinator? Coordinator => _coordinator;
 
     public AppHost(int sessionId, string fixtureSuffix = "") {
         _fixtureSuffix = fixtureSuffix;
@@ -60,7 +65,8 @@ internal sealed class AppHost : IDisposable {
         _flyoutWindow = new FlyoutWindow();
         _flyoutWindow.Deactivate += OnFlyoutDeactivate;
 
-        _webViewHost = new WebViewHost(_flyoutWindow);
+        _coordinator = new BridgeCoordinator(this, isPinned: false);
+        _webViewHost = new WebViewHost(_flyoutWindow, _coordinator);
     }
 
     public void Run() {
@@ -128,7 +134,7 @@ internal sealed class AppHost : IDisposable {
             placement.Edge,
             monitor.WorkingArea,
             dpiScale,
-            new Size(376, 500)
+            new Size(376, _currentEffectiveHeight)
         );
 
         Log.Information("ShowFlyout: physicalBounds={Bounds}, anchor={Anchor}, monitorWorkArea={WorkArea}", physicalBounds, anchor, monitor.WorkingArea);
@@ -144,9 +150,101 @@ internal sealed class AppHost : IDisposable {
         _isVisible = true;
     }
 
-    private void HideFlyout() {
+    public void SendSnapshot(SnapshotEnvelope envelope) {
+        if (_flyoutWindow != null && _flyoutWindow.InvokeRequired) {
+            _flyoutWindow.Invoke(new Action<SnapshotEnvelope>(SendSnapshot), envelope);
+            return;
+        }
+
+        var json = BridgeSerializer.SerializeSnapshotEnvelope(envelope);
+        _webViewHost?.PostWebMessageAsJson(json);
+    }
+
+    public void SetPinned(bool isPinned) {
+        if (_flyoutWindow != null && _flyoutWindow.InvokeRequired) {
+            _flyoutWindow.Invoke(new Action<bool>(SetPinned), isPinned);
+            return;
+        }
+
+        if (_flyoutWindow != null) {
+            _flyoutWindow.IsPinned = isPinned;
+            Log.Information("AppHost.SetPinned: FlyoutWindow.IsPinned={IsPinned}, TopMost={TopMost}",
+                _flyoutWindow.IsPinned, _flyoutWindow.TopMost);
+        }
+    }
+
+    public void HideFlyout() {
+        if (_flyoutWindow != null && _flyoutWindow.InvokeRequired) {
+            _flyoutWindow.Invoke(new Action(HideFlyout));
+            return;
+        }
+
         _flyoutWindow?.Hide();
         _isVisible = false;
+    }
+
+    public void ResizeFlyout(int clampedEffectiveHeight) {
+        if (_flyoutWindow != null && _flyoutWindow.InvokeRequired) {
+            _flyoutWindow.Invoke(new Action<int>(ResizeFlyout), clampedEffectiveHeight);
+            return;
+        }
+
+        if (clampedEffectiveHeight == _currentEffectiveHeight && _lastAppliedHeight != 0) {
+            Log.Information("AppHost.ResizeFlyout suppressed duplicate: {Height}", clampedEffectiveHeight);
+            return;
+        }
+
+        _currentEffectiveHeight = clampedEffectiveHeight;
+        _lastAppliedHeight = clampedEffectiveHeight;
+
+        Log.Information("AppHost.ResizeFlyout: applied {Height}", clampedEffectiveHeight);
+
+        if (_isVisible && _flyoutWindow != null) {
+            UpdateFlyoutBounds();
+        }
+    }
+
+    private void UpdateFlyoutBounds() {
+        if (_flyoutWindow == null || _trayIcon == null) return;
+
+        var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
+
+        if (_flyoutWindow.IsPinned) {
+            int physicalWidth = (int)Math.Round(376 * dpiScale);
+            int physicalHeight = (int)Math.Round(_currentEffectiveHeight * dpiScale);
+            var currentBounds = _flyoutWindow.Bounds;
+            if (currentBounds.Width != physicalWidth || currentBounds.Height != physicalHeight) {
+                _flyoutWindow.Size = new Size(physicalWidth, physicalHeight);
+                Log.Information("UpdateFlyoutBounds (pinned): new size {Size}", _flyoutWindow.Size);
+            }
+        }
+        else {
+            var placement = _trayIcon.GetPlacementInfo();
+            var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
+                ? Screen.FromRectangle(placement.Rect)
+                : TrayIcon.GetTaskbarScreen();
+
+            var anchor = FlyoutPlacement.ResolveAnchor(
+                placement.Rect,
+                monitor.WorkingArea,
+                monitor.Bounds,
+                placement.Edge,
+                dpiScale
+            );
+
+            var physicalBounds = FlyoutPlacement.CalculatePlacement(
+                anchor,
+                placement.Edge,
+                monitor.WorkingArea,
+                dpiScale,
+                new Size(376, _currentEffectiveHeight)
+            );
+
+            if (_flyoutWindow.Bounds != physicalBounds) {
+                _flyoutWindow.Bounds = physicalBounds;
+                Log.Information("UpdateFlyoutBounds: physicalBounds={Bounds}", physicalBounds);
+            }
+        }
     }
 
     private void OnFlyoutDeactivate(object? sender, EventArgs e) {

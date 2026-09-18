@@ -228,5 +228,59 @@ public class FlyoutPlacementTests {
             Assert.Equal(EffectiveSize.Height, placement.Height);
         }
     }
+
+    [Fact]
+    public void CalculatePlacement_ResizeContentHeights_RemainsAnchoredToEdge() {
+        foreach (var edge in Enum.GetValues<FlyoutPlacement.TaskbarEdge>()) {
+            var monitorBounds = new Rectangle(0, 0, 1920, 1080);
+            var monitorWorkArea = edge switch {
+                FlyoutPlacement.TaskbarEdge.Bottom => new Rectangle(0, 0, 1920, 1040),
+                FlyoutPlacement.TaskbarEdge.Top => new Rectangle(0, 40, 1920, 1040),
+                FlyoutPlacement.TaskbarEdge.Left => new Rectangle(40, 0, 1880, 1080),
+                FlyoutPlacement.TaskbarEdge.Right => new Rectangle(0, 0, 1880, 1080),
+                _ => monitorBounds
+            };
+
+            var anchor = FlyoutPlacement.ResolveAnchor(
+                Rectangle.Empty,
+                monitorWorkArea,
+                monitorBounds,
+                edge,
+                1.0);
+
+            int[] heights = [120, 300, 560];
+            Rectangle[] placements = heights
+                .Select(h => FlyoutPlacement.CalculatePlacement(anchor, edge, monitorWorkArea, 1.0, new Size(376, h)))
+                .ToArray();
+
+            for (int i = 0; i < heights.Length; i++) {
+                Assert.Equal(376, placements[i].Width);
+                Assert.Equal(heights[i], placements[i].Height);
+
+                switch (edge) {
+                    case FlyoutPlacement.TaskbarEdge.Bottom:
+                        // Horizontal position and bottom anchor remain fixed; top moves upward
+                        Assert.Equal(placements[0].Left, placements[i].Left);
+                        Assert.Equal(placements[0].Bottom, placements[i].Bottom);
+                        if (i > 0) Assert.True(placements[i].Top < placements[i - 1].Top);
+                        break;
+                    case FlyoutPlacement.TaskbarEdge.Top:
+                        // Horizontal position and top anchor remain fixed; bottom moves downward
+                        Assert.Equal(placements[0].Left, placements[i].Left);
+                        Assert.Equal(placements[0].Top, placements[i].Top);
+                        if (i > 0) Assert.True(placements[i].Bottom > placements[i - 1].Bottom);
+                        break;
+                    case FlyoutPlacement.TaskbarEdge.Left:
+                        Assert.Equal(placements[0].Left, placements[i].Left);
+                        break;
+                    case FlyoutPlacement.TaskbarEdge.Right:
+                        Assert.Equal(placements[0].Right, placements[i].Right);
+                        break;
+                }
+            }
+        }
+    }
 }
+
+
 

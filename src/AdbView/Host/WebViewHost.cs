@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using AdbView.Bridge;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Serilog;
@@ -11,13 +12,15 @@ namespace AdbView.Host;
 
 internal sealed class WebViewHost : IDisposable {
     private readonly Control _parent;
+    private readonly BridgeCoordinator _coordinator;
     private WebView2? _webView;
     private int _recoveryAttempts;
     private const int MaxRecoveryAttempts = 3;
     private string _initialUrlSuffix = "";
 
-    public WebViewHost(Control parent) {
+    public WebViewHost(Control parent, BridgeCoordinator coordinator) {
         _parent = parent;
+        _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
     }
 
     public async Task InitializeAsync(string initialUrlSuffix = "") {
@@ -60,7 +63,7 @@ internal sealed class WebViewHost : IDisposable {
             }
             else {
                 Log.Warning("Static html page not found at {Path}", htmlPath);
-                _webView.NavigateToString("<html><body style='color: white; background: transparent;'>ADB View Phase 1 Shell<br><button onclick='window.chrome.webview.postMessage(\"toggle_pin\")'>Toggle Pin</button></body></html>");
+                _webView.NavigateToString("<html><body style='color: white; background: transparent;'>ADB View Shell</body></html>");
             }
 
             _recoveryAttempts = 0; // Reset on success
@@ -106,9 +109,6 @@ internal sealed class WebViewHost : IDisposable {
             if (e.IsSuccess) {
                 Log.Information("WebView2 NavigationCompleted successfully: {Id}", e.NavigationId);
                 _recoveryAttempts = 0;
-                if (_parent is FlyoutWindow flyout) {
-                    _webView.CoreWebView2.PostWebMessageAsString(flyout.IsPinned ? "pinned:true" : "pinned:false");
-                }
 
                 // Diagnostic: log the WebView's computed prefers-color-scheme
                 try {
@@ -144,13 +144,31 @@ internal sealed class WebViewHost : IDisposable {
     }
 
     private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e) {
-        if (e.TryGetWebMessageAsString() == "toggle_pin") {
-            if (_parent is FlyoutWindow flyout) {
-                flyout.IsPinned = !flyout.IsPinned;
-                Log.Information("Pin state toggled to {State} via web message", flyout.IsPinned);
-                _webView?.CoreWebView2.PostWebMessageAsString(flyout.IsPinned ? "pinned:true" : "pinned:false");
-            }
+        try {
+            var json = e.WebMessageAsJson;
+            _coordinator.HandleWebMessage(json);
         }
+#pragma warning disable CA1031
+        catch (Exception ex) {
+            Log.Warning(ex, "Failed to handle WebMessage in WebViewHost");
+        }
+#pragma warning restore CA1031
+    }
+
+    public void PostWebMessageAsJson(string json) {
+        if (_webView?.CoreWebView2 == null) {
+            Log.Warning("Cannot post web message: CoreWebView2 is null.");
+            return;
+        }
+
+        try {
+            _webView.CoreWebView2.PostWebMessageAsJson(json);
+        }
+#pragma warning disable CA1031
+        catch (Exception ex) {
+            Log.Warning(ex, "Failed to post web message to WebView2");
+        }
+#pragma warning restore CA1031
     }
 
     private async void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e) {
@@ -206,6 +224,7 @@ internal sealed class WebViewHost : IDisposable {
     private void DisposeWebView() {
         if (_webView != null) {
             if (_webView.CoreWebView2 != null) {
+                _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
                 _webView.CoreWebView2.ProcessFailed -= OnProcessFailed;
             }
             _parent.Controls.Remove(_webView);
