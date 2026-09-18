@@ -450,10 +450,44 @@ public sealed class BoundaryTests {
         Assert.Contains("if (!isTestMode()) return null;", text, StringComparison.Ordinal);
     }
 
-    // 15. Adb.Protocol does not reference forbidden layers (R-04, Phase 4 Wave 4A).
+    // 15. Adb.Protocol does not reference forbidden layers (R-04, Phase 4 Wave 4A/4B).
     [Fact]
     public void AdbProtocolDoesNotReferenceForbiddenLayers() {
         var protocolDir = RootFile("src", "AdbView", "Adb", "Protocol");
+        var forbiddenTokens = new[]
+        {
+            "AdbView.State",
+            "AppSnapshot",
+            "AdbView.Bridge",
+            "AdbView.Host",
+            "System.Windows.Forms",
+            "Microsoft.Web.WebView2",
+            "AdbExecutableLocator",
+            "AdbServerSupervisor",
+            "AdbCapabilities",
+            "AdbServerStatus",
+            "RawDevice",
+            "DeviceView",
+            "System.Net.Http",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in SourceFiles(protocolDir, CSharpExtensions)) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
+    // 16. Adb capability layer does not reference forbidden layers (R-04, Phase 4 Wave 4B).
+    [Fact]
+    public void AdbCapabilityLayerDoesNotReferenceForbiddenLayers() {
+        var adbDir = RootFile("src", "AdbView", "Adb");
         var forbiddenTokens = new[]
         {
             "AdbView.State",
@@ -470,7 +504,8 @@ public sealed class BoundaryTests {
         };
 
         var violations = new List<string>();
-        foreach (var file in SourceFiles(protocolDir, CSharpExtensions)) {
+        // Check files directly in src/AdbView/Adb (AdbCapabilities.cs, AdbServerStatus.cs)
+        foreach (var file in Directory.EnumerateFiles(adbDir, "*.cs", SearchOption.TopDirectoryOnly)) {
             var text = ReadText(file);
             foreach (var token in forbiddenTokens) {
                 if (text.Contains(token, StringComparison.Ordinal)) {

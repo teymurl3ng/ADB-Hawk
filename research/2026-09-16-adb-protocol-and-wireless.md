@@ -19,6 +19,7 @@ connection, and how to get a trustworthy transport signal without parsing serial
 | AOSP `docs/dev/adb_wifi.md` — architecture of ADB Wi-Fi | https://android.googlesource.com/platform/packages/modules/adb/+/HEAD/docs/dev/adb_wifi.md | AOSP HEAD |
 | `adb.1.md` man page (env vars, `server-status`, `wait-for` states) | https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/master/docs/user/adb.1.md | AOSP master |
 | SDK Platform Tools release notes | https://developer.android.com/tools/releases/platform-tools | platform-tools 37.0.1 (July 2026) |
+| AOSP `adb_host.proto` schema definition | https://android.googlesource.com/platform/packages/modules/adb/+/refs/tags/android-15.0.0_r1/proto/adb_host.proto | tag `android-15.0.0_r1` (verified against platform-tools 37.0.1) |
 | AdvancedSharpAdbClient package page | https://www.nuget.org/packages/AdvancedSharpAdbClient | 3.6.16, published 2026-01-13; .NET 10 compatible |
 
 ## Version investigated
