@@ -487,7 +487,11 @@ public sealed class BoundaryTests {
     // 16. Adb capability layer does not reference forbidden layers (R-04, Phase 4 Wave 4B).
     [Fact]
     public void AdbCapabilityLayerDoesNotReferenceForbiddenLayers() {
-        var adbDir = RootFile("src", "AdbView", "Adb");
+        var capabilityFiles = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "AdbCapabilities.cs"),
+            RootFile("src", "AdbView", "Adb", "AdbServerStatus.cs"),
+        };
         var forbiddenTokens = new[]
         {
             "AdbView.State",
@@ -504,8 +508,49 @@ public sealed class BoundaryTests {
         };
 
         var violations = new List<string>();
-        // Check files directly in src/AdbView/Adb (AdbCapabilities.cs, AdbServerStatus.cs)
-        foreach (var file in Directory.EnumerateFiles(adbDir, "*.cs", SearchOption.TopDirectoryOnly)) {
+        foreach (var file in capabilityFiles) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
+    // 17. Adb lifecycle layer does not reference forbidden layers (R-04, Phase 4 Wave 4C).
+    [Fact]
+    public void AdbLifecycleLayerDoesNotReferenceForbiddenLayers() {
+        var lifecycleFiles = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "AdbExecutableLocator.cs"),
+            RootFile("src", "AdbView", "Adb", "AdbProcessRunner.cs"),
+            RootFile("src", "AdbView", "Adb", "AdbServerSupervisor.cs"),
+            RootFile("src", "AdbView", "Adb", "Backoff.cs"),
+            RootFile("src", "AdbView", "Adb", "Model", "AdbServerPhase.cs"),
+            RootFile("src", "AdbView", "Adb", "Model", "AdbServerStateChanged.cs"),
+        };
+
+        var forbiddenTokens = new[]
+        {
+            "AdbView.State",
+            "AppSnapshot",
+            "AdbView.Bridge",
+            "AdbView.Host",
+            "System.Windows.Forms",
+            "Microsoft.Web.WebView2",
+            "RawDevice",
+            "DeviceView",
+            "DeviceTracker",
+            "System.Net.Http",
+            "host:kill",
+            "kill-server",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in lifecycleFiles) {
             var text = ReadText(file);
             foreach (var token in forbiddenTokens) {
                 if (text.Contains(token, StringComparison.Ordinal)) {
