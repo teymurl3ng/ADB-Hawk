@@ -1,7 +1,9 @@
+#pragma warning disable CA1707
 namespace AdbView.Tests.Bridge;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using AdbView.Bridge;
 using AdbView.State;
 using Xunit;
@@ -236,7 +238,7 @@ public sealed class BridgeCoordinatorTests {
         var coordinator = new BridgeCoordinator(host, initialSnapshot: initial);
 
         var ex = Assert.Throws<InvalidOperationException>(() => coordinator.NextRevision());
-        Assert.Contains(StateReducer.MaxJsSafeInteger.ToString(), ex.Message, StringComparison.Ordinal);
+        Assert.Contains(StateReducer.MaxJsSafeInteger.ToString(CultureInfo.InvariantCulture), ex.Message, StringComparison.Ordinal);
         Assert.Equal(StateReducer.MaxJsSafeInteger, coordinator.Revision);
     }
 

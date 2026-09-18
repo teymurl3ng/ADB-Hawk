@@ -178,7 +178,7 @@ public sealed class StateReducerTests {
         var evt = new AdbServerStateChangedEvent(new AdbServerStateChanged(AdbServerPhase.Probing, null, 0, 0));
 
         var ex = Assert.Throws<InvalidOperationException>(() => StateReducer.Reduce(initial, evt, FixedUtc));
-        Assert.Contains(maxSafe.ToString(), ex.Message, StringComparison.Ordinal);
+        Assert.Contains(maxSafe.ToString(System.Globalization.CultureInfo.InvariantCulture), ex.Message, StringComparison.Ordinal);
     }
 
     [Fact]

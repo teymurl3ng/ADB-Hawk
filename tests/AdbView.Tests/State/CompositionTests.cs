@@ -104,7 +104,7 @@ public sealed class CompositionTests {
                     connectionFactory: () => throw new InvalidOperationException("Hermetic test - no sockets"),
                     locator: new HermeticExecutableLocator(),
                     processRunner: new HermeticProcessRunner(),
-                    backoff: new Backoff(TimeSpan.Zero, TimeSpan.Zero, 1.0));
+                    backoff: new Backoff(jitterProvider: () => 0.0));
             });
 
         Assert.Equal(0, factoryCallCount);
@@ -125,7 +125,7 @@ public sealed class CompositionTests {
                     connectionFactory: () => throw new InvalidOperationException("Hermetic test - no sockets"),
                     locator: new HermeticExecutableLocator(),
                     processRunner: new HermeticProcessRunner(),
-                    backoff: new Backoff(TimeSpan.Zero, TimeSpan.Zero, 1.0));
+                    backoff: new Backoff(jitterProvider: () => 0.0));
             });
 
         Assert.Equal(1, factoryCallCount);
@@ -149,7 +149,7 @@ public sealed class CompositionTests {
                 connectionFactory: () => throw new InvalidOperationException("Hermetic test - no sockets"),
                 locator: new HermeticExecutableLocator(),
                 processRunner: new HermeticProcessRunner(),
-                backoff: new Backoff(TimeSpan.Zero, TimeSpan.Zero, 1.0)));
+                backoff: new Backoff(jitterProvider: () => 0.0)));
 
         host.StateEngine!.Post(new SetPinnedEvent(true));
         await host.StateEngine.DrainAsync();
