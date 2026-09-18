@@ -449,5 +449,37 @@ public sealed class BoundaryTests {
         // Prove that standalone fixture fallback is gated behind isTestMode()
         Assert.Contains("if (!isTestMode()) return null;", text, StringComparison.Ordinal);
     }
+
+    // 15. Adb.Protocol does not reference forbidden layers (R-04, Phase 4 Wave 4A).
+    [Fact]
+    public void AdbProtocolDoesNotReferenceForbiddenLayers() {
+        var protocolDir = RootFile("src", "AdbView", "Adb", "Protocol");
+        var forbiddenTokens = new[]
+        {
+            "AdbView.State",
+            "AppSnapshot",
+            "AdbView.Bridge",
+            "AdbView.Host",
+            "System.Windows.Forms",
+            "Microsoft.Web.WebView2",
+            "AdbExecutableLocator",
+            "AdbServerSupervisor",
+            "RawDevice",
+            "DeviceView",
+            "System.Net.Http",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in SourceFiles(protocolDir, CSharpExtensions)) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
 }
 
