@@ -12,51 +12,35 @@ internal sealed class BridgeCoordinator {
     private long _revision;
     private bool _isReady;
 
+    private readonly Action<bool>? _onSetPinned;
+
     public AppSnapshot CurrentSnapshot => _currentSnapshot;
     public long Revision => _revision;
     public bool IsReady => _isReady;
 
-    public BridgeCoordinator(IBridgeHost host, bool isPinned = false, AppSnapshot? initialSnapshot = null) {
+    public BridgeCoordinator(
+        IBridgeHost host,
+        bool isPinned = false,
+        AppSnapshot? initialSnapshot = null,
+        Action<bool>? onSetPinned = null) {
         _host = host ?? throw new ArgumentNullException(nameof(host));
-        _currentSnapshot = initialSnapshot ?? CreateDefaultSnapshot(isPinned, 1);
+        _currentSnapshot = initialSnapshot ?? StateEngine.CreateDefaultSnapshot(isPinned, 1);
         _revision = _currentSnapshot.Revision;
+        _onSetPinned = onSetPinned;
     }
 
     public void UpdateSnapshot(AppSnapshot snapshot) {
         ArgumentNullException.ThrowIfNull(snapshot);
         _currentSnapshot = snapshot;
         _revision = snapshot.Revision;
+        _host.SetPinned(snapshot.Shell.Pinned);
         if (_isReady) {
             ResendCurrentSnapshot();
         }
     }
 
     public static AppSnapshot CreateDefaultSnapshot(bool isPinned, long revision) {
-        return new AppSnapshot {
-            Protocol = BridgeProtocol.Version,
-            Revision = revision,
-            GeneratedAt = SystemClock.UtcNow,
-            Health = new HealthView {
-                Kind = GlobalHealthKind.Healthy,
-                Title = null,
-                Detail = null,
-                Hint = null,
-                Tray = TrayStatusKind.Idle,
-                TrayTooltip = "ADB View"
-            },
-            Shell = new ShellView {
-                Pinned = isPinned,
-                Theme = ThemeKind.Dark,
-                TransparencyEnabled = true,
-                ForcedColors = false,
-                ReducedMotion = false
-            },
-            Devices = ImmutableArray<DeviceView>.Empty,
-            PairingOffers = ImmutableArray<PairingOfferView>.Empty,
-            Pairing = null,
-            Warnings = ImmutableArray<SubsystemWarningView>.Empty,
-            DeviceCountLabel = null
-        };
+        return StateEngine.CreateDefaultSnapshot(isPinned, revision);
     }
 
     public void ResendCurrentSnapshot() {
@@ -135,17 +119,8 @@ internal sealed class BridgeCoordinator {
             return; // Suppress duplicate
         }
 
-        _host.SetPinned(pinned);
-
-        _revision = NextRevision();
-        _currentSnapshot = _currentSnapshot with {
-            Revision = _revision,
-            GeneratedAt = SystemClock.UtcNow,
-            Shell = _currentSnapshot.Shell with { Pinned = pinned }
-        };
-
-        Log.Information("Pin state changed to {Pinned}, new revision {Revision}", pinned, _revision);
-        ResendCurrentSnapshot();
+        Log.Information("BridgeCoordinator: dispatching pin state change {Pinned} to state authority", pinned);
+        _onSetPinned?.Invoke(pinned);
     }
 
     private void HandleRequestDismiss() {

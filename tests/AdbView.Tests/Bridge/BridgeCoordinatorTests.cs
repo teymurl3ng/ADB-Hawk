@@ -70,7 +70,16 @@ public sealed class BridgeCoordinatorTests {
     [Fact]
     public void PinWhenUnpinnedUpdatesSnapshotAndNotifiesHost() {
         var host = new TestBridgeHost();
-        var coordinator = new BridgeCoordinator(host, isPinned: false);
+        BridgeCoordinator coordinator = null!;
+        coordinator = new BridgeCoordinator(host, isPinned: false, onSetPinned: pinned => {
+            coordinator.UpdateSnapshot(coordinator.CurrentSnapshot with {
+                Revision = coordinator.Revision + 1,
+                Shell = coordinator.CurrentSnapshot.Shell with { Pinned = pinned }
+            });
+        });
+
+        coordinator.HandleAction(new ReadyAction { Protocol = BridgeProtocol.Version });
+        host.SentSnapshots.Clear();
 
         coordinator.HandleAction(new PinAction());
 
@@ -86,7 +95,16 @@ public sealed class BridgeCoordinatorTests {
     [Fact]
     public void UnpinWhenPinnedUpdatesSnapshotAndNotifiesHost() {
         var host = new TestBridgeHost();
-        var coordinator = new BridgeCoordinator(host, isPinned: true);
+        BridgeCoordinator coordinator = null!;
+        coordinator = new BridgeCoordinator(host, isPinned: true, onSetPinned: pinned => {
+            coordinator.UpdateSnapshot(coordinator.CurrentSnapshot with {
+                Revision = coordinator.Revision + 1,
+                Shell = coordinator.CurrentSnapshot.Shell with { Pinned = pinned }
+            });
+        });
+
+        coordinator.HandleAction(new ReadyAction { Protocol = BridgeProtocol.Version });
+        host.SentSnapshots.Clear();
 
         coordinator.HandleAction(new UnpinAction());
 
@@ -184,7 +202,13 @@ public sealed class BridgeCoordinatorTests {
     [Fact]
     public void HandleWebMessageWithForwardCompatibleFieldsExecutesAction() {
         var host = new TestBridgeHost();
-        var coordinator = new BridgeCoordinator(host, isPinned: false);
+        BridgeCoordinator coordinator = null!;
+        coordinator = new BridgeCoordinator(host, isPinned: false, onSetPinned: pinned => {
+            coordinator.UpdateSnapshot(coordinator.CurrentSnapshot with {
+                Revision = coordinator.Revision + 1,
+                Shell = coordinator.CurrentSnapshot.Shell with { Pinned = pinned }
+            });
+        });
 
         coordinator.HandleWebMessage("{\"type\":\"pin\",\"futureProperty\":123}");
 

@@ -561,5 +561,45 @@ public sealed class BoundaryTests {
 
         AssertNoViolations(violations);
     }
+
+    // 18. State core does not reference transport, UI, or host layers (R-04, Phase 4 Wave 4D).
+    [Fact]
+    public void StateCoreDoesNotReferenceForbiddenLayers() {
+        var stateFiles = new[]
+        {
+            RootFile("src", "AdbView", "State", "StateReducer.cs"),
+            RootFile("src", "AdbView", "State", "StateEngine.cs"),
+            RootFile("src", "AdbView", "State", "Vocabulary.cs"),
+            RootFile("src", "AdbView", "State", "AdbViewEvent.cs"),
+        };
+
+        var forbiddenTokens = new[]
+        {
+            "System.Net.Sockets",
+            "Socket",
+            "System.Diagnostics.Process",
+            "AdbHostConnection",
+            "Microsoft.Web.WebView2",
+            "System.Windows.Forms",
+            "AdbView.Host",
+            "AdbView.Bridge",
+            "System.Net.Http",
+            "track-devices",
+            "RawDevice",
+            "DeviceTracker",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in stateFiles) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
 }
 

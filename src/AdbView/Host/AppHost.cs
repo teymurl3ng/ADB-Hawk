@@ -6,6 +6,7 @@ using AdbView.App;
 using AdbView.Bridge;
 using AdbView.Diagnostics;
 using AdbView.Host;
+using AdbView.State;
 using Serilog;
 
 namespace AdbView.Host;
@@ -17,20 +18,37 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly FlyoutWindow? _flyoutWindow;
     private readonly WebViewHost? _webViewHost;
     private readonly BridgeCoordinator? _coordinator;
+    private readonly StateEngine? _stateEngine;
+    private readonly Adb.AdbServerSupervisor? _supervisor;
+    private readonly System.Threading.CancellationTokenSource _appLifetimeCts = new();
+    private Task? _supervisorTask;
     private readonly string _fixtureSuffix;
 
     private bool _isVisible;
     private int _currentEffectiveHeight = 500;
     private int _lastAppliedHeight;
     public BridgeCoordinator? Coordinator => _coordinator;
+    internal StateEngine? StateEngine => _stateEngine;
+    internal Adb.AdbServerSupervisor? Supervisor => _supervisor;
 
-    public AppHost(int sessionId, string fixtureSuffix = "") {
+    public AppHost(int sessionId, string fixtureSuffix = "")
+        : this(sessionId, fixtureSuffix, supervisorFactory: null) { }
+
+    internal AppHost(
+        int sessionId,
+        string fixtureSuffix,
+        Func<Adb.AdbServerSupervisor>? supervisorFactory) {
         _fixtureSuffix = fixtureSuffix;
         LogConfig.Initialize();
         Log.Information("AppHost starting in session {SessionId}", sessionId);
 
         Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
+        try {
+            Application.SetCompatibleTextRenderingDefault(false);
+        }
+        catch (InvalidOperationException) {
+            // Already set or first window already created in process (e.g. test runner).
+        }
 
         _singleInstance = new SingleInstance(sessionId);
 
@@ -76,12 +94,34 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             }
         }
 
+        bool isFixtureMode = !string.IsNullOrEmpty(fixtureSuffix);
+
         var initialSnapshot = !string.IsNullOrEmpty(initialFixture)
             ? FixtureSnapshotProvider.GetSnapshot(initialFixture, isPinned: false, revision: 1)
-            : FixtureSnapshotProvider.GetSnapshot("empty", isPinned: false, revision: 1);
+            : StateEngine.CreateDefaultSnapshot(isPinned: false, revision: 1);
 
-        _coordinator = new BridgeCoordinator(this, isPinned: false, initialSnapshot);
+        _stateEngine = new StateEngine(initialSnapshot);
+        _stateEngine.SnapshotPublished += snapshot => _coordinator?.UpdateSnapshot(snapshot);
+
+        _coordinator = new BridgeCoordinator(
+            this,
+            isPinned: false,
+            initialSnapshot: initialSnapshot,
+            onSetPinned: pinned => _stateEngine.Post(new SetPinnedEvent(pinned)));
+
         _webViewHost = new WebViewHost(_flyoutWindow, _coordinator);
+
+        if (!isFixtureMode) {
+            _supervisor = supervisorFactory != null
+                ? supervisorFactory()
+                : new Adb.AdbServerSupervisor(
+                    connectionFactory: () => new Adb.Protocol.AdbHostConnection(),
+                    locator: new Adb.AdbExecutableLocator(),
+                    processRunner: new Adb.AdbProcessRunner(),
+                    backoff: new Adb.Backoff());
+
+            _supervisor.StateChanged += state => _stateEngine.Post(new AdbServerStateChangedEvent(state));
+        }
     }
 
     public void Run() {
@@ -90,6 +130,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         if (AppDomain.CurrentDomain.BaseDirectory.Contains("smoke", StringComparison.OrdinalIgnoreCase)) {
             Log.Information("Smoke run detected via path. Exiting successfully.");
             return;
+        }
+
+        if (_supervisor != null) {
+            _supervisorTask = Task.Run(() => _supervisor.RunAsync(_appLifetimeCts.Token));
         }
 
         // Force handle creation so OnHandleCreated/ApplyBackdrop runs before WebView2 init
@@ -276,6 +320,19 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     public void Dispose() {
+        _appLifetimeCts.Cancel();
+        try {
+            if (_supervisorTask != null && !_supervisorTask.IsCompleted) {
+                _supervisorTask.Wait(TimeSpan.FromSeconds(2));
+            }
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or AggregateException) {
+            // Clean shutdown
+        }
+
+        _stateEngine?.Dispose();
+        _appLifetimeCts.Dispose();
+
         if (_powerAndSession != null) {
             _powerAndSession.DisplaySettingsChanged -= OnDisplayChanged;
             _powerAndSession.Dispose();
