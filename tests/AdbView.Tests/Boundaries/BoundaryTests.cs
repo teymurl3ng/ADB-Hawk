@@ -649,11 +649,58 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
+    // 19b. MdnsTracker / parsers do not reference State/UI (Phase 6A).
+    [Fact]
+    public void MdnsTrackerLayerDoesNotReferenceForbiddenLayers() {
+        var trackerFiles = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "MdnsTracker.cs"),
+            RootFile("src", "AdbView", "Adb", "MdnsTrackerBackoff.cs"),
+            RootFile("src", "AdbView", "Adb", "MdnsServicesProtoParser.cs"),
+            RootFile("src", "AdbView", "Adb", "MdnsServicesProtoTextParser.cs"),
+            RootFile("src", "AdbView", "Adb", "MdnsServicesListParser.cs"),
+            RootFile("src", "AdbView", "Adb", "MdnsServiceTypes.cs"),
+            RootFile("src", "AdbView", "Adb", "MdnsTrackServicesCli.cs"),
+            RootFile("src", "AdbView", "Adb", "Model", "RawMdnsService.cs"),
+        };
+
+        var forbiddenTokens = new[]
+        {
+            "AdbView.State",
+            "StateEngine",
+            "StateReducer",
+            "AppSnapshot",
+            "PairingOfferView",
+            "PairingOperationView",
+            "DeviceView",
+            "AdbView.Bridge",
+            "BridgeCoordinator",
+            "AdbView.Host",
+            "System.Windows.Forms",
+            "Microsoft.Web.WebView2",
+            "System.Net.Http",
+            "Google.Protobuf",
+            "flyout",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in trackerFiles) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.OrdinalIgnoreCase)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
     // 20. Adb.Protocol still must not reference DeviceTracker / RawDevice (Phase 5A).
     [Fact]
     public void AdbProtocolDoesNotReferenceDeviceTrackerOrRawDevice() {
         var protocolDir = RootFile("src", "AdbView", "Adb", "Protocol");
-        var forbiddenTokens = new[] { "DeviceTracker", "RawDevice", "DevicesProtoParser", "TrackDevicesLParser" };
+        var forbiddenTokens = new[] { "DeviceTracker", "RawDevice", "DevicesProtoParser", "TrackDevicesLParser", "MdnsTracker", "RawMdnsService", "MdnsServicesProtoParser" };
         var violations = new List<string>();
         foreach (var file in SourceFiles(protocolDir, CSharpExtensions)) {
             var text = ReadText(file);
