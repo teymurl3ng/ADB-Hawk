@@ -621,6 +621,9 @@ public sealed class BoundaryTests {
             "StateReducer",
             "AppSnapshot",
             "DeviceView",
+            "DeviceIdentity",
+            "NormalizedDevice",
+            "DeviceSemanticState",
             "AdbView.Bridge",
             "BridgeCoordinator",
             "AdbView.Host",
@@ -648,6 +651,61 @@ public sealed class BoundaryTests {
     public void AdbProtocolDoesNotReferenceDeviceTrackerOrRawDevice() {
         var protocolDir = RootFile("src", "AdbView", "Adb", "Protocol");
         var forbiddenTokens = new[] { "DeviceTracker", "RawDevice", "DevicesProtoParser", "TrackDevicesLParser" };
+        var violations = new List<string>();
+        foreach (var file in SourceFiles(protocolDir, CSharpExtensions)) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references '{token}'");
+                }
+            }
+        }
+        AssertNoViolations(violations);
+    }
+
+    // 21. DeviceIdentity / NormalizedDevice do not reference State/UI (Phase 5B).
+    [Fact]
+    public void DeviceIdentityLayerDoesNotReferenceForbiddenLayers() {
+        var identityFiles = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "DeviceIdentity.cs"),
+            RootFile("src", "AdbView", "Adb", "Model", "NormalizedDevice.cs"),
+        };
+
+        var forbiddenTokens = new[]
+        {
+            "AdbView.State",
+            "StateEngine",
+            "StateReducer",
+            "AppSnapshot",
+            "DeviceView",
+            "AdbView.Bridge",
+            "BridgeCoordinator",
+            "AdbView.Host",
+            "System.Windows.Forms",
+            "Microsoft.Web.WebView2",
+            "System.Net.Http",
+            "Google.Protobuf",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in identityFiles) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
+    // 22. Adb.Protocol still must not reference DeviceIdentity / NormalizedDevice (Phase 5B).
+    [Fact]
+    public void AdbProtocolDoesNotReferenceDeviceIdentity() {
+        var protocolDir = RootFile("src", "AdbView", "Adb", "Protocol");
+        var forbiddenTokens = new[] { "DeviceIdentity", "NormalizedDevice", "DeviceSemanticState", "DeviceTransport" };
         var violations = new List<string>();
         foreach (var file in SourceFiles(protocolDir, CSharpExtensions)) {
             var text = ReadText(file);
