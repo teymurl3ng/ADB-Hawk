@@ -1,0 +1,1 @@
+R8VXA02SNKH            device product:a06xx model:SM_A065F device:a06 transport_id:2

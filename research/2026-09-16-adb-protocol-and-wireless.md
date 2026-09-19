@@ -1,7 +1,7 @@
 # ADB access strategy: host protocol, device tracking, wireless discovery, pairing
 
-- **Date:** 2026-09-16
-- **Phase:** pre-Phase 0 (architecture); refreshed in Phases 4, 5, 6
+- **Date:** 2026-09-16 (refreshed 2026-09-19 for Phase 5A)
+- **Phase:** pre-Phase 0 (architecture); refreshed in Phases 4, 5A
 - **Status:** current
 
 ## Problem
@@ -10,17 +10,23 @@ Decide, from first principles against the September 2026 Android tooling, how AD
 ADB state: what to depend on, how to avoid polling, how to model wireless pairing versus wireless
 connection, and how to get a trustworthy transport signal without parsing serial strings.
 
+Phase 5A additionally requires an **immutable pin** of the `Devices` / `Device` protobuf schema
+(field numbers and enums) and observed `host:track-devices-proto-binary` wire payloads.
+
 ## Sources consulted
 
 | Source | URL | Version / last updated |
 |---|---|---|
 | Android Debug Bridge (adb) — official guide | https://developer.android.com/tools/adb | last updated 2026-09-02 |
-| AOSP adb host services documentation (`docs/dev/services.md`, `SERVICES.TXT`) | https://android.googlesource.com/platform/packages/modules/adb/+/HEAD/docs/dev/services.md | AOSP HEAD |
-| AOSP `docs/dev/adb_wifi.md` — architecture of ADB Wi-Fi | https://android.googlesource.com/platform/packages/modules/adb/+/HEAD/docs/dev/adb_wifi.md | AOSP HEAD |
-| `adb.1.md` man page (env vars, `server-status`, `wait-for` states) | https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/master/docs/user/adb.1.md | AOSP master |
+| AOSP adb host services documentation | https://android.googlesource.com/platform/packages/modules/adb/+/1cf2f017d312f73b3dc53bda85ef2610e35a80e9/docs/dev/services.md | commit `1cf2f017d312f73b3dc53bda85ef2610e35a80e9` |
+| AOSP `adb_host.proto` (immutable pin) | https://android.googlesource.com/platform/packages/modules/adb/+/1cf2f017d312f73b3dc53bda85ef2610e35a80e9/proto/adb_host.proto | commit `1cf2f017d312f73b3dc53bda85ef2610e35a80e9` |
 | SDK Platform Tools release notes | https://developer.android.com/tools/releases/platform-tools | platform-tools 37.0.1 (July 2026) |
-| AOSP `adb_host.proto` schema definition | https://android.googlesource.com/platform/packages/modules/adb/+/refs/tags/android-15.0.0_r1/proto/adb_host.proto | tag `android-15.0.0_r1` (verified against platform-tools 37.0.1) |
-| AdvancedSharpAdbClient package page | https://www.nuget.org/packages/AdvancedSharpAdbClient | 3.6.16, published 2026-01-13; .NET 10 compatible |
+| Live observation on this machine | `127.0.0.1:5037` host protocol against installed adb | platform-tools **37.0.1-15733141**, 2026-09-19 |
+
+**Do not use `refs/heads/main` alone as schema authority.** The Devices schema for Phase 5A is pinned to
+commit `1cf2f017d312f73b3dc53bda85ef2610e35a80e9` of `platform/packages/modules/adb`.
+Content SHA-256 of that `adb_host.proto` blob (UTF-8, as fetched):
+`fb6d382f03f705a46b04f6008a71571c124c826669296beff2039be4063f7b4c`.
 
 ## Version investigated
 
@@ -34,95 +40,89 @@ platform-tools **37.0.1**; adb Wi-Fi 2.0 (Android 17 + adb 37.x); Windows 11; .N
    and push a new length-prefixed payload on every change.
 2. **Event-driven device tracking exists in three variants:** `host:track-devices`,
    `host:track-devices-proto-binary`, `host:track-devices-proto-text`. Each payload is a complete
-   device list, not a delta. The proto variants carry structured fields including the
-   connection type (USB vs socket), bus address, product, model and device — i.e. a reliable
-   transport signal that does not require inspecting the serial string.
-3. **Event-driven mDNS tracking exists.** `adb mdns track-services` streams discovered services
-   and supports `--proto-text` / `--proto-binary`; the official troubleshooting guide uses it as
-   the canonical mDNS check. A host-service constant `track-mdns-services` appears in current
-   Android tooling source, so the streaming service is reachable over the host protocol; the exact
-   wire string must be confirmed against the installed adb (validation V-1). One-shot
-   `host:mdns:services` and `host:mdns:check` also exist.
-4. **Three distinct mDNS service types** (AOSP `adb_wifi.md`): `_adb._tcp` (legacy `adb tcpip`),
-   `_adb-tls-pairing._tcp` (the device's pairing server is active — i.e. the user has the pairing
-   screen open), `_adb-tls-connect._tcp` (the device's TLS server is advertising, whether or not
-   this host is paired). Pairing and connecting are separate concepts; the pairing client also
-   attempts a connect afterwards because `_adb-tls-connect` was already advertised before pairing
-   began, so the host cannot rely on a connect "create" event.
-5. **adb Wi-Fi 2.0** (Android 17 + adb 37.x; introduced with the 37.0.0 line): mDNS records carry `instance`, `service`, `ipv4`,
-   `ipv6`, `port`, `product_model`, `build_version_sdk_full`, `given_name`, `serial`,
-   `mdns_service_version`, `hostname`. Paired devices auto-connect when they join a trusted
-   wireless network, so a device can appear in `track-devices` before a pairing call returns.
-6. **mDNS backend.** Platform-tools **37.0.1** removed the deprecated `openscreen` backend.
-   `libadbmdns` is now the only mDNS backend and `ADB_MDNS_OPENSCREEN` has no effect.
-   `adb server-status` reports `version`, `mdns_enabled`, `mdns_backend` and the log path
-   (`AdbServerStatus` in `adb_host.proto`). Historical guidance to force
-   `ADB_MDNS_OPENSCREEN=1` is obsolete and must not be carried into ADB View.
-7. **Device states** seen in current tooling: `device`, `offline`, `unauthorized`, `authorizing`,
-   `connecting`, `recovery`, `rescue`, `sideload`, `bootloader`, `detached`, plus `host`.
-8. **AdvancedSharpAdbClient 3.6.16** is not dead or obsolete: it was published **2026-01-13**
-   and is compatible with .NET 10. It remains a viable general-purpose ADB client. It is not chosen
-   here because the documented high-level API does not remove the custom work ADB View needs for
-   structured proto device tracking with `connection_type`, streaming mDNS tracking, and
-   `server-status`; mixing the library with a parallel custom host-protocol layer would enlarge the
-   critical subsystem without eliminating that protocol code.
+   device list, not a delta. After `OKAY`, updates are `[4 ASCII hex length][payload]`.
+3. **Pinned `Devices` / `Device` schema** (commit `1cf2f017…`):
+
+   ```
+   enum ConnectionState {
+     ANY=0, CONNECTING=1, AUTHORIZING=2, UNAUTHORIZED=3, NOPERMISSION=4,
+     DETACHED=5, OFFLINE=6, BOOTLOADER=7, DEVICE=8, HOST=9,
+     RECOVERY=10, SIDELOAD=11, RESCUE=12
+   }
+   enum ConnectionType { UNKNOWN=0, USB=1, SOCKET=2 }
+
+   message Device {
+     string serial = 1;
+     ConnectionState state = 2;
+     string bus_address = 3;          // ignored by ADB View
+     string product = 4;
+     string model = 5;
+     string device = 6;
+     ConnectionType connection_type = 7;
+     int64 negotiated_speed = 8;      // ignored
+     int64 max_speed = 9;             // ignored
+     int64 transport_id = 10;         // ignored
+   }
+   message Devices { repeated Device device = 1; }
+   ```
+
+4. **`host:track-devices-l` text format (observed + services.md).** Same long listing as
+   `host:devices-l`: lines of
+   `SERIAL<whitespace>STATE[ product:… model:… device:… transport_id:… …]\n`.
+   No `connection_type` field. Transport must not be invented by the text parser (Phase 5B identity).
+5. **Live USB capture (2026-09-19)** — device `R8VXA02SNKH` (Samsung Galaxy A06 family):
+   - proto-text: `state: DEVICE`, `connection_type: USB`, `product: a06xx`, `model: SM_A065F`, `device: a06`
+   - proto-binary hex (43 bytes): `0A290A0B52385658413032534E4B481008220561303678782A08534D5F4130363546320361303638015002`
+   - Field walk matches pin: Devices.device=1 → Device{serial=1, state=2 (8), product=4, model=5, device=6, connection_type=7 (1=USB), transport_id=10}
+   - text-l: `R8VXA02SNKH            device product:a06xx model:SM_A065F device:a06 transport_id:2`
+6. **Wi-Fi / SOCKET observation:** **unavailable** on this machine at capture time (only one USB
+   device attached). Do not fabricate SOCKET payloads; FakeAdbServer scripts cover SOCKET in tests.
+7. **Framing vs payload errors (Phase 5A contract):**
+   - Valid frame + malformed protobuf → drop that update, keep stream (log ≤ once/minute).
+   - Malformed ADB framing / mid-frame EOF → terminate session, reconnect with tracker backoff.
+8. **Proto unsupported vs generic FAIL (Phase 5A):** AOSP `sockets.cpp` sends
+   `unknown host service '<service>'` when a host service cannot be created. Only that
+   diagnostic (matched via `AdbHostServiceDiagnostics.IsUnknownHostService`) caches
+   generation-scoped text fallback. Any other `CommandFailed` FAIL keeps proto preferred,
+   emits `DeviceTrackerFailed`, and reconnects with tracker backoff.
+9. **Tracker reconnect backoff (ENGINEERING.md §6.5):** 0.5 s, 1 s, 2 s, 5 s, 10 s, 30 s cap, jittered;
+   distinct from server-supervisor backoff (1/2/5/10/30/60).
+10. **mDNS / pairing / Wi-Fi 2.0** findings from earlier revisions remain valid for Phases 6+ and are
+   unchanged here.
 
 ## Chosen approach
 
-Speak the host protocol directly from C#: `AdbHostConnection` (framing + `OKAY`/`FAIL`), a
-supervised `host:track-devices-proto-binary` stream, a supervised streaming mDNS tracker, a
-one-shot `server-status` capability probe, `host:pair:<code>:<host>:<port>` for pairing, and
-`host:transport:<serial>` + three constant shell commands for metadata. A ~40-line
-forward-compatible protobuf field reader parses the proto payloads (known field numbers only,
-unknown fields skipped by wire type). `adb.exe` is used only for `start-server` and as a documented
-fallback for pairing, mDNS streaming, and `server-status`. Environment variables are never set.
-Transport comes from `connection_type`; serial-shape parsing is confined to `Adb/DeviceIdentity.cs`
-for hardware-serial recovery on wireless transports.
+Speak the host protocol directly from C#: `AdbHostConnection` framing, supervised
+`host:track-devices-proto-binary` with per-generation fallback to `host:track-devices-l`,
+`AdbProtoReader` for Devices (known fields only), raw `RawDevice` emission before identity/UI
+normalization (Phase 5B/5C).
 
 ## Why
 
-It removes polling entirely, gives a documented transport signal instead of heuristics, unlocks
-Wi-Fi 2.0 metadata (real device names on pairing offers), keeps the critical path to one coherent
-host-protocol implementation rather than combining a library with custom protocol extensions, and
-is trivially fakeable — a scripted loopback server can reproduce every
-recovery scenario in milliseconds.
+Removes polling, gives a documented transport signal when proto is available, keeps protocol
+parsing fakeable, and isolates framing failures from protobuf body failures.
 
 ## Rejected approaches
 
-- **AdvancedSharpAdbClient 3.6.16** — current enough to be a legitimate option and .NET 10
-  compatible, but it does not eliminate the custom modern host-protocol surfaces this architecture
-  requires. Using it alongside bespoke tracking/mDNS/server-status code would create two ADB access
-  paths in the most reliability-sensitive subsystem, so the smaller architecture is one focused
-  host-protocol client.
-- **Shelling `adb devices -l` on a timer** — polling plus fragile text parsing; forbidden by the brief.
-- **Google.Protobuf + vendored `.proto` files** — a dependency and a regeneration ritual for three
-  messages and about a dozen fields.
-- **Our own mDNS browser (e.g. a .NET Bonjour/zeroconf library)** — a second multicast stack fighting
-  the adb server and Windows for UDP 5353, and it would not see what the adb server sees (notably in
-  WSL/VM/container setups where the server runs elsewhere).
-- **Bundling platform-tools** — version skew on a machine-global singleton is the most common ADB
-  failure mode; licensing and update burden on top.
-- **Ever calling `host:kill`** — would break every other tool using the shared server.
+- **Google.Protobuf + vendored `.proto`** — dependency and regeneration ritual for a handful of fields.
+- **Shelling `adb devices -l` on a timer** — polling; forbidden.
+- **Inferring Wi-Fi from `emulator-*` or colon serials inside the text parser** — belongs in
+  `DeviceIdentity` (Phase 5B), not the raw tracker.
 
 ## Compatibility concerns
 
-platform-tools < 33 lacks the proto services → fall back to `host:track-devices-l` text parsing and
-one-shot mDNS listing, logged once as degraded; transport may read `Unknown`. Pre-Android-17 devices
-advertise fewer mDNS fields → offers fall back to instance-derived names. mDNS-blocked networks →
-local `Wireless discovery unavailable` warning only; USB unaffected.
+platform-tools &lt; 33 may lack proto tracking → text fallback, `connection_type` absent.
+mDNS-blocked networks are Phase 6.
 
 ## Testing implications
 
-- Unit: framing, payload caps, `FAIL` reasons, truncated frames, cancellation, proto reader with
-  unknown-field skipping, malformed varints, identity resolution cases, state-literal mapping.
-- Cross-check: for every captured fixture, binary parse must equal `--proto-text` parse.
-- Fake server: device-list sequences, mid-stream death, `FAIL` on capability probe, mDNS appearance
-  and withdrawal, pairing success/wrong-code/hang, server restart.
-- Real hardware: capture transcripts for USB, wireless (Android ≤ 16 and Android 17), recovery,
-  bootloader, sideload, unauthorized; commit them as fixtures.
+- Unit: Devices protobuf parse, text-l parse, malformed body vs framing, generation-scoped proto
+  fallback, tracker backoff 0.5…30, injected clock timestamps.
+- Cross-check: committed USB binary fixture vs observed proto-text.
+- Fake server: scripted track streams; no sleeps.
+- Hardware: USB captured; Wi-Fi SOCKET capture still open (V-9).
 
 ## Open items
 
-V-1 (exact host-service strings on installed adb 37.x), V-9 (protobuf reader vs proto-text on real
-hardware), V-10 (Wi-Fi 2.0 auto-connect timing versus the pairing state machine), V-7 (battery via
-`dumpsys battery` across OEMs).
+V-1 residual (mDNS host-service string), V-9 (Wi-Fi SOCKET binary capture when hardware available),
+V-10 (Wi-Fi 2.0 pairing timing), V-7 (battery dumpsys).
