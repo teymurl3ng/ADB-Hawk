@@ -51,7 +51,7 @@ Non-mutating probes only against platform-tools **37.0.1-15733141** and Samsung 
 
 ## Phase 6C / 6D — Discovery + pairing into state + live acceptance (2026-09-19)
 
-**Waves:** `eeed0ad` (6A) · `52a912b` (6B) · `4177b79` (6C) · closure commit recorded in `PHASES.md` Completion record / tag `phase-6-complete`
+**Waves:** `eeed0ad` (6A) · `52a912b` (6B) · `4177b79` (6C) · closure commit `a57e0b8` / tag `phase-6-complete`
 
 **Platform:** Windows 11 · production Release `AdbView.exe` (no `--test-fixture`) · platform-tools **37.0.1-15733141**
 
