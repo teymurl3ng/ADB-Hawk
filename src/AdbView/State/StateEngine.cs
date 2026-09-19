@@ -13,19 +13,26 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
 
     private readonly Channel<EngineMessage> _channel;
     private readonly Func<DateTimeOffset> _getUtcNow;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _processingTask;
     private AppSnapshot _currentSnapshot;
+    private DeviceEngineState _deviceState = DeviceEngineState.Empty;
+    private CancellationTokenSource? _graceCts;
     private int _disposed;
 
     public AppSnapshot CurrentSnapshot => Volatile.Read(ref _currentSnapshot);
+
+    internal DeviceEngineState CurrentDeviceState => Volatile.Read(ref _deviceState)!;
 
     public event Action<AppSnapshot>? SnapshotPublished;
 
     public StateEngine(
         AppSnapshot? initialSnapshot = null,
-        Func<DateTimeOffset>? getUtcNow = null) {
+        Func<DateTimeOffset>? getUtcNow = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null) {
         _getUtcNow = getUtcNow ?? (() => App.SystemClock.UtcNow);
+        _delay = delay ?? Task.Delay;
         _currentSnapshot = initialSnapshot ?? CreateDefaultSnapshot();
 
         _channel = Channel.CreateUnbounded<EngineMessage>(new UnboundedChannelOptions {
@@ -85,13 +92,7 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
                 while (reader.TryRead(out var msg)) {
                     switch (msg) {
                         case DomainMessage domain:
-                            var now = _getUtcNow();
-                            var current = Volatile.Read(ref _currentSnapshot);
-                            var next = StateReducer.Reduce(current, domain.Event, now);
-                            if (!ReferenceEquals(next, current) && next != current) {
-                                Volatile.Write(ref _currentSnapshot, next);
-                                SnapshotPublished?.Invoke(next);
-                            }
+                            ApplyDomainEvent(domain.Event);
                             break;
                         case BarrierMessage barrier:
                             barrier.Tcs.TrySetResult();
@@ -105,11 +106,90 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         }
     }
 
+    private void ApplyDomainEvent(AdbViewEvent evt) {
+        var now = _getUtcNow();
+        var current = Volatile.Read(ref _currentSnapshot);
+        var deviceState = Volatile.Read(ref _deviceState) ?? DeviceEngineState.Empty;
+        var result = StateReducer.ReduceWithDeviceState(current, deviceState, evt, now);
+
+        Volatile.Write(ref _deviceState, result.DeviceState);
+        ApplyGraceCommand(result.Grace);
+
+        if (!ReferenceEquals(result.Snapshot, current) && result.Snapshot != current) {
+            Volatile.Write(ref _currentSnapshot, result.Snapshot);
+            SnapshotPublished?.Invoke(result.Snapshot);
+        }
+    }
+
+    private void ApplyGraceCommand(GraceCommand command) {
+        switch (command.Kind) {
+            case GraceCommandKind.Cancel:
+                CancelGraceTimer();
+                break;
+            case GraceCommandKind.Schedule:
+                CancelGraceTimer();
+                var cts = new CancellationTokenSource();
+                _graceCts = cts;
+                long generation = command.Generation;
+#pragma warning disable CA2008 // TaskScheduler
+                _ = Task.Run(async () => {
+                    try {
+                        await _delay(StateReducer.TrackerFailureGrace, cts.Token).ConfigureAwait(false);
+                        Post(new DeviceTrackerGraceExpiredEvent(generation));
+                    }
+                    catch (OperationCanceledException) {
+                        // Grace cancelled by newer list or dispose.
+                    }
+                });
+#pragma warning restore CA2008
+                break;
+        }
+    }
+
+    private void CancelGraceTimer() {
+        var cts = _graceCts;
+        _graceCts = null;
+        if (cts is null) {
+            return;
+        }
+
+        try {
+#pragma warning disable CA1849 // Sync dispose/cancel path; CancelAsync is used from StopAsync.
+            cts.Cancel();
+#pragma warning restore CA1849
+        }
+        catch (ObjectDisposedException) {
+            // Already disposed.
+        }
+        finally {
+            cts.Dispose();
+        }
+    }
+
+    private async Task CancelGraceTimerAsync() {
+        var cts = _graceCts;
+        _graceCts = null;
+        if (cts is null) {
+            return;
+        }
+
+        try {
+            await cts.CancelAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException) {
+            // Already disposed.
+        }
+        finally {
+            cts.Dispose();
+        }
+    }
+
     public async Task StopAsync(CancellationToken cancellationToken = default) {
         if (Interlocked.CompareExchange(ref _disposed, 1, 0) != 0) {
             return;
         }
 
+        await CancelGraceTimerAsync().ConfigureAwait(false);
         _channel.Writer.TryComplete();
         try {
             await _processingTask.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -132,6 +212,7 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
             return;
         }
 
+        CancelGraceTimer();
         _channel.Writer.TryComplete();
         try {
             if (!_processingTask.Wait(TimeSpan.FromSeconds(2))) {

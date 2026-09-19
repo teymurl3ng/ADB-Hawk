@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using AdbView.State;
 using Serilog;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -11,6 +12,8 @@ internal sealed class TrayIcon : IDisposable {
     private readonly NotifyIcon _notifyIcon;
     private readonly uint _taskbarCreatedMessageId;
     private readonly MessageSink _messageSink;
+    private TrayStatusKind _currentStatus = TrayStatusKind.Idle;
+    private Icon? _ownedIcon;
 
     public event EventHandler? OnToggleRequested;
     public event EventHandler? OnExitRequested;
@@ -63,6 +66,44 @@ internal sealed class TrayIcon : IDisposable {
         Log.Information("Explorer restart detected. Re-adding tray icon.");
         _notifyIcon.Visible = false;
         _notifyIcon.Visible = true;
+    }
+
+    /// <summary>
+    /// Applies Pass-F tray glyph + tooltip from aggregate snapshot health (PHASES.md Phase 5).
+    /// </summary>
+    public void Apply(TrayStatusKind status, string tooltip) {
+        ArgumentNullException.ThrowIfNull(tooltip);
+
+        string text = tooltip.Length <= 63 ? tooltip : tooltip[..63];
+        if (!string.Equals(_notifyIcon.Text, text, StringComparison.Ordinal)) {
+            _notifyIcon.Text = text;
+        }
+
+        if (_currentStatus == status && _ownedIcon is not null) {
+            return;
+        }
+
+        string resource = status switch {
+            TrayStatusKind.Connected => "AdbView.Resources.aperture-link-connected.ico",
+            TrayStatusKind.Attention => "AdbView.Resources.aperture-link-attention.ico",
+            TrayStatusKind.Failure => "AdbView.Resources.aperture-link-error.ico",
+            TrayStatusKind.Special => "AdbView.Resources.aperture-link-special.ico",
+            TrayStatusKind.PairingAvailable => "AdbView.Resources.aperture-link-pairing.ico",
+            _ => "AdbView.Resources.aperture-link-idle.ico",
+        };
+
+        var assembly = typeof(TrayIcon).Assembly;
+        using var stream = assembly.GetManifestResourceStream(resource);
+        if (stream is null) {
+            Log.Warning("Tray icon resource missing: {Resource}", resource);
+            return;
+        }
+
+        var previous = _ownedIcon;
+        _ownedIcon = new Icon(stream);
+        _notifyIcon.Icon = _ownedIcon;
+        _currentStatus = status;
+        previous?.Dispose();
     }
 
     public (Rectangle Rect, FlyoutPlacement.TaskbarEdge Edge) GetPlacementInfo() {
@@ -121,6 +162,8 @@ internal sealed class TrayIcon : IDisposable {
     public void Dispose() {
         _notifyIcon.MouseClick -= OnMouseClick;
         _notifyIcon.Dispose();
+        _ownedIcon?.Dispose();
+        _ownedIcon = null;
         _messageSink.DestroyHandle();
     }
 }

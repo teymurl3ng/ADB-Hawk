@@ -21,6 +21,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly BridgeCoordinator? _coordinator;
     private readonly StateEngine? _stateEngine;
     private readonly Adb.AdbServerSupervisor? _supervisor;
+    private readonly DeviceTrackerLifecycle? _deviceTrackerLifecycle;
     private readonly System.Threading.CancellationTokenSource _appLifetimeCts = new();
     private Task? _supervisorTask;
     private readonly string _fixtureSuffix;
@@ -31,6 +32,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     public BridgeCoordinator? Coordinator => _coordinator;
     internal StateEngine? StateEngine => _stateEngine;
     internal Adb.AdbServerSupervisor? Supervisor => _supervisor;
+    internal DeviceTrackerLifecycle? DeviceTrackerLifecycle => _deviceTrackerLifecycle;
 
     public AppHost(int sessionId, string fixtureSuffix = "")
         : this(sessionId, fixtureSuffix, supervisorFactory: null, bridgeHost: null, headless: false) { }
@@ -45,7 +47,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         string fixtureSuffix,
         Func<Adb.AdbServerSupervisor>? supervisorFactory,
         IBridgeHost? bridgeHost = null,
-        bool headless = false) {
+        bool headless = false,
+        Func<Adb.DeviceTracker>? deviceTrackerFactory = null) {
         _fixtureSuffix = fixtureSuffix;
         LogConfig.Initialize();
         Log.Information("AppHost starting in session {SessionId} (headless={Headless})", sessionId, headless);
@@ -113,7 +116,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             : StateEngine.CreateDefaultSnapshot(isPinned: false, revision: 1);
 
         _stateEngine = new StateEngine(initialSnapshot);
-        _stateEngine.SnapshotPublished += snapshot => _coordinator?.UpdateSnapshot(snapshot);
+        _stateEngine.SnapshotPublished += OnSnapshotPublished;
 
         IBridgeHost coordinatorHost = bridgeHost ?? (IBridgeHost)this;
         if (headless && bridgeHost == null) {
@@ -128,6 +131,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         if (!headless) {
             _webViewHost = new WebViewHost(_flyoutWindow!, _coordinator);
+            _trayIcon?.Apply(initialSnapshot.Health.Tray, initialSnapshot.Health.TrayTooltip);
         }
 
         if (!isFixtureMode) {
@@ -139,9 +143,32 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                     processRunner: new Adb.AdbProcessRunner(),
                     backoff: new Adb.Backoff());
 
-            _supervisor.StateChanged += state => _stateEngine.Post(new AdbServerStateChangedEvent(state));
+            _deviceTrackerLifecycle = new DeviceTrackerLifecycle(
+                post: evt => _stateEngine.Post(evt),
+                trackerFactory: deviceTrackerFactory);
+
+            _supervisor.StateChanged += OnSupervisorStateChanged;
         }
     }
+
+    private void OnSupervisorStateChanged(Adb.Model.AdbServerStateChanged state) {
+        _stateEngine?.Post(new AdbServerStateChangedEvent(state));
+        _deviceTrackerLifecycle?.OnServerStateChanged(state);
+    }
+
+    private void OnSnapshotPublished(AppSnapshot snapshot) {
+        _coordinator?.UpdateSnapshot(snapshot);
+        if (_trayIcon is not null) {
+            if (TryMarshalToFlyoutUi(new Action<AppSnapshot>(ApplyTrayFromSnapshot), snapshot)) {
+                return;
+            }
+
+            ApplyTrayFromSnapshot(snapshot);
+        }
+    }
+
+    private void ApplyTrayFromSnapshot(AppSnapshot snapshot) =>
+        _trayIcon?.Apply(snapshot.Health.Tray, snapshot.Health.TrayTooltip);
 
     public void Run() {
         if (_singleInstance is not { IsOwner: true }) return;
@@ -375,6 +402,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             // Clean shutdown
         }
 
+        _deviceTrackerLifecycle?.Dispose();
         _stateEngine?.Dispose();
         _appLifetimeCts.Dispose();
 

@@ -562,7 +562,9 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
-    // 18. State core does not reference transport, UI, or host layers (R-04, Phase 4 Wave 4D).
+    // 18. State core does not reference transport sockets/UI/host (R-04).
+    // Phase 5C: RawDevice / DeviceListReceived / DeviceTrackerFailed* event names are allowed;
+    // framing, sockets, and Host/Bridge remain forbidden.
     [Fact]
     public void StateCoreDoesNotReferenceForbiddenLayers() {
         var stateFiles = new[]
@@ -571,12 +573,13 @@ public sealed class BoundaryTests {
             RootFile("src", "AdbView", "State", "StateEngine.cs"),
             RootFile("src", "AdbView", "State", "Vocabulary.cs"),
             RootFile("src", "AdbView", "State", "AdbViewEvent.cs"),
+            RootFile("src", "AdbView", "State", "DeviceViewMapper.cs"),
+            RootFile("src", "AdbView", "State", "TrayStatusAggregator.cs"),
         };
 
         var forbiddenTokens = new[]
         {
             "System.Net.Sockets",
-            "Socket",
             "System.Diagnostics.Process",
             "AdbHostConnection",
             "Microsoft.Web.WebView2",
@@ -585,8 +588,8 @@ public sealed class BoundaryTests {
             "AdbView.Bridge",
             "System.Net.Http",
             "track-devices",
-            "RawDevice",
-            "DeviceTracker",
+            "ExecuteFramedStreamAsync",
+            "TcpClient",
         };
 
         var violations = new List<string>();
@@ -715,6 +718,73 @@ public sealed class BoundaryTests {
                 }
             }
         }
+        AssertNoViolations(violations);
+    }
+
+    // 23. DeviceTracker remains unaware of State (Phase 5C).
+    [Fact]
+    public void DeviceTrackerDoesNotReferenceStateEngine() {
+        var files = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "DeviceTracker.cs"),
+            RootFile("src", "AdbView", "Adb", "DevicesProtoParser.cs"),
+            RootFile("src", "AdbView", "Adb", "TrackDevicesLParser.cs"),
+            RootFile("src", "AdbView", "Adb", "DeviceIdentity.cs"),
+        };
+
+        var forbidden = new[] { "StateEngine", "StateReducer", "AppSnapshot", "AdbView.State", "BridgeCoordinator" };
+        var violations = new List<string>();
+        foreach (var file in files) {
+            var text = ReadText(file);
+            foreach (var token in forbidden) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
+    // 24. StateReducer must not open sockets / ADB framing (Phase 5C).
+    [Fact]
+    public void StateReducerDoesNotReferenceSocketsOrFraming() {
+        var files = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "DeviceIdentity.cs"), // identity ok
+            RootFile("src", "AdbView", "State", "StateReducer.cs"),
+            RootFile("src", "AdbView", "State", "DeviceViewMapper.cs"),
+            RootFile("src", "AdbView", "State", "TrayStatusAggregator.cs"),
+        };
+
+        // Only assert State files for socket/framing tokens.
+        var stateFiles = new[]
+        {
+            RootFile("src", "AdbView", "State", "StateReducer.cs"),
+            RootFile("src", "AdbView", "State", "DeviceViewMapper.cs"),
+            RootFile("src", "AdbView", "State", "TrayStatusAggregator.cs"),
+            RootFile("src", "AdbView", "State", "Vocabulary.cs"),
+        };
+
+        var forbidden = new[]
+        {
+            "AdbHostConnection",
+            "TcpClient",
+            "Socket",
+            "ExecuteFramedStreamAsync",
+            "System.Net.Sockets",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in stateFiles) {
+            var text = ReadText(file);
+            foreach (var token in forbidden) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references '{token}'");
+                }
+            }
+        }
+
         AssertNoViolations(violations);
     }
 }

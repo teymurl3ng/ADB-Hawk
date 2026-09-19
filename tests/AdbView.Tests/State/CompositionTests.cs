@@ -103,6 +103,7 @@ public sealed class CompositionTests {
     [Fact]
     public void ScenarioR_FixtureMode_DoesNotStartSupervisor() {
         int factoryCallCount = 0;
+        int trackerFactoryCount = 0;
         using var host = new AppHost(
             sessionId: 54321,
             fixtureSuffix: "?fixture=empty",
@@ -111,10 +112,16 @@ public sealed class CompositionTests {
                 return CreateHermeticSupervisor();
             },
             bridgeHost: new MockBridgeHost(),
-            headless: true);
+            headless: true,
+            deviceTrackerFactory: () => {
+                trackerFactoryCount++;
+                return new DeviceTracker(connectionFactory: () => throw new System.IO.IOException("no"));
+            });
 
         Assert.Equal(0, factoryCallCount);
+        Assert.Equal(0, trackerFactoryCount);
         Assert.Null(host.Supervisor);
+        Assert.Null(host.DeviceTrackerLifecycle);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
     }
@@ -130,10 +137,13 @@ public sealed class CompositionTests {
                 return CreateHermeticSupervisor();
             },
             bridgeHost: new MockBridgeHost(),
-            headless: true);
+            headless: true,
+            deviceTrackerFactory: () => new DeviceTracker(
+                connectionFactory: () => throw new System.IO.IOException("hermetic-no-socket")));
 
         Assert.Equal(1, factoryCallCount);
         Assert.NotNull(host.Supervisor);
+        Assert.NotNull(host.DeviceTrackerLifecycle);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
 
@@ -141,6 +151,68 @@ public sealed class CompositionTests {
         await host.StateEngine.DrainAsync();
 
         Assert.Equal(GlobalHealthKind.AdbRestoring, host.StateEngine.CurrentSnapshot.Health.Kind);
+        Assert.False(host.DeviceTrackerLifecycle.IsRunning);
+    }
+
+    [Fact]
+    public async Task ScenarioAN_ProductionUp_StartsExactlyOneTracker() {
+        int trackerStarts = 0;
+
+        using var host = new AppHost(
+            sessionId: 54324,
+            fixtureSuffix: "",
+            supervisorFactory: () => CreateHermeticSupervisor(),
+            bridgeHost: new MockBridgeHost(),
+            headless: true,
+            deviceTrackerFactory: () => {
+                trackerStarts++;
+                var tracker = new DeviceTracker(
+                    connectionFactory: () => throw new System.IO.IOException("block-connect"));
+                // Lifecycle starts RunAsync which will fail and emit Failed; we only count constructions.
+                return tracker;
+            });
+
+        Assert.NotNull(host.DeviceTrackerLifecycle);
+        host.DeviceTrackerLifecycle!.OnServerStateChanged(
+            new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 7));
+        await Task.Delay(50);
+        Assert.Equal(1, trackerStarts);
+        Assert.Equal(7, host.DeviceTrackerLifecycle.RunningGeneration);
+
+        host.DeviceTrackerLifecycle.OnServerStateChanged(
+            new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 7));
+        await Task.Delay(20);
+        Assert.Equal(1, trackerStarts);
+
+        host.DeviceTrackerLifecycle.OnServerStateChanged(
+            new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 8));
+        await Task.Delay(50);
+        Assert.Equal(2, trackerStarts);
+        Assert.Equal(8, host.DeviceTrackerLifecycle.RunningGeneration);
+    }
+
+    [Fact]
+    public async Task ScenarioAM_AP_FixtureNoTracker_ShutdownStopsLifecycle() {
+        using var host = new AppHost(
+            sessionId: 54325,
+            fixtureSuffix: "",
+            supervisorFactory: CreateHermeticSupervisor,
+            bridgeHost: new MockBridgeHost(),
+            headless: true,
+            deviceTrackerFactory: () => new DeviceTracker(
+                connectionFactory: () => throw new System.IO.IOException("x")));
+
+        host.DeviceTrackerLifecycle!.OnServerStateChanged(
+            new AdbServerStateChanged(AdbServerPhase.Up, null, 1, 3));
+        await Task.Delay(30);
+        Assert.True(host.DeviceTrackerLifecycle.IsRunning || host.DeviceTrackerLifecycle.RunningGeneration == 3);
+
+        host.StateEngine!.Post(new SetPinnedEvent(true));
+        await host.StateEngine.DrainAsync();
+        host.Dispose();
+
+        Assert.Null(host.DeviceTrackerLifecycle.RunningGeneration);
+        Assert.True(host.StateEngine.CurrentSnapshot.Shell.Pinned);
     }
 
     [Fact]
