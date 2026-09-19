@@ -4,7 +4,7 @@ ADB View is a small Windows 11 system-tray utility for observing, explaining, no
 
 ## Repository status
 
-**Phase 4 complete: ADB protocol core against FakeAdbServer, server supervisor lifecycle, and StateEngine composition.** Framing/`AdbHostConnection`, capabilities/proto reader, executable discovery, backoff supervisor, pure `StateReducer`, graceful FIFO drain, vocabulary-backed tray health (`No ADB devices` / `ADB unavailable`), and hermetic composition tests. The next step is Phase 5 (device tracking) from `PHASES.md`.
+**Phase 5 complete: real ADB device tracking into AppSnapshot and the flyout.** Continuous `host:track-devices` (proto-binary preferred, text-l fallback), stable device identity, semantic state/transport normalization, complete-list replacement with out-of-order protection and 2 s tracker-failure retention, vocabulary-backed DeviceCountLabel and tray aggregation/tooltip, fixture isolation preserved, headed Samsung A06 USB proof. The next step is Phase 6 (wireless discovery and pairing) from `PHASES.md`.
 
 ## Governing documents
 

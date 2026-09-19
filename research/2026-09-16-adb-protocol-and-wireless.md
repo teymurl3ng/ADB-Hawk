@@ -121,6 +121,13 @@ mDNS-blocked networks are Phase 6.
 - Cross-check: committed USB binary fixture vs observed proto-text.
 - Fake server: scripted track streams; no sleeps.
 - Hardware: USB captured; Wi-Fi SOCKET capture still open (V-9).
+- **Headed production acceptance (2026-09-19, Phase 5C/5D):** Release `AdbView.exe`
+  (no fixture) on Samsung A06 `R8VXA02SNKH` → flyout `DeviceCard` `SM_A065F` /
+  Connected / USB / id `usb:R8VXA02SNKH`; tray `connected` /
+  `Connected: SM_A065F (USB)`; battery/Android version absent (Phase 5). Physical
+  USB disconnect/reconnect not live-observed (OS blocked software disable);
+  hermetic tests cover authoritative removal and 2 s grace. Recorded in
+  `docs/DEVICE-TEST-MATRIX.md`.
 
 ## Open items
 
