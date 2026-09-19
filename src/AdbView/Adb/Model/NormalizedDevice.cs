@@ -31,6 +31,8 @@ internal enum DeviceTransport {
 internal sealed record NormalizedDevice {
     public required string Id { get; init; }
     public required string HardwareSerial { get; init; }
+    /// <summary>Tracker-authoritative transport serial for <c>host:transport:</c> (may be host:port).</summary>
+    public required string AdbSerial { get; init; }
     public required DeviceTransport Transport { get; init; }
     public required DeviceSemanticState SemanticState { get; init; }
     public required string DisplayName { get; init; }

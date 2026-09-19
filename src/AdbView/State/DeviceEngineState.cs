@@ -23,6 +23,8 @@ internal sealed record DeviceEngineState {
         ActivePairingHost = null,
         ActivePairingSerial = null,
         ActivePairingDisplayName = null,
+        NextMetadataGeneration = 0,
+        MetadataSessions = ImmutableDictionary<string, DeviceMetadataSession>.Empty,
     };
 
     public DateTimeOffset? LatestAppliedListAt { get; init; }
@@ -52,6 +54,12 @@ internal sealed record DeviceEngineState {
     public string? ActivePairingSerial { get; init; }
 
     public string? ActivePairingDisplayName { get; init; }
+
+    /// <summary>Monotonic allocator for metadata generations (never resets on device removal).</summary>
+    public long NextMetadataGeneration { get; init; }
+
+    public ImmutableDictionary<string, DeviceMetadataSession> MetadataSessions { get; init; } =
+        ImmutableDictionary<string, DeviceMetadataSession>.Empty;
 }
 
 /// <summary>Resolved pairing offer endpoint kept out of AppSnapshot.</summary>

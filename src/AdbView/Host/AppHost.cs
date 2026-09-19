@@ -24,6 +24,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly DeviceTrackerLifecycle? _deviceTrackerLifecycle;
     private readonly MdnsTrackerLifecycle? _mdnsTrackerLifecycle;
     private readonly PairingSession? _pairingSession;
+    private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly System.Threading.CancellationTokenSource _appLifetimeCts = new();
     private Task? _supervisorTask;
     private readonly string _fixtureSuffix;
@@ -37,6 +38,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     internal DeviceTrackerLifecycle? DeviceTrackerLifecycle => _deviceTrackerLifecycle;
     internal MdnsTrackerLifecycle? MdnsTrackerLifecycle => _mdnsTrackerLifecycle;
     internal PairingSession? PairingSession => _pairingSession;
+    internal DeviceMetadataLifecycle? MetadataLifecycle => _metadataLifecycle;
 
     public AppHost(int sessionId, string fixtureSuffix = "")
         : this(sessionId, fixtureSuffix, supervisorFactory: null, bridgeHost: null, headless: false) { }
@@ -54,7 +56,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         bool headless = false,
         Func<Adb.DeviceTracker>? deviceTrackerFactory = null,
         Func<Adb.MdnsTracker>? mdnsTrackerFactory = null,
-        Adb.PairingCoordinator? pairingCoordinator = null) {
+        Adb.PairingCoordinator? pairingCoordinator = null,
+        Adb.IMetadataProbe? metadataProbe = null) {
         _fixtureSuffix = fixtureSuffix;
         LogConfig.Initialize();
         Log.Information("AppHost starting in session {SessionId} (headless={Headless})", sessionId, headless);
@@ -91,7 +94,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _powerAndSession = new PowerAndSession();
             _powerAndSession.DisplaySettingsChanged += OnDisplayChanged;
             _powerAndSession.Suspend += (s, e) => {
+                _metadataLifecycle?.OnSuspend();
                 if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) HideFlyout();
+            };
+            _powerAndSession.Resume += (s, e) => {
+                _metadataLifecycle?.OnResume();
             };
             _powerAndSession.SessionSwitch += (s, e) => {
                 if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) HideFlyout();
@@ -154,6 +161,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 },
                 coordinator: pairingCoordinator);
 
+            _metadataLifecycle = new DeviceMetadataLifecycle(
+                postMetadata: (gen, evt) => _stateEngine.PostMetadata(gen, evt),
+                probe: metadataProbe);
+
+            _stateEngine.MetadataTargetsChanged += targets => _metadataLifecycle.OnTargetsChanged(targets);
+
             _supervisor.StateChanged += OnSupervisorStateChanged;
         }
 
@@ -180,6 +193,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
     private void OnSnapshotPublished(AppSnapshot snapshot) {
         _coordinator?.UpdateSnapshot(snapshot);
+        if (_metadataLifecycle is not null) {
+            bool pinned = _flyoutWindow?.IsPinned ?? snapshot.Shell.Pinned;
+            _metadataLifecycle.SetPresentationState(_isVisible, pinned);
+        }
+
         if (_trayIcon is not null) {
             if (TryMarshalToFlyoutUi(new Action<AppSnapshot>(ApplyTrayFromSnapshot), snapshot)) {
                 return;
@@ -274,6 +292,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         _isVisible = true;
+        NotifyMetadataPresentation();
     }
 
     /// <summary>
@@ -320,6 +339,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             Log.Information("AppHost.SetPinned: FlyoutWindow.IsPinned={IsPinned}, TopMost={TopMost}",
                 _flyoutWindow.IsPinned, _flyoutWindow.TopMost);
         }
+
+        NotifyMetadataPresentation();
     }
 
     public void HideFlyout() {
@@ -329,6 +350,14 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         _flyoutWindow?.Hide();
         _isVisible = false;
+        NotifyMetadataPresentation();
+    }
+
+    private void NotifyMetadataPresentation() {
+        bool pinned = _flyoutWindow?.IsPinned
+            ?? _stateEngine?.CurrentSnapshot.Shell.Pinned
+            ?? false;
+        _metadataLifecycle?.SetPresentationState(_isVisible, pinned);
     }
 
     public void ResizeFlyout(int clampedEffectiveHeight) {
@@ -425,6 +454,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         _pairingSession?.Dispose();
+        _metadataLifecycle?.Dispose();
         _mdnsTrackerLifecycle?.Dispose();
         _deviceTrackerLifecycle?.Dispose();
         _stateEngine?.Dispose();

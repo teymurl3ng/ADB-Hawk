@@ -130,6 +130,7 @@ public sealed class CompositionTests {
         Assert.Null(host.DeviceTrackerLifecycle);
         Assert.Null(host.MdnsTrackerLifecycle);
         Assert.Null(host.PairingSession);
+        Assert.Null(host.MetadataLifecycle);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
     }
@@ -154,6 +155,7 @@ public sealed class CompositionTests {
         Assert.NotNull(host.DeviceTrackerLifecycle);
         Assert.NotNull(host.MdnsTrackerLifecycle);
         Assert.NotNull(host.PairingSession);
+        Assert.NotNull(host.MetadataLifecycle);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
 

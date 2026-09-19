@@ -784,6 +784,39 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
+    // 19f. Phase 7B metadata lifecycle does not reference WinForms/WebView/Bridge protocol.
+    [Fact]
+    public void DeviceMetadataLifecycleDoesNotReferenceForbiddenLayers() {
+        var files = new[]
+        {
+            RootFile("src", "AdbView", "Host", "DeviceMetadataLifecycle.cs"),
+        };
+
+        var forbiddenTokens = new[]
+        {
+            "System.Windows.Forms",
+            "Microsoft.Web.WebView2",
+            "BridgeCoordinator",
+            "BridgeSerializer",
+            "WebViewHost",
+            "FlyoutWindow",
+            "NotificationPolicy",
+            "System.Net.Http",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in files) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
     // 19d. Phase 6C Host lifecycles may post State events but Adb trackers stay free of State.
     [Fact]
     public void Phase6CAdbTrackersStillDoNotReferenceState() {

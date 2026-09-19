@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 internal sealed class StateEngine : IAsyncDisposable, IDisposable {
     private abstract record EngineMessage;
     private sealed record DomainMessage(AdbViewEvent Event) : EngineMessage;
+    private sealed record MetadataWorkMessage(long ExpectedGeneration, MetadataReceivedEvent Event) : EngineMessage;
     private sealed record BarrierMessage(TaskCompletionSource Tcs) : EngineMessage;
 
     private readonly Channel<EngineMessage> _channel;
@@ -18,6 +19,7 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
     private readonly Task _processingTask;
     private AppSnapshot _currentSnapshot;
     private DeviceEngineState _deviceState = DeviceEngineState.Empty;
+    private ImmutableArray<MetadataProbeTargetView> _lastTargets = ImmutableArray<MetadataProbeTargetView>.Empty;
     private CancellationTokenSource? _graceCts;
     private CancellationTokenSource? _pairingWaitCts;
     private CancellationTokenSource? _wirelessRestoringCts;
@@ -29,6 +31,9 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
     internal DeviceEngineState CurrentDeviceState => Volatile.Read(ref _deviceState)!;
 
     public event Action<AppSnapshot>? SnapshotPublished;
+
+    /// <summary>Authoritative metadata targets after accepted device/metadata reconciliation.</summary>
+    public event Action<ImmutableArray<MetadataProbeTargetView>>? MetadataTargetsChanged;
 
     public StateEngine(
         AppSnapshot? initialSnapshot = null,
@@ -79,6 +84,15 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         return _channel.Writer.TryWrite(new DomainMessage(evt));
     }
 
+    /// <summary>
+    /// Posts metadata with generation validated at the serialized engine boundary.
+    /// Stale ExpectedGeneration → no-op (even if DeviceId still exists).
+    /// </summary>
+    public bool PostMetadata(long expectedGeneration, MetadataReceivedEvent evt) {
+        ArgumentNullException.ThrowIfNull(evt);
+        return _channel.Writer.TryWrite(new MetadataWorkMessage(expectedGeneration, evt));
+    }
+
     public Task DrainAsync() {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_channel.Writer.TryWrite(new BarrierMessage(tcs))) {
@@ -97,6 +111,9 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
                         case DomainMessage domain:
                             ApplyDomainEvent(domain.Event);
                             break;
+                        case MetadataWorkMessage metadata:
+                            ApplyMetadataWork(metadata.ExpectedGeneration, metadata.Event);
+                            break;
                         case BarrierMessage barrier:
                             barrier.Tcs.TrySetResult();
                             break;
@@ -107,6 +124,16 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         catch (OperationCanceledException) {
             // Expected on emergency cancellation
         }
+    }
+
+    private void ApplyMetadataWork(long expectedGeneration, MetadataReceivedEvent evt) {
+        var deviceState = Volatile.Read(ref _deviceState) ?? DeviceEngineState.Empty;
+        if (!deviceState.MetadataSessions.TryGetValue(evt.DeviceId, out DeviceMetadataSession? session)
+            || session.Generation != expectedGeneration) {
+            return;
+        }
+
+        ApplyDomainEvent(evt);
     }
 
     private void ApplyDomainEvent(AdbViewEvent evt) {
@@ -125,6 +152,67 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
             Volatile.Write(ref _currentSnapshot, result.Snapshot);
             SnapshotPublished?.Invoke(result.Snapshot);
         }
+
+        PublishTargetsIfChanged(result.Snapshot, result.DeviceState);
+    }
+
+    private void PublishTargetsIfChanged(AppSnapshot snapshot, DeviceEngineState deviceState) {
+        var targets = BuildMetadataTargets(snapshot, deviceState);
+        if (TargetsEqual(_lastTargets, targets)) {
+            return;
+        }
+
+        _lastTargets = targets;
+        MetadataTargetsChanged?.Invoke(targets);
+    }
+
+    internal static ImmutableArray<MetadataProbeTargetView> BuildMetadataTargets(
+        AppSnapshot snapshot,
+        DeviceEngineState deviceState) {
+        if (snapshot.Devices.IsDefaultOrEmpty || deviceState.MetadataSessions.IsEmpty) {
+            return ImmutableArray<MetadataProbeTargetView>.Empty;
+        }
+
+        var builder = ImmutableArray.CreateBuilder<MetadataProbeTargetView>(snapshot.Devices.Length);
+        foreach (DeviceView device in snapshot.Devices) {
+            if (!deviceState.MetadataSessions.TryGetValue(device.Id, out DeviceMetadataSession? session)) {
+                continue;
+            }
+
+            builder.Add(new MetadataProbeTargetView(
+                device.Id,
+                session.AdbSerial,
+                session.Generation,
+                device.State,
+                device.BatteryPercent,
+                session.BatteryObservedAt));
+        }
+
+        return builder.ToImmutable();
+    }
+
+    private static bool TargetsEqual(
+        ImmutableArray<MetadataProbeTargetView> a,
+        ImmutableArray<MetadataProbeTargetView> b) {
+        if (a.IsDefault) {
+            a = ImmutableArray<MetadataProbeTargetView>.Empty;
+        }
+
+        if (b.IsDefault) {
+            b = ImmutableArray<MetadataProbeTargetView>.Empty;
+        }
+
+        if (a.Length != b.Length) {
+            return false;
+        }
+
+        for (int i = 0; i < a.Length; i++) {
+            if (a[i] != b[i]) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void ApplyTimerCommand(

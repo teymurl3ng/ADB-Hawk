@@ -20,7 +20,8 @@ internal static partial class DeviceViewMapper {
         ImmutableArray<DeviceView> previous,
         DateTimeOffset at,
         DeviceIdentity identity,
-        ImmutableArray<RawMdnsService> mdnsServices = default) {
+        ImmutableArray<RawMdnsService> mdnsServices = default,
+        Func<string, bool>? preserveMetadata = null) {
         ArgumentNullException.ThrowIfNull(identity);
 
         if (rawDevices.IsDefaultOrEmpty) {
@@ -51,7 +52,8 @@ internal static partial class DeviceViewMapper {
             }
 
             previousById.TryGetValue(normalized.Id, out DeviceView? prior);
-            DeviceView mapped = MapOne(normalized, prior, at);
+            bool keepMeta = preserveMetadata?.Invoke(normalized.Id) == true;
+            DeviceView mapped = MapOne(normalized, prior, at, keepMeta);
             if (prior is not null && IsUnchanged(prior, mapped)) {
                 builder.Add(prior);
             }
@@ -87,7 +89,11 @@ internal static partial class DeviceViewMapper {
         && previous.Detail.Address == next.Detail.Address
         && previous.Detail.CopyFields.SequenceEqual(next.Detail.CopyFields);
 
-    public static DeviceView MapOne(NormalizedDevice normalized, DeviceView? previous, DateTimeOffset at) {
+    public static DeviceView MapOne(
+        NormalizedDevice normalized,
+        DeviceView? previous,
+        DateTimeOffset at,
+        bool preserveMetadata = false) {
         ArgumentNullException.ThrowIfNull(normalized);
 
         DeviceStateKind state = MapState(normalized.SemanticState);
@@ -127,6 +133,10 @@ internal static partial class DeviceViewMapper {
             Value = normalized.HardwareSerial,
         });
 
+        int? battery = preserveMetadata ? previous?.BatteryPercent : null;
+        string? exactModel = preserveMetadata ? previous?.Detail.ExactModel : null;
+        string? androidVersion = preserveMetadata ? previous?.Detail.AndroidVersion : null;
+
         return new DeviceView {
             Id = normalized.Id,
             DisplayName = normalized.DisplayName,
@@ -137,7 +147,7 @@ internal static partial class DeviceViewMapper {
             Guidance = Guidance(state),
             Transport = transport,
             TransportLabel = transportLabel,
-            BatteryPercent = null,
+            BatteryPercent = battery,
             MetaTemplate = state == DeviceStateKind.Connected
                 ? Vocabulary.Device.ConnectedMetaTemplate
                 : Vocabulary.Device.AgeOnlyMetaTemplate,
@@ -145,8 +155,8 @@ internal static partial class DeviceViewMapper {
             ConnectedSince = connectedSince,
             Detail = new DeviceDetailView {
                 Serial = normalized.HardwareSerial,
-                ExactModel = string.IsNullOrEmpty(normalized.Model) ? null : normalized.Model,
-                AndroidVersion = null,
+                ExactModel = exactModel,
+                AndroidVersion = androidVersion,
                 Address = address,
                 CopyFields = copyFields.ToImmutable(),
             },

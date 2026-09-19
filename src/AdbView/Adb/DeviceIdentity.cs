@@ -58,6 +58,7 @@ internal sealed partial class DeviceIdentity {
         return new NormalizedDevice {
             Id = id,
             HardwareSerial = hardwareSerial,
+            AdbSerial = raw.Serial,
             Transport = transport,
             SemanticState = state,
             DisplayName = displayName,

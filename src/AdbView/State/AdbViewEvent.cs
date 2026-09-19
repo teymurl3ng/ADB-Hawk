@@ -53,3 +53,13 @@ internal sealed record PairingProgressedEvent(
 /// Quiet clear of PairedWaitingForDevice after 60 s (ENGINEERING.md §6.8 / §11 row 13).
 /// </summary>
 internal sealed record PairingWaitExpiredEvent(long Generation) : AdbViewEvent;
+
+/// <summary>
+/// ENGINEERING.md §6.10 metadata event. Generation is NOT on this public shape —
+/// StateEngine validates ExpectedGeneration on the internal work-item envelope.
+/// </summary>
+internal sealed record MetadataReceivedEvent(
+    string DeviceId,
+    int? Battery,
+    string? Model,
+    string? AndroidVersion) : AdbViewEvent;

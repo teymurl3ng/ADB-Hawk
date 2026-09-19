@@ -52,6 +52,8 @@ internal static class StateReducer {
                 ReducePairingProgressed(current, deviceState, pairing, now),
             PairingWaitExpiredEvent wait =>
                 ReducePairingWaitExpired(current, deviceState, wait.Generation, now),
+            MetadataReceivedEvent metadata =>
+                ReduceMetadataReceived(current, deviceState, metadata, now),
             _ => ReduceResult.Unchanged(current, deviceState),
         };
     }
@@ -103,12 +105,22 @@ internal static class StateReducer {
             return ReduceResult.Unchanged(current, deviceState);
         }
 
+        var (sessions, nextGenCounter) = ReconcileMetadataSessions(
+            list.Devices,
+            deviceState.MetadataSessions,
+            deviceState.NextMetadataGeneration,
+            deviceState.LatestMdnsServices);
+
         var mapped = DeviceViewMapper.MapList(
             list.Devices,
             current.Devices,
             list.At,
             SharedIdentity,
-            deviceState.LatestMdnsServices);
+            deviceState.LatestMdnsServices,
+            preserveMetadata: id =>
+                deviceState.MetadataSessions.TryGetValue(id, out var oldSession)
+                && sessions.TryGetValue(id, out var newSession)
+                && oldSession.Generation == newSession.Generation);
 
         string? countLabel = DeviceViewMapper.DeviceCountLabel(mapped.Length);
         var health = WithDeviceDerivedTray(current.Health, mapped, current.PairingOffers);
@@ -121,6 +133,8 @@ internal static class StateReducer {
         var nextState = deviceState with {
             LatestAppliedListAt = list.At,
             ActiveGraceGeneration = 0,
+            MetadataSessions = sessions,
+            NextMetadataGeneration = nextGenCounter,
         };
 
         GraceCommand pairingWait = GraceCommand.None;
@@ -145,7 +159,15 @@ internal static class StateReducer {
             || (pairing is null && current.Pairing is null)
             || (pairing is not null && current.Pairing is not null && pairing == current.Pairing);
 
+        bool sessionsEqual = deviceState.MetadataSessions == sessions
+            && deviceState.NextMetadataGeneration == nextGenCounter;
+
+        if (devicesEqual && countEqual && healthEqual && pairingEqual && sessionsEqual) {
+            return ReduceResult.With(current, nextState, grace: grace, pairingWait: pairingWait);
+        }
+
         if (devicesEqual && countEqual && healthEqual && pairingEqual) {
+            // Sessions changed (generation bump) without DeviceView delta — still publish targets via state.
             return ReduceResult.With(current, nextState, grace: grace, pairingWait: pairingWait);
         }
 
@@ -159,6 +181,134 @@ internal static class StateReducer {
         };
 
         return ReduceResult.With(next, nextState, grace: grace, pairingWait: pairingWait);
+    }
+
+    /// <summary>
+    /// Allocates monotonic metadata generations. Never reuses a generation after removal/reappear
+    /// or AdbSerial change. Overflow throws (no silent wrap).
+    /// </summary>
+    internal static (ImmutableDictionary<string, DeviceMetadataSession> Sessions, long NextCounter)
+        ReconcileMetadataSessions(
+            ImmutableArray<RawDevice> rawDevices,
+            ImmutableDictionary<string, DeviceMetadataSession> previous,
+            long nextCounter,
+            ImmutableArray<RawMdnsService> mdnsServices) {
+        if (mdnsServices.IsDefault) {
+            mdnsServices = ImmutableArray<RawMdnsService>.Empty;
+        }
+
+        var builder = ImmutableDictionary.CreateBuilder<string, DeviceMetadataSession>(StringComparer.Ordinal);
+        long counter = nextCounter;
+
+        if (!rawDevices.IsDefaultOrEmpty) {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            foreach (RawDevice raw in rawDevices) {
+                NormalizedDevice normalized = SharedIdentity.Normalize(raw, mdnsServices);
+                if (!seen.Add(normalized.Id)) {
+                    continue;
+                }
+
+                bool connected = normalized.SemanticState == DeviceSemanticState.Connected;
+                string adbSerial = normalized.AdbSerial;
+
+                if (!previous.TryGetValue(normalized.Id, out DeviceMetadataSession? old)) {
+                    long gen = AllocateMetadataGeneration(ref counter);
+                    builder[normalized.Id] = new DeviceMetadataSession(gen, adbSerial, connected, null);
+                    continue;
+                }
+
+                bool serialChanged = !string.Equals(old.AdbSerial, adbSerial, StringComparison.Ordinal);
+                bool leftConnected = old.ConnectedEligible && !connected;
+                bool enteredConnected = !old.ConnectedEligible && connected;
+
+                if (serialChanged || leftConnected || enteredConnected) {
+                    long gen = AllocateMetadataGeneration(ref counter);
+                    builder[normalized.Id] = new DeviceMetadataSession(gen, adbSerial, connected, null);
+                }
+                else {
+                    builder[normalized.Id] = old with {
+                        AdbSerial = adbSerial,
+                        ConnectedEligible = connected,
+                    };
+                }
+            }
+        }
+
+        return (builder.ToImmutable(), counter);
+    }
+
+    internal static long AllocateMetadataGeneration(ref long nextCounter) {
+        checked {
+            nextCounter++;
+        }
+
+        if (nextCounter <= 0) {
+            throw new InvalidOperationException("Metadata generation counter overflow.");
+        }
+
+        return nextCounter;
+    }
+
+    private static ReduceResult ReduceMetadataReceived(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        MetadataReceivedEvent evt,
+        DateTimeOffset now) {
+        if (string.IsNullOrEmpty(evt.DeviceId) || current.Devices.IsDefaultOrEmpty) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        int index = -1;
+        for (int i = 0; i < current.Devices.Length; i++) {
+            if (current.Devices[i].Id == evt.DeviceId) {
+                index = i;
+                break;
+            }
+        }
+
+        if (index < 0) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        DeviceView device = current.Devices[index];
+        int? battery = evt.Battery; // null clears
+        string? model = evt.Model ?? device.Detail.ExactModel;
+        string? version = evt.AndroidVersion ?? device.Detail.AndroidVersion;
+
+        if (device.BatteryPercent == battery
+            && device.Detail.ExactModel == model
+            && device.Detail.AndroidVersion == version) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        var updatedDetail = device.Detail with {
+            ExactModel = model,
+            AndroidVersion = version,
+        };
+        var updatedDevice = device with {
+            BatteryPercent = battery,
+            Detail = updatedDetail,
+        };
+
+        var devices = current.Devices.SetItem(index, updatedDevice);
+        // Order unchanged — metadata must not reorder cards.
+        var next = current with {
+            Revision = NextRevision(current.Revision),
+            GeneratedAt = now,
+            Devices = devices,
+        };
+
+        var nextState = deviceState;
+        if (deviceState.MetadataSessions.TryGetValue(evt.DeviceId, out DeviceMetadataSession? session)) {
+            DateTimeOffset? observed = battery is null ? null : now;
+            nextState = deviceState with {
+                MetadataSessions = deviceState.MetadataSessions.SetItem(
+                    evt.DeviceId,
+                    session with { BatteryObservedAt = observed }),
+            };
+        }
+
+        return ReduceResult.With(next, nextState);
     }
 
     private static bool MatchesWaitingPairing(
@@ -254,7 +404,10 @@ internal static class StateReducer {
             Health = health,
         };
 
-        var nextState = deviceState with { ActiveGraceGeneration = 0 };
+        var nextState = deviceState with {
+            ActiveGraceGeneration = 0,
+            MetadataSessions = ImmutableDictionary<string, DeviceMetadataSession>.Empty,
+        };
         return ReduceResult.With(next, nextState);
     }
 
