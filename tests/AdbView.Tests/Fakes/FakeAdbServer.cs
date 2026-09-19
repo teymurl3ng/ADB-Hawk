@@ -176,6 +176,80 @@ internal sealed class FakeAdbServer : IAsyncDisposable, IDisposable {
         }
     }
 
+    /// <summary>
+    /// Two-step metadata shell: <c>host:transport:SERIAL</c> then <c>shell:…</c> → OKAY + raw body + close.
+    /// Tracks the transport serial per socket so wrong-device selection is detectable.
+    /// </summary>
+    public void RespondDeviceShell(Func<string, string, FakeDeviceShellPlan> planFactory) {
+        var transportBySocket = new Dictionary<Socket, string>();
+        SetHandler(async (socket, cmd) => {
+            if (cmd.StartsWith("host:transport:", StringComparison.Ordinal)) {
+                string serial = cmd["host:transport:".Length..];
+                lock (_lock) {
+                    transportBySocket[socket] = serial;
+                }
+
+                // Peek plan with a placeholder shell to allow transport-only FAIL.
+                var transportPlan = planFactory(serial, "");
+                if (!transportPlan.TransportOk) {
+                    await SendFailAsync(socket, transportPlan.FailReason ?? "device not found").ConfigureAwait(false);
+                    return;
+                }
+
+                await socket.SendAsync("OKAY"u8.ToArray(), SocketFlags.None).ConfigureAwait(false);
+                return;
+            }
+
+            if (!cmd.StartsWith("shell:", StringComparison.Ordinal)) {
+                await SendFailAsync(socket, "unsupported").ConfigureAwait(false);
+                return;
+            }
+
+            string? serialForShell;
+            lock (_lock) {
+                transportBySocket.TryGetValue(socket, out serialForShell);
+            }
+
+            if (string.IsNullOrEmpty(serialForShell)) {
+                await SendFailAsync(socket, "no transport").ConfigureAwait(false);
+                return;
+            }
+
+            var plan = planFactory(serialForShell, cmd);
+            if (!plan.TransportOk) {
+                await SendFailAsync(socket, plan.FailReason ?? "device not found").ConfigureAwait(false);
+                return;
+            }
+
+            if (!plan.ShellOk) {
+                await SendFailAsync(socket, plan.FailReason ?? "shell failed").ConfigureAwait(false);
+                return;
+            }
+
+            await socket.SendAsync("OKAY"u8.ToArray(), SocketFlags.None).ConfigureAwait(false);
+
+            if (plan.HangAfterShellOkay) {
+                await Task.Delay(Timeout.Infinite, _cts.Token).ConfigureAwait(false);
+                return;
+            }
+
+            byte[] body = plan.Body ?? Array.Empty<byte>();
+            if (body.Length > 0) {
+                await socket.SendAsync(body, SocketFlags.None).ConfigureAwait(false);
+            }
+
+            // Classic shell: EOF ends the stream (close write side of this connection).
+            socket.Shutdown(SocketShutdown.Send);
+        });
+    }
+
+    private static async Task SendFailAsync(Socket socket, string reason) {
+        byte[] reasonBytes = Encoding.ASCII.GetBytes(reason);
+        byte[] header = Encoding.ASCII.GetBytes($"FAIL{reasonBytes.Length:X4}");
+        await socket.SendAsync(header, SocketFlags.None).ConfigureAwait(false);
+        await socket.SendAsync(reasonBytes, SocketFlags.None).ConfigureAwait(false);
+    }
+
     public void Dispose() {
         if (_isDisposed) return;
         _isDisposed = true;
@@ -207,4 +281,21 @@ internal sealed class FakeAdbServer : IAsyncDisposable, IDisposable {
         catch (SocketException) { }
         catch (ObjectDisposedException) { }
     }
+}
+
+/// <summary>Plan for one FakeAdb metadata shell interaction.</summary>
+internal sealed class FakeDeviceShellPlan {
+    public bool TransportOk { get; init; } = true;
+    public bool ShellOk { get; init; } = true;
+    public byte[]? Body { get; init; }
+    public string? FailReason { get; init; }
+    public bool HangAfterShellOkay { get; init; }
+
+    public static FakeDeviceShellPlan Ok(byte[] body) => new() { Body = body };
+    public static FakeDeviceShellPlan OkText(string text) => Ok(Encoding.UTF8.GetBytes(text));
+    public static FakeDeviceShellPlan TransportFail(string reason) =>
+        new() { TransportOk = false, FailReason = reason };
+    public static FakeDeviceShellPlan ShellFail(string reason) =>
+        new() { ShellOk = false, FailReason = reason };
+    public static FakeDeviceShellPlan Hang() => new() { HangAfterShellOkay = true };
 }

@@ -740,6 +740,50 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
+    // 19e. Phase 7A metadata probe domain does not reference State/UI/Bridge.
+    [Fact]
+    public void MetadataProbeLayerDoesNotReferenceForbiddenLayers() {
+        var files = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "MetadataProbe.cs"),
+            RootFile("src", "AdbView", "Adb", "MetadataDeviceShellClient.cs"),
+            RootFile("src", "AdbView", "Adb", "MetadataParsers.cs"),
+            RootFile("src", "AdbView", "Adb", "Model", "MetadataProbeModels.cs"),
+        };
+
+        var forbiddenTokens = new[]
+        {
+            "AdbView.State",
+            "StateEngine",
+            "StateReducer",
+            "AppSnapshot",
+            "DeviceView",
+            "DeviceViewMapper",
+            "AdbView.Bridge",
+            "BridgeCoordinator",
+            "FixtureSnapshotProvider",
+            "AdbView.Host",
+            "System.Windows.Forms",
+            "Microsoft.Web.WebView2",
+            "System.Net.Http",
+            "System.Diagnostics.Process",
+            "NotificationPolicy",
+            "Google.Protobuf",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in files) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
     // 19d. Phase 6C Host lifecycles may post State events but Adb trackers stay free of State.
     [Fact]
     public void Phase6CAdbTrackersStillDoNotReferenceState() {
