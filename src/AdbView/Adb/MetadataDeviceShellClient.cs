@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AdbView.Adb.Model;
 using AdbView.Adb.Protocol;
+using Serilog;
 
 /// <summary>
 /// Smallest direct-socket primitive for Phase 7 metadata:
@@ -92,6 +93,8 @@ internal sealed class MetadataDeviceShellClient : IMetadataDeviceShellClient {
 
         string transport = "host:transport:" + adbSerial;
         string shell = ServiceName(command);
+        // Observation seam for Phase 7 idle-cost / refresh proofs (no serial at Information).
+        Log.Information("Metadata shell request {Service}", shell);
 
         using var timeoutCts = new CancellationTokenSource(_requestTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);

@@ -213,10 +213,6 @@ internal sealed class DeviceMetadataLifecycle : IAsyncDisposable, IDisposable {
             RequestFullLocked(target.DeviceId, work);
         }
 
-        if (_visible && !_suspended) {
-            MaybeBatteryOnVisibilityLocked(target.DeviceId, work);
-        }
-
         if (_visible && _pinned && !_suspended) {
             ArmPinnedTimerLocked(target.DeviceId, work);
         }

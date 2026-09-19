@@ -6,6 +6,7 @@ namespace AdbView.Tests.State;
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AdbView.Adb;
@@ -118,6 +119,7 @@ public sealed class MetadataIntegrationTests {
     public async Task A_B_Connected_Appears_Null_Then_Enriches() {
         DateTimeOffset now = T0;
         var probe = new FakeProbe();
+        probe.BlockGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var engine = new StateEngine(
             StateEngine.CreateDefaultSnapshot(revision: 1),
             getUtcNow: () => now);
@@ -136,6 +138,7 @@ public sealed class MetadataIntegrationTests {
         Assert.Null(before.Detail.AndroidVersion);
         Assert.Equal("SM_A065F", before.DisplayName);
 
+        probe.BlockGate.TrySetResult();
         await WaitForAsync(() => engine.CurrentSnapshot.Devices[0].BatteryPercent is not null);
         await engine.DrainAsync();
         var after = Assert.Single(engine.CurrentSnapshot.Devices);
@@ -455,6 +458,120 @@ public sealed class MetadataIntegrationTests {
 
         gate.TrySetResult();
         await WaitForAsync(() => probe.InFlight == 0);
+    }
+
+    [Fact]
+    public async Task BatteryFailure_ClearsBattery_PreservesCache_NoImmediateRetryLoop() {
+        DateTimeOffset now = T0;
+        var delays = new List<TimeSpan>();
+        var probe = new FakeProbe();
+
+        await using var engine = new StateEngine(
+            StateEngine.CreateDefaultSnapshot(revision: 1), getUtcNow: () => now);
+        using var life = new DeviceMetadataLifecycle(
+            (g, e) => engine.PostMetadata(g, e),
+            probe,
+            () => now,
+            async (d, ct) => {
+                delays.Add(d);
+                // Do not complete pinned waits — prove arm duration without firing.
+                if (d >= TimeSpan.FromSeconds(60)) {
+                    var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                    await using (ct.Register(() => tcs.TrySetCanceled())) {
+                        await tcs.Task;
+                    }
+
+                    return;
+                }
+
+                await Task.Yield();
+                ct.ThrowIfCancellationRequested();
+            });
+        engine.MetadataTargetsChanged += life.OnTargetsChanged;
+
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray.Create(Proto("R8")), T0));
+        await engine.DrainAsync();
+        await WaitForAsync(() => engine.CurrentSnapshot.Devices[0].Detail.ExactModel is not null);
+        await engine.DrainAsync();
+        Assert.Equal(80, engine.CurrentSnapshot.Devices[0].BatteryPercent);
+        Assert.Equal("SM-A065F", engine.CurrentSnapshot.Devices[0].Detail.ExactModel);
+        Assert.Equal("16", engine.CurrentSnapshot.Devices[0].Detail.AndroidVersion);
+
+        // Subsequent battery-only refreshes fail (after probe's conceptual retry — FakeProbe is one shot).
+        probe.OnCommand = (_, command) => command switch {
+            MetadataCommand.Battery => new MetadataCommandResult(command, MetadataFieldStatus.Timeout, null, null),
+            MetadataCommand.ExactModel => new MetadataCommandResult(command, MetadataFieldStatus.Ok, null, "SM-A065F"),
+            _ => new MetadataCommandResult(command, MetadataFieldStatus.Ok, null, "16"),
+        };
+
+        int callsAfterEnrich = probe.Calls.Count;
+        life.SetPresentationState(visible: true, pinned: true);
+        now = T0.AddSeconds(31);
+        // Re-signal visibility after age exceeds 30s while pinned.
+        life.SetPresentationState(visible: false, pinned: true);
+        life.SetPresentationState(visible: true, pinned: true);
+        await WaitForAsync(() => engine.CurrentSnapshot.Devices[0].BatteryPercent is null);
+        await engine.DrainAsync();
+
+        Assert.Null(engine.CurrentSnapshot.Devices[0].BatteryPercent);
+        Assert.Equal("SM-A065F", engine.CurrentSnapshot.Devices[0].Detail.ExactModel);
+        Assert.Equal("16", engine.CurrentSnapshot.Devices[0].Detail.AndroidVersion);
+
+        var postEnrich = probe.Calls.Skip(callsAfterEnrich).ToList();
+        Assert.All(postEnrich, c => Assert.True(c.Cmd is null or MetadataCommand.Battery));
+        Assert.DoesNotContain(postEnrich, c => c.Cmd is MetadataCommand.ExactModel);
+        Assert.DoesNotContain(postEnrich, c => c.Cmd is MetadataCommand.AndroidVersion);
+
+        int afterFail = probe.Calls.Count;
+        Assert.Contains(delays, d => d >= TimeSpan.FromSeconds(119));
+        await Task.Delay(50);
+        Assert.Equal(afterFail, probe.Calls.Count);
+    }
+
+    [Fact]
+    public async Task SamePercentBattery_Refresh_ResetsStaleness_NoRevision() {
+        DateTimeOffset now = T0;
+        var probe = new FakeProbe();
+        await using var engine = new StateEngine(
+            StateEngine.CreateDefaultSnapshot(revision: 1), getUtcNow: () => now);
+        using var life = new DeviceMetadataLifecycle(
+            (g, e) => engine.PostMetadata(g, e), probe, () => now, (_, _) => Task.CompletedTask);
+        engine.MetadataTargetsChanged += life.OnTargetsChanged;
+
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray.Create(Proto("R8")), T0));
+        await engine.DrainAsync();
+        await WaitForAsync(() => engine.CurrentSnapshot.Devices[0].BatteryPercent is not null);
+        await engine.DrainAsync();
+        Assert.Equal(80, engine.CurrentSnapshot.Devices[0].BatteryPercent);
+        long rev = engine.CurrentSnapshot.Revision;
+        DateTimeOffset? observed1 = engine.CurrentDeviceState.MetadataSessions["usb:R8"].BatteryObservedAt;
+        Assert.NotNull(observed1);
+
+        // Same percent battery-only after age >30s.
+        probe.OnCommand = (_, command) => command switch {
+            MetadataCommand.Battery => new MetadataCommandResult(command, MetadataFieldStatus.Ok, 80, null),
+            MetadataCommand.ExactModel => new MetadataCommandResult(command, MetadataFieldStatus.Ok, null, "SM-A065F"),
+            _ => new MetadataCommandResult(command, MetadataFieldStatus.Ok, null, "16"),
+        };
+        int calls = probe.Calls.Count;
+        now = T0.AddSeconds(31);
+        life.SetPresentationState(true, false);
+        await WaitForAsync(() => probe.Calls.Count > calls);
+        await engine.DrainAsync();
+
+        Assert.Equal(80, engine.CurrentSnapshot.Devices[0].BatteryPercent);
+        Assert.Equal(rev, engine.CurrentSnapshot.Revision); // no snapshot churn for same %
+        DateTimeOffset? observed2 = engine.CurrentDeviceState.MetadataSessions["usb:R8"].BatteryObservedAt;
+        Assert.NotNull(observed2);
+        Assert.True(observed2 > observed1);
+
+        // Re-open within 30s of refreshed observation → no further battery request.
+        int afterRefresh = probe.Calls.Count;
+        now = observed2.Value.AddSeconds(10);
+        life.SetPresentationState(false, false);
+        life.SetPresentationState(true, false);
+        await Task.Delay(40);
+        Assert.Equal(afterRefresh, probe.Calls.Count);
     }
 
     [Fact]

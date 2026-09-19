@@ -275,10 +275,22 @@ internal static class StateReducer {
         string? model = evt.Model ?? device.Detail.ExactModel;
         string? version = evt.AndroidVersion ?? device.Detail.AndroidVersion;
 
+        DateTimeOffset? observed = battery is null ? null : now;
+        var nextState = deviceState;
+        if (deviceState.MetadataSessions.TryGetValue(evt.DeviceId, out DeviceMetadataSession? session)) {
+            nextState = deviceState with {
+                MetadataSessions = deviceState.MetadataSessions.SetItem(
+                    evt.DeviceId,
+                    session with { BatteryObservedAt = observed }),
+            };
+        }
+
         if (device.BatteryPercent == battery
             && device.Detail.ExactModel == model
             && device.Detail.AndroidVersion == version) {
-            return ReduceResult.Unchanged(current, deviceState);
+            // Values unchanged — still refresh BatteryObservedAt so successful
+            // same-% battery probes reset the 30s/120s staleness clocks.
+            return ReduceResult.With(current, nextState);
         }
 
         var updatedDetail = device.Detail with {
@@ -297,16 +309,6 @@ internal static class StateReducer {
             GeneratedAt = now,
             Devices = devices,
         };
-
-        var nextState = deviceState;
-        if (deviceState.MetadataSessions.TryGetValue(evt.DeviceId, out DeviceMetadataSession? session)) {
-            DateTimeOffset? observed = battery is null ? null : now;
-            nextState = deviceState with {
-                MetadataSessions = deviceState.MetadataSessions.SetItem(
-                    evt.DeviceId,
-                    session with { BatteryObservedAt = observed }),
-            };
-        }
 
         return ReduceResult.With(next, nextState);
     }
