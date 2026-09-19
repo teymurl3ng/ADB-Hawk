@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using AdbView.App;
@@ -12,7 +13,7 @@ using Serilog;
 namespace AdbView.Host;
 
 internal sealed class AppHost : IBridgeHost, IDisposable {
-    private readonly SingleInstance _singleInstance;
+    private readonly SingleInstance? _singleInstance;
     private readonly TrayIcon? _trayIcon;
     private readonly PowerAndSession? _powerAndSession;
     private readonly FlyoutWindow? _flyoutWindow;
@@ -32,56 +33,67 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     internal Adb.AdbServerSupervisor? Supervisor => _supervisor;
 
     public AppHost(int sessionId, string fixtureSuffix = "")
-        : this(sessionId, fixtureSuffix, supervisorFactory: null) { }
+        : this(sessionId, fixtureSuffix, supervisorFactory: null, bridgeHost: null, headless: false) { }
 
+    /// <param name="headless">
+    /// When true, skips WinForms/tray/webview/single-instance. Composition unit tests
+    /// must use this: creating Controls installs WinFormsSynchronizationContext and
+    /// async awaits deadlock without Application.Run.
+    /// </param>
     internal AppHost(
         int sessionId,
         string fixtureSuffix,
-        Func<Adb.AdbServerSupervisor>? supervisorFactory) {
+        Func<Adb.AdbServerSupervisor>? supervisorFactory,
+        IBridgeHost? bridgeHost = null,
+        bool headless = false) {
         _fixtureSuffix = fixtureSuffix;
         LogConfig.Initialize();
-        Log.Information("AppHost starting in session {SessionId}", sessionId);
+        Log.Information("AppHost starting in session {SessionId} (headless={Headless})", sessionId, headless);
 
-        Application.EnableVisualStyles();
-        try {
-            Application.SetCompatibleTextRenderingDefault(false);
-        }
-        catch (InvalidOperationException) {
-            // Already set or first window already created in process (e.g. test runner).
-        }
-
-        _singleInstance = new SingleInstance(sessionId);
-
-        if (!_singleInstance.IsOwner) {
-            if (_singleInstance.TrySendToggleCommand(1000)) {
-                Log.Information("Toggled existing instance. Exiting.");
+        if (!headless) {
+            Application.EnableVisualStyles();
+            try {
+                Application.SetCompatibleTextRenderingDefault(false);
             }
-            else {
-                Log.Warning("Could not communicate with existing instance. Exiting non-zero.");
-                Environment.Exit(1);
+            catch (InvalidOperationException) {
+                // Already set or first window already created in process (e.g. test runner).
             }
-            return;
+
+            _singleInstance = new SingleInstance(sessionId);
+
+            if (!_singleInstance.IsOwner) {
+                if (_singleInstance.TrySendToggleCommand(1000)) {
+                    Log.Information("Toggled existing instance. Exiting.");
+                }
+                else {
+                    Log.Warning("Could not communicate with existing instance. Exiting non-zero.");
+                    Environment.Exit(1);
+                }
+                return;
+            }
+
+            _singleInstance.OnToggleRequested = OnToggleFlyout;
+            _singleInstance.StartServer();
+
+            _trayIcon = new TrayIcon();
+            _trayIcon.OnToggleRequested += (s, e) => OnToggleFlyout();
+            _trayIcon.OnExitRequested += (s, e) => Application.Exit();
+
+            _powerAndSession = new PowerAndSession();
+            _powerAndSession.DisplaySettingsChanged += OnDisplayChanged;
+            _powerAndSession.Suspend += (s, e) => {
+                if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) HideFlyout();
+            };
+            _powerAndSession.SessionSwitch += (s, e) => {
+                if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) HideFlyout();
+            };
+
+            _flyoutWindow = new FlyoutWindow();
+            _flyoutWindow.Deactivate += OnFlyoutDeactivate;
         }
-
-        _singleInstance.OnToggleRequested = OnToggleFlyout;
-        _singleInstance.StartServer();
-
-        _trayIcon = new TrayIcon();
-        _trayIcon.OnToggleRequested += (s, e) => OnToggleFlyout();
-        _trayIcon.OnExitRequested += (s, e) => Application.Exit();
-
-        _powerAndSession = new PowerAndSession();
-        _powerAndSession.DisplaySettingsChanged += OnDisplayChanged;
-        _powerAndSession.Suspend += (s, e) => {
-            if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) HideFlyout();
-        };
-        _powerAndSession.SessionSwitch += (s, e) => {
-            // Dismiss unpinned flyout when session locks
-            if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) HideFlyout();
-        };
-
-        _flyoutWindow = new FlyoutWindow();
-        _flyoutWindow.Deactivate += OnFlyoutDeactivate;
+        else {
+            _singleInstance = null;
+        }
 
         string? initialFixture = null;
         if (!string.IsNullOrEmpty(fixtureSuffix)) {
@@ -103,13 +115,20 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _stateEngine = new StateEngine(initialSnapshot);
         _stateEngine.SnapshotPublished += snapshot => _coordinator?.UpdateSnapshot(snapshot);
 
+        IBridgeHost coordinatorHost = bridgeHost ?? (IBridgeHost)this;
+        if (headless && bridgeHost == null) {
+            throw new ArgumentException("headless AppHost requires an injected IBridgeHost.", nameof(bridgeHost));
+        }
+
         _coordinator = new BridgeCoordinator(
-            this,
+            coordinatorHost,
             isPinned: false,
             initialSnapshot: initialSnapshot,
             onSetPinned: pinned => _stateEngine.Post(new SetPinnedEvent(pinned)));
 
-        _webViewHost = new WebViewHost(_flyoutWindow, _coordinator);
+        if (!headless) {
+            _webViewHost = new WebViewHost(_flyoutWindow!, _coordinator);
+        }
 
         if (!isFixtureMode) {
             _supervisor = supervisorFactory != null
@@ -125,7 +144,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     public void Run() {
-        if (!_singleInstance.IsOwner) return;
+        if (_singleInstance is not { IsOwner: true }) return;
 
         if (AppDomain.CurrentDomain.BaseDirectory.Contains("smoke", StringComparison.OrdinalIgnoreCase)) {
             Log.Information("Smoke run detected via path. Exiting successfully.");
@@ -155,8 +174,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
     private void OnToggleFlyout() {
         if (_flyoutWindow == null) return;
-        if (_flyoutWindow.InvokeRequired) {
-            _flyoutWindow.Invoke(new Action(OnToggleFlyout));
+        if (TryMarshalToFlyoutUi(new Action(OnToggleFlyout))) {
             return;
         }
 
@@ -209,9 +227,33 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _isVisible = true;
     }
 
+    /// <summary>
+    /// Marshals to the flyout UI thread. Synchronous Invoke without a message loop
+    /// deadlocks (CompositionTests construct AppHost without Application.Run; the
+    /// supervisor can also publish before Run starts). BeginInvoke when a handle
+    /// exists so work runs once the loop starts; otherwise skip.
+    /// </summary>
+    private bool TryMarshalToFlyoutUi(Delegate method, params object[] args) {
+        if (_flyoutWindow == null || !_flyoutWindow.InvokeRequired) {
+            return false;
+        }
+
+        if (Application.MessageLoop) {
+            _flyoutWindow.Invoke(method, args);
+            return true;
+        }
+
+        if (_flyoutWindow.IsHandleCreated) {
+            _ = _flyoutWindow.BeginInvoke(method, args);
+            return true;
+        }
+
+        Log.Debug("AppHost UI marshal skipped: no message loop and no handle");
+        return true;
+    }
+
     public void SendSnapshot(SnapshotEnvelope envelope) {
-        if (_flyoutWindow != null && _flyoutWindow.InvokeRequired) {
-            _flyoutWindow.Invoke(new Action<SnapshotEnvelope>(SendSnapshot), envelope);
+        if (TryMarshalToFlyoutUi(new Action<SnapshotEnvelope>(SendSnapshot), envelope)) {
             return;
         }
 
@@ -220,8 +262,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     public void SetPinned(bool isPinned) {
-        if (_flyoutWindow != null && _flyoutWindow.InvokeRequired) {
-            _flyoutWindow.Invoke(new Action<bool>(SetPinned), isPinned);
+        if (TryMarshalToFlyoutUi(new Action<bool>(SetPinned), isPinned)) {
             return;
         }
 
@@ -233,8 +274,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     public void HideFlyout() {
-        if (_flyoutWindow != null && _flyoutWindow.InvokeRequired) {
-            _flyoutWindow.Invoke(new Action(HideFlyout));
+        if (TryMarshalToFlyoutUi(new Action(HideFlyout))) {
             return;
         }
 
@@ -243,8 +283,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     public void ResizeFlyout(int clampedEffectiveHeight) {
-        if (_flyoutWindow != null && _flyoutWindow.InvokeRequired) {
-            _flyoutWindow.Invoke(new Action<int>(ResizeFlyout), clampedEffectiveHeight);
+        if (TryMarshalToFlyoutUi(new Action<int>(ResizeFlyout), clampedEffectiveHeight)) {
             return;
         }
 
@@ -319,7 +358,13 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
     }
 
+    private int _disposed;
+
     public void Dispose() {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) {
+            return;
+        }
+
         _appLifetimeCts.Cancel();
         try {
             if (_supervisorTask != null && !_supervisorTask.IsCompleted) {
@@ -346,7 +391,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         _webViewHost?.Dispose();
-        _singleInstance.Dispose();
+        _singleInstance?.Dispose();
         Log.CloseAndFlush();
     }
 }

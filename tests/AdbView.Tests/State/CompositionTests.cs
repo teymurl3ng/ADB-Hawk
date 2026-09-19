@@ -17,6 +17,7 @@ using AdbView.Host;
 using AdbView.State;
 using Xunit;
 
+[Collection("AppHostSerial")]
 public sealed class CompositionTests {
     private sealed class MockBridgeHost : IBridgeHost {
         public readonly List<SnapshotEnvelope> SentSnapshots = new();
@@ -92,6 +93,13 @@ public sealed class CompositionTests {
             Task.FromResult(new ProcessResult(1, "", "Failed", false));
     }
 
+    private AdbServerSupervisor CreateHermeticSupervisor() =>
+        new(
+            connectionFactory: () => throw new System.IO.IOException("Hermetic test - no sockets"),
+            locator: new HermeticExecutableLocator(),
+            processRunner: new HermeticProcessRunner(),
+            backoff: new Backoff(jitterProvider: () => 0.0));
+
     [Fact]
     public void ScenarioR_FixtureMode_DoesNotStartSupervisor() {
         int factoryCallCount = 0;
@@ -100,12 +108,10 @@ public sealed class CompositionTests {
             fixtureSuffix: "?fixture=empty",
             supervisorFactory: () => {
                 factoryCallCount++;
-                return new AdbServerSupervisor(
-                    connectionFactory: () => throw new InvalidOperationException("Hermetic test - no sockets"),
-                    locator: new HermeticExecutableLocator(),
-                    processRunner: new HermeticProcessRunner(),
-                    backoff: new Backoff(jitterProvider: () => 0.0));
-            });
+                return CreateHermeticSupervisor();
+            },
+            bridgeHost: new MockBridgeHost(),
+            headless: true);
 
         Assert.Equal(0, factoryCallCount);
         Assert.Null(host.Supervisor);
@@ -121,19 +127,16 @@ public sealed class CompositionTests {
             fixtureSuffix: "",
             supervisorFactory: () => {
                 factoryCallCount++;
-                return new AdbServerSupervisor(
-                    connectionFactory: () => throw new InvalidOperationException("Hermetic test - no sockets"),
-                    locator: new HermeticExecutableLocator(),
-                    processRunner: new HermeticProcessRunner(),
-                    backoff: new Backoff(jitterProvider: () => 0.0));
-            });
+                return CreateHermeticSupervisor();
+            },
+            bridgeHost: new MockBridgeHost(),
+            headless: true);
 
         Assert.Equal(1, factoryCallCount);
         Assert.NotNull(host.Supervisor);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
 
-        // Verify supervisor state change is dispatched to StateEngine hermetically
         await host.Supervisor.RunIterationAsync();
         await host.StateEngine.DrainAsync();
 
@@ -145,11 +148,9 @@ public sealed class CompositionTests {
         using var host = new AppHost(
             sessionId: 54323,
             fixtureSuffix: "",
-            supervisorFactory: () => new AdbServerSupervisor(
-                connectionFactory: () => throw new InvalidOperationException("Hermetic test - no sockets"),
-                locator: new HermeticExecutableLocator(),
-                processRunner: new HermeticProcessRunner(),
-                backoff: new Backoff(jitterProvider: () => 0.0)));
+            supervisorFactory: CreateHermeticSupervisor,
+            bridgeHost: new MockBridgeHost(),
+            headless: true);
 
         host.StateEngine!.Post(new SetPinnedEvent(true));
         await host.StateEngine.DrainAsync();
