@@ -1,6 +1,5 @@
-using System.IO;
+using System;
 using AdbView.Host;
-using Serilog;
 
 namespace AdbView;
 
@@ -14,7 +13,7 @@ internal static class Program {
     private static int Main(string[] args) {
         string fixtureSuffix = "";
         foreach (var arg in args) {
-            if (arg.StartsWith("--test-fixture=", System.StringComparison.Ordinal)) {
+            if (arg.StartsWith("--test-fixture=", StringComparison.Ordinal)) {
                 fixtureSuffix = string.Concat("?fixture=", arg.AsSpan("--test-fixture=".Length));
             }
         }

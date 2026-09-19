@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
+using AdbView.Notifications;
 using AdbView.State;
 using Serilog;
 using Windows.Win32;
@@ -8,15 +9,17 @@ using Windows.Win32.Foundation;
 
 namespace AdbView.Host;
 
-internal sealed class TrayIcon : IDisposable {
+internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
     private readonly NotifyIcon _notifyIcon;
     private readonly uint _taskbarCreatedMessageId;
     private readonly MessageSink _messageSink;
     private TrayStatusKind _currentStatus = TrayStatusKind.Idle;
     private Icon? _ownedIcon;
+    private bool _disposed;
 
     public event EventHandler? OnToggleRequested;
     public event EventHandler? OnExitRequested;
+    public event EventHandler? BalloonClicked;
 
     private sealed class MessageSink : NativeWindow {
         private readonly TrayIcon _parent;
@@ -54,6 +57,44 @@ internal sealed class TrayIcon : IDisposable {
         _notifyIcon.ContextMenuStrip = contextMenu;
 
         _notifyIcon.MouseClick += OnMouseClick;
+        _notifyIcon.BalloonTipClicked += OnBalloonTipClicked;
+    }
+
+    /// <summary>Test seam: context menu captions (Exit only).</summary>
+    internal string[] ContextMenuItemTexts {
+        get {
+            if (_notifyIcon.ContextMenuStrip is null) {
+                return Array.Empty<string>();
+            }
+
+            var items = _notifyIcon.ContextMenuStrip.Items;
+            var texts = new string[items.Count];
+            for (int i = 0; i < items.Count; i++) {
+                texts[i] = items[i].Text ?? string.Empty;
+            }
+
+            return texts;
+        }
+    }
+
+    private void OnBalloonTipClicked(object? sender, EventArgs e) {
+        BalloonClicked?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ShowBalloon(string title, string body, NotificationSeverity severity) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(title);
+        ArgumentNullException.ThrowIfNull(body);
+
+        ToolTipIcon tipIcon = severity switch {
+            NotificationSeverity.Info => ToolTipIcon.Info,
+            NotificationSeverity.Warning => ToolTipIcon.Warning,
+            NotificationSeverity.Error => ToolTipIcon.Error,
+            _ => ToolTipIcon.Info,
+        };
+
+        // Timeout is ignored on Vista+ (system accessibility timeout); value is required by API.
+        _notifyIcon.ShowBalloonTip(10_000, title, body, tipIcon);
     }
 
     private void OnMouseClick(object? sender, MouseEventArgs e) {
@@ -160,7 +201,13 @@ internal sealed class TrayIcon : IDisposable {
     }
 
     public void Dispose() {
+        if (_disposed) {
+            return;
+        }
+
+        _disposed = true;
         _notifyIcon.MouseClick -= OnMouseClick;
+        _notifyIcon.BalloonTipClicked -= OnBalloonTipClicked;
         _notifyIcon.Dispose();
         _ownedIcon?.Dispose();
         _ownedIcon = null;
