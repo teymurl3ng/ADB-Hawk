@@ -100,15 +100,55 @@ export function App() {
 
   const handleToggleExpand = (id: string) => {
     setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
+      // Exactly one card expanded at a time (DESIGN §§24–26).
+      if (prev.has(id)) {
+        return new Set<string>();
       }
-      return next;
+      return new Set<string>([id]);
     });
   };
+
+  // Drive tokens from shell.theme (authoritative in production).
+  // Test/fixture harness: Playwright emulateMedia(colorScheme) must win so light audits
+  // and visual projects exercise D.1 tokens (fixtures hardcode shell.theme=dark).
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const apply = () => {
+      let theme: 'light' | 'dark' = snapshot?.shell.theme === 'light' ? 'light' : 'dark';
+      if (isTestMode() && typeof window.matchMedia === 'function') {
+        if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+          theme = 'light';
+        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          theme = 'dark';
+        }
+      }
+
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.dataset.transparency = snapshot?.shell.transparencyEnabled
+        ? 'true'
+        : 'false';
+      document.documentElement.dataset.reducedMotion = snapshot?.shell.reducedMotion
+        ? 'true'
+        : 'false';
+      if (snapshot?.shell.forcedColors) {
+        document.documentElement.dataset.forcedColors = 'true';
+      } else {
+        delete document.documentElement.dataset.forcedColors;
+      }
+    };
+
+    apply();
+
+    if (!isTestMode() || typeof window.matchMedia !== 'function') {
+      return;
+    }
+
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    const onChange = () => apply();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [snapshot?.shell]);
 
   const devices = snapshot?.devices ?? [];
   const pairingInfo = derivePairingState(snapshot);

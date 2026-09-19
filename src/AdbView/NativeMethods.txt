@@ -1,5 +1,6 @@
 DwmSetWindowAttribute
 DwmExtendFrameIntoClientArea
+SetWindowPos
 SetWindowTheme
 Shell_NotifyIconGetRect
 RegisterWindowMessage
@@ -9,7 +10,6 @@ SetForegroundWindow
 MonitorFromRect
 GetMonitorInfo
 GetDpiForWindow
-RegisterWindowMessage
 WM_NCCALCSIZE
 WM_NCACTIVATE
 WM_NCHITTEST

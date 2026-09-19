@@ -379,10 +379,14 @@ foreach ($fixture in $AllFixtures) {
     $env:CDP_PORT = "9333"
     $proc = Start-Process -FilePath $AppPath -ArgumentList "--test-fixture=$fixture" -PassThru
 
-    # Wait for ready
-    Start-Sleep -Milliseconds 2500
+    # Wait for flyout presentable (WebView ready + first content-size + Show).
+    $hwnd = [IntPtr]::Zero
+    for ($i = 0; $i -lt 20; $i++) {
+        Start-Sleep -Milliseconds 500
+        $hwnd = [NativeCapture]::FindFlyoutWindow($proc.Id)
+        if ($hwnd -ne [IntPtr]::Zero) { break }
+    }
 
-    $hwnd = [NativeCapture]::FindFlyoutWindow($proc.Id)
     $foundWindow = Run-Check $fixture "Native Window" "Find Window" "Window found" $(if ($hwnd -ne [IntPtr]::Zero) { "Found" } else { "Not found" }) ($hwnd -ne [IntPtr]::Zero)
     if (-not $foundWindow) {
         Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -392,7 +396,8 @@ foreach ($fixture in $AllFixtures) {
     $winState = [NativeCapture]::GetWindowState($hwnd)
     Run-Check $fixture "Native Window" "Visibility" "Visible" $(if ($winState.IsVisible) { "Visible" } else { "Hidden" }) ($winState.IsVisible)
     Run-Check $fixture "Native Window" "Border / Resizing" "No thick frame (resizing blocked)" $(if (-not $winState.HasThickFrame) { "No thick frame" } else { "Has thick frame" }) (-not $winState.HasThickFrame)
-    Run-Check $fixture "Native Window" "Caption Style" "No WS_CAPTION" $(if (-not $winState.HasCaption) { "No caption" } else { "Has WS_CAPTION" }) (-not $winState.HasCaption)
+    # ENGINEERING §9.2: keep WS_CAPTION for Desktop Acrylic; NC collapsed via WM_NCCALCSIZE.
+    Run-Check $fixture "Native Window" "Caption Style" "Has WS_CAPTION" $(if ($winState.HasCaption) { "Has WS_CAPTION" } else { "No caption" }) ($winState.HasCaption)
     Run-Check $fixture "Native Window" "System Menu Style" "No WS_SYSMENU" $(if (-not $winState.HasSysMenu) { "No sysmenu" } else { "Has WS_SYSMENU" }) (-not $winState.HasSysMenu)
     Run-Check $fixture "Native Window" "Minimize Box Style" "No WS_MINIMIZEBOX" $(if (-not $winState.HasMinimizeBox) { "No minimize box" } else { "Has WS_MINIMIZEBOX" }) (-not $winState.HasMinimizeBox)
     Run-Check $fixture "Native Window" "Maximize Box Style" "No WS_MAXIMIZEBOX" $(if (-not $winState.HasMaximizeBox) { "No maximize box" } else { "Has WS_MAXIMIZEBOX" }) (-not $winState.HasMaximizeBox)

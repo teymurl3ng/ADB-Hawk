@@ -1,0 +1,28 @@
+/* DESIGN §§24–26 — structural card expansion (imported by app.css). */
+.device-card-details-grid {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-structural) var(--motion-easing);
+}
+
+.device-card-details-grid.is-expanded {
+  grid-template-rows: 1fr;
+}
+
+.device-card-details-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.device-card-details-body {
+  opacity: 0;
+  transition: opacity var(--motion-state) var(--motion-easing);
+}
+
+.device-card-details-grid.is-expanded .device-card-details-body {
+  opacity: 1;
+}
+
+.device-card-chevron {
+  transition: color var(--motion-state) var(--motion-easing);
+}

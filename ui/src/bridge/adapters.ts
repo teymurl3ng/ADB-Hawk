@@ -30,7 +30,7 @@ export function mapDeviceViewToDeviceInfo(
     model: device.detail.exactModel ?? undefined,
     androidVersion: device.detail.androidVersion ?? undefined,
     address: device.transport === 'usb' ? undefined : (device.detail.address ?? undefined),
-    serial: device.detail.serial,
+    serial: device.detail.serial ?? undefined,
   };
 }
 

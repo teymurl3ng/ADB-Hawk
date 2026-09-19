@@ -77,13 +77,12 @@ public sealed class SerializationTests {
                     StateSince = TestTimestamp.AddMinutes(-30),
                     ConnectedSince = TestTimestamp.AddMinutes(-30),
                     Detail = new DeviceDetailView {
-                        Serial = "192.168.1.50:5555",
+                        Serial = null,
                         ExactModel = "SM-S921B",
                         AndroidVersion = "14",
                         Address = "192.168.1.50:5555",
                         CopyFields = ImmutableArray.Create(
-                            new CopyFieldView { Key = "serial", Label = "Serial", Value = "192.168.1.50:5555" },
-                            new CopyFieldView { Key = "address", Label = "Wi-Fi address", Value = "192.168.1.50:5555" }),
+                            new CopyFieldView { Key = "address", Label = "Address", Value = "192.168.1.50:5555" }),
                     },
                 }),
             PairingOffers = ImmutableArray.Create(
@@ -437,13 +436,12 @@ public sealed class SerializationTests {
                 StateSince = TestTimestamp.AddMinutes(-30),
                 ConnectedSince = TestTimestamp.AddMinutes(-30),
                 Detail = new DeviceDetailView {
-                    Serial = "192.168.1.50:5555",
+                    Serial = null,
                     ExactModel = "SM-S921B",
                     AndroidVersion = "14",
                     Address = "192.168.1.50:5555",
                     CopyFields = ImmutableArray.Create(
-                        new CopyFieldView { Key = "serial", Label = "Serial", Value = "192.168.1.50:5555" },
-                        new CopyFieldView { Key = "address", Label = "Wi-Fi address", Value = "192.168.1.50:5555" }),
+                        new CopyFieldView { Key = "address", Label = "Address", Value = "192.168.1.50:5555" }),
                 },
             }),
             PairingOffers = ImmutableArray<PairingOfferView>.Empty,
@@ -509,13 +507,12 @@ public sealed class SerializationTests {
                     StateSince = TestTimestamp.AddMinutes(-30),
                     ConnectedSince = TestTimestamp.AddMinutes(-30),
                     Detail = new DeviceDetailView {
-                        Serial = "192.168.1.50:5555",
+                        Serial = null,
                         ExactModel = null,
                         AndroidVersion = null,
                         Address = "192.168.1.50:5555",
                         CopyFields = ImmutableArray.Create(
-                            new CopyFieldView { Key = "serial", Label = "Serial", Value = "192.168.1.50:5555" },
-                            new CopyFieldView { Key = "address", Label = "Wi-Fi address", Value = "192.168.1.50:5555" }),
+                            new CopyFieldView { Key = "address", Label = "Address", Value = "192.168.1.50:5555" }),
                     },
                 },
                 new DeviceView {

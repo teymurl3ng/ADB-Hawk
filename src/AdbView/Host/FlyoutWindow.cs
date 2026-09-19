@@ -3,9 +3,11 @@ using System.ComponentModel;
 using System.Drawing;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using AdbView.State;
 using Serilog;
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.UI.WindowsAndMessaging;
 
 namespace AdbView.Host;
 
@@ -25,8 +27,18 @@ internal sealed class FlyoutWindow : Form {
     private const int WM_ACTIVATEAPP = 0x001C;
     private const int WA_INACTIVE = 0;
     private const int DWMSBT_TRANSIENTWINDOW = 3;
+    private const int DWMWCP_ROUNDSMALL = 3;
 
     private bool _isPinned;
+    private ThemeKind _theme = ThemeKind.Dark;
+    private bool _transparencyEnabled = true;
+    private bool _backdropActive;
+
+    /// <summary>
+    /// Caption-class height (~32 px at 96 DPI). Frame regression rejects insets ≥ this
+    /// (distinguishes full Windows caption from few-pixel DWM borders).
+    /// </summary>
+    internal const int CaptionInsetRejectPx = 28;
 
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool IsPinned {
@@ -37,8 +49,15 @@ internal sealed class FlyoutWindow : Form {
         }
     }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal ThemeKind AppliedTheme => _theme;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    internal bool BackdropActive => _backdropActive;
+
     public FlyoutWindow() {
-        FormBorderStyle = FormBorderStyle.Sizable; // Retain non-popup frame for backdrop support
+        // Sizable + WS_CAPTION retained (CreateParams) so DWM acrylic works; NC collapsed in WM_NCCALCSIZE.
+        FormBorderStyle = FormBorderStyle.Sizable;
         ControlBox = false;
         MinimizeBox = false;
         MaximizeBox = false;
@@ -54,11 +73,12 @@ internal sealed class FlyoutWindow : Form {
         get {
             var cp = base.CreateParams;
             cp.ExStyle |= 0x00000080; // WS_EX_TOOLWINDOW
-            cp.Style &= ~0x00C00000; // WS_CAPTION (removes native caption bar)
-            cp.Style &= ~0x00080000; // WS_SYSMENU (removes DWM close button / system menu)
-            cp.Style &= ~0x00040000; // WS_THICKFRAME (removes native resize borders)
-            cp.Style &= ~0x00020000; // WS_MINIMIZEBOX (prevents minimize)
-            cp.Style &= ~0x00010000; // WS_MAXIMIZEBOX (prevents maximize)
+            // KEEP WS_CAPTION (0x00C00000) — ENGINEERING.md §9.1 / acrylic requirement.
+            cp.Style |= 0x00C00000; // WS_CAPTION
+            cp.Style &= ~0x00080000; // WS_SYSMENU
+            cp.Style &= ~0x00040000; // WS_THICKFRAME
+            cp.Style &= ~0x00020000; // WS_MINIMIZEBOX
+            cp.Style &= ~0x00010000; // WS_MAXIMIZEBOX
             return cp;
         }
     }
@@ -66,29 +86,82 @@ internal sealed class FlyoutWindow : Form {
     protected override void OnHandleCreated(EventArgs e) {
         Log.Information("FlyoutWindow.OnHandleCreated: Handle={Handle}", Handle);
         base.OnHandleCreated(e);
-        ApplyBackdrop();
+        ApplyBackdrop(_theme, _transparencyEnabled);
+        RecalcNonClientFrame();
     }
 
-    private unsafe void ApplyBackdrop() {
+    protected override void OnShown(EventArgs e) {
+        base.OnShown(e);
+        // First visible frame must already have collapsed NC (Defect 1).
+        RecalcNonClientFrame();
+    }
+
+    /// <summary>
+    /// Forces non-client recalculation after custom-frame / backdrop establishment
+    /// (SetWindowPos + SWP_FRAMECHANGED). Centralized — do not scatter magic flags.
+    /// </summary>
+    internal void RecalcNonClientFrame() {
+        if (!IsHandleCreated) {
+            return;
+        }
+
+        PInvoke.SetWindowPos(
+            new HWND(Handle),
+            HWND.Null,
+            0,
+            0,
+            0,
+            0,
+            SET_WINDOW_POS_FLAGS.SWP_NOMOVE
+            | SET_WINDOW_POS_FLAGS.SWP_NOSIZE
+            | SET_WINDOW_POS_FLAGS.SWP_NOZORDER
+            | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE
+            | SET_WINDOW_POS_FLAGS.SWP_FRAMECHANGED);
+
+        Log.Information("FlyoutWindow.RecalcNonClientFrame applied");
+    }
+
+    /// <summary>
+    /// Client top relative to window top in physical pixels. ≈0 when NC is collapsed;
+    /// ≈caption height when a real title bar is present.
+    /// </summary>
+    internal int MeasureClientTopInsetPx() {
+        if (!IsHandleCreated) {
+            return -1;
+        }
+
+        var client = PointToScreen(Point.Empty);
+        return client.Y - Bounds.Y;
+    }
+
+    internal void ApplyShellAppearance(ThemeKind theme, bool transparencyEnabled) {
+        _theme = theme;
+        _transparencyEnabled = transparencyEnabled;
+        if (!IsHandleCreated) {
+            return;
+        }
+
+        ApplyBackdrop(theme, transparencyEnabled);
+        RecalcNonClientFrame();
+    }
+
+    private unsafe void ApplyBackdrop(ThemeKind theme, bool transparencyEnabled) {
         int backdropType = DWMSBT_TRANSIENTWINDOW;
+        int useDarkMode = theme == ThemeKind.Light ? 0 : 1;
+        _backdropActive = false;
+
         try {
-            int useDarkMode = 1;
-            try {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-                if (key != null && key.GetValue("AppsUseLightTheme") is int lightTheme && lightTheme == 1) {
-                    useDarkMode = 0;
-                }
-            }
-#pragma warning disable CA1031
-            catch (Exception ex) {
-                Log.Warning(ex, "Failed to read light-theme registry value; defaulting to dark mode");
-            }
-#pragma warning restore CA1031
+            Log.Information(
+                "DWM applyBackdrop: theme={Theme}, useDarkMode={UseDarkMode}, transparency={Transparency}",
+                theme,
+                useDarkMode,
+                transparencyEnabled);
 
-            Log.Information("DWM applyBackdrop: useDarkMode={UseDarkMode}, backdropType={BackdropType}, BackColor={BackColor}",
-                useDarkMode, backdropType, BackColor);
+            if (!transparencyEnabled) {
+                ApplyOpaqueFallback(theme);
+                return;
+            }
 
-            // Set backdrop type FIRST, then dark mode (order matters for DWM)
             var hrBackdrop = PInvoke.DwmSetWindowAttribute(
                 new HWND(Handle),
                 (Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE)38, // DWMWA_SYSTEMBACKDROP_TYPE
@@ -101,32 +174,56 @@ internal sealed class FlyoutWindow : Form {
                 &useDarkMode,
                 sizeof(int));
 
-            Log.Information("DWM results: backdrop=0x{BackdropHR:X8}, darkMode=0x{DarkHR:X8}",
-                hrBackdrop.Value, hrDark.Value);
+            int corner = DWMWCP_ROUNDSMALL;
+            var hrCorner = PInvoke.DwmSetWindowAttribute(
+                new HWND(Handle),
+                (Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE)33, // DWMWA_WINDOW_CORNER_PREFERENCE
+                &corner,
+                sizeof(int));
+
+            Log.Information(
+                "DWM results: backdrop=0x{BackdropHR:X8}, darkMode=0x{DarkHR:X8}, corner=0x{CornerHR:X8}",
+                hrBackdrop.Value,
+                hrDark.Value,
+                hrCorner.Value);
 
             if (hrBackdrop.Value < 0) {
                 Log.Information("DWM backdrop unsupported or failed. Using opaque fallback.");
-                BackColor = Color.FromArgb(255, 30, 30, 30); // Opaque fallback
+                ApplyOpaqueFallback(theme);
             }
             else {
-                // Extend frame into client area so DWM backdrop renders through Color.Black
-                var margins = new Windows.Win32.UI.Controls.MARGINS { cxLeftWidth = -1, cxRightWidth = -1, cyTopHeight = -1, cyBottomHeight = -1 };
+                BackColor = Color.Black; // Transparent acrylic host surface
+                var margins = new Windows.Win32.UI.Controls.MARGINS {
+                    cxLeftWidth = -1,
+                    cxRightWidth = -1,
+                    cyTopHeight = -1,
+                    cyBottomHeight = -1,
+                };
                 PInvoke.DwmExtendFrameIntoClientArea(new HWND(Handle), in margins);
+                _backdropActive = true;
             }
         }
 #pragma warning disable CA1031
         catch (Exception ex) {
             Log.Warning(ex, "DwmSetWindowAttribute failed. Using opaque fallback.");
-            BackColor = Color.FromArgb(255, 30, 30, 30);
+            ApplyOpaqueFallback(theme);
         }
 #pragma warning restore CA1031
+    }
+
+    private void ApplyOpaqueFallback(ThemeKind theme) {
+        _backdropActive = false;
+        // DESIGN §22 opaque tokens: intentional light/dark solid surface.
+        BackColor = theme == ThemeKind.Light
+            ? Color.FromArgb(255, 243, 244, 246)
+            : Color.FromArgb(255, 32, 35, 41);
     }
 
     protected override void WndProc(ref Message m) {
         switch (m.Msg) {
             case WM_NCCALCSIZE:
                 if (m.WParam != IntPtr.Zero) {
-                    // Remove standard client area frame to make it borderless
+                    // Collapse non-client area so WS_CAPTION remains for DWM but is not drawn.
                     m.Result = IntPtr.Zero;
                     return;
                 }
@@ -147,16 +244,13 @@ internal sealed class FlyoutWindow : Form {
                 return;
 
             case WM_NCACTIVATE:
-                // Keep the acrylic effect active even when unfocused
                 m.WParam = new IntPtr(1);
                 break;
 
             case WM_NCHITTEST:
-                // WebView2 IsNonClientRegionSupportEnabled handles app-region: drag natively.
-                // But WinForms might still return sizing border hits. Suppress them explicitly.
                 base.WndProc(ref m);
                 int hit = m.Result.ToInt32();
-                if (hit >= 10 && hit <= 17) { // HTLEFT through HTBOTTOMRIGHT
+                if (hit >= 10 && hit <= 17) {
                     m.Result = new IntPtr(HTBORDER);
                 }
                 return;
@@ -164,7 +258,6 @@ internal sealed class FlyoutWindow : Form {
             case WM_NCLBUTTONDBLCLK:
             case WM_NCRBUTTONDOWN:
             case WM_NCRBUTTONUP:
-                // Prevent maximize on double click, and prevent system menu on right click of the app-region: drag area
                 m.Result = IntPtr.Zero;
                 return;
 
@@ -172,23 +265,21 @@ internal sealed class FlyoutWindow : Form {
                 int cmd = m.WParam.ToInt32() & 0xFFF0;
                 if (cmd == SC_MOVE) {
                     if (!IsPinned) {
-                        // Prevent dragging when unpinned
                         m.Result = IntPtr.Zero;
                         return;
                     }
                 }
                 else if (cmd == SC_SIZE) {
-                    // Prevent any resizing commands triggered via native OS shortcuts/menus
                     m.Result = IntPtr.Zero;
                     return;
                 }
                 break;
 
             case WM_DPICHANGED:
-                // The suggested rect is in LParam
                 var rect = Marshal.PtrToStructure<RECT>(m.LParam);
                 Bounds = new Rectangle(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
                 Log.Information("DPI Changed. Applied suggested bounds: {Bounds}", Bounds);
+                RecalcNonClientFrame();
                 break;
         }
 

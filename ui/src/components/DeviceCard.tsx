@@ -100,9 +100,13 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
         </div>
 
         {isExpanded ? (
-          <div
+          <button
+            type="button"
             data-testid="chevron-expanded"
-            className="hit-area-40 w-6 h-6 flex items-center justify-center text-win-glyph-text hover:text-win-text-primary transition-colors cursor-pointer"
+            aria-expanded="true"
+            aria-label="Collapse device details"
+            aria-controls={`device-details-${device.id}`}
+            className="hit-area-40 w-6 h-6 flex items-center justify-center text-win-glyph-text hover:text-win-text-primary device-card-chevron cursor-pointer border-0 bg-transparent p-0"
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand?.(device.id);
@@ -120,11 +124,15 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
             >
               <path d="m18 15-6-6-6 6"></path>
             </svg>
-          </div>
+          </button>
         ) : (
-          <div
+          <button
+            type="button"
             data-testid="chevron-collapsed"
-            className="hit-area-40 w-6 h-6 flex items-center justify-center text-win-text-muted group-hover:text-win-glyph-text transition-colors cursor-pointer"
+            aria-expanded="false"
+            aria-label="Expand device details"
+            aria-controls={`device-details-${device.id}`}
+            className="hit-area-40 w-6 h-6 flex items-center justify-center text-win-text-muted group-hover:text-win-glyph-text device-card-chevron cursor-pointer border-0 bg-transparent p-0"
             onClick={(e) => {
               e.stopPropagation();
               onToggleExpand?.(device.id);
@@ -142,7 +150,7 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
             >
               <path d="m6 9 6 6 6-6"></path>
             </svg>
-          </div>
+          </button>
         )}
       </div>
 
@@ -220,159 +228,167 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
         )}
       </div>
 
-      {isExpanded && (
-        <div
-          data-testid="device-card-details"
-          className="mt-2.5 pt-2.5 border-t border-win-border-subtle space-y-2"
-        >
-          {device.model && (
-            <div className="flex items-center justify-between text-[12px]">
-              <span className="text-win-text-muted font-normal">Model</span>
-              <span className="text-win-text-value font-mono text-[12px]">{device.model}</span>
-            </div>
-          )}
-          {device.androidVersion && (
-            <div className="flex items-center justify-between text-[12px]">
-              <span className="text-win-text-muted font-normal">Android</span>
-              <span className="text-win-text-value font-mono text-[12px]">
-                {device.androidVersion}
-              </span>
-            </div>
-          )}
-          {device.address && (
-            <div
-              className={`flex items-center justify-between text-[12px] ${copiedId === 'address' ? 'bg-win-green-surface -mx-1 px-1 py-0.5 rounded transition-all' : 'group/item'}`}
-            >
-              <span
-                className={
-                  copiedId === 'address'
-                    ? 'text-win-text-secondary font-normal'
-                    : 'text-win-text-muted font-normal'
-                }
-              >
-                Address
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`${copiedId === 'address' ? 'text-win-green-text' : 'text-win-text-value'} font-mono text-[11.5px]`}
-                >
-                  {device.address}
-                </span>
-                {copiedId === 'address' ? (
-                  <span
-                    data-testid="copied-badge"
-                    className="inline-flex items-center gap-1 text-[11px] text-win-green-text font-medium bg-win-green-surface border border-win-green-border px-1.5 py-0.5 rounded"
-                  >
-                    <svg
-                      fill="none"
-                      height="10"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2.5"
-                      viewBox="0 0 24 24"
-                      width="10"
-                    >
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    Copied
-                  </span>
-                ) : (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCopy?.(device.address!, 'address');
-                    }}
-                    className="hit-area-40 w-5 h-5 rounded flex items-center justify-center text-win-text-muted hover:text-win-text-primary hover:bg-win-btn-hover fluent-btn"
-                    title="Copy Address"
-                    aria-label="Copy Address"
-                  >
-                    <svg
-                      fill="none"
-                      height="12"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                      width="12"
-                    >
-                      <rect height="14" rx="2" ry="2" width="14" x="8" y="8"></rect>
-                      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
-                    </svg>
-                  </button>
-                )}
+      <div
+        className={`device-card-details-grid${isExpanded ? ' is-expanded' : ''}`}
+        data-testid="device-card-details-grid"
+        aria-hidden={!isExpanded}
+        {...(!isExpanded ? { inert: true } : {})}
+      >
+        <div className="device-card-details-inner">
+          <div
+            data-testid="device-card-details"
+            className="device-card-details-body mt-2.5 pt-2.5 border-t border-win-border-subtle space-y-2"
+            id={`device-details-${device.id}`}
+          >
+            {device.model && (
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-win-text-muted font-normal">Model</span>
+                <span className="text-win-text-value font-mono text-[12px]">{device.model}</span>
               </div>
-            </div>
-          )}
-          {device.serial && (
-            <div
-              className={`flex items-center justify-between text-[12px] ${copiedId === 'serial' ? 'bg-win-green-surface -mx-1 px-1 py-0.5 rounded transition-all' : 'group/item'}`}
-            >
-              <span
-                className={
-                  copiedId === 'serial'
-                    ? 'text-win-text-secondary font-normal'
-                    : 'text-win-text-muted font-normal'
-                }
-              >
-                Serial
-              </span>
-              <div className="flex items-center gap-1.5">
-                <span
-                  className={`${copiedId === 'serial' ? 'text-win-green-text' : 'text-win-text-value'} font-mono text-[11.5px]`}
-                >
-                  {device.serial}
+            )}
+            {device.androidVersion && (
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-win-text-muted font-normal">Android</span>
+                <span className="text-win-text-value font-mono text-[12px]">
+                  {device.androidVersion}
                 </span>
-                {copiedId === 'serial' ? (
-                  <span
-                    data-testid="copied-badge"
-                    className="inline-flex items-center gap-1 text-[11px] text-win-green-text font-medium bg-win-green-surface border border-win-green-border px-1.5 py-0.5 rounded"
-                  >
-                    <svg
-                      fill="none"
-                      height="10"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2.5"
-                      viewBox="0 0 24 24"
-                      width="10"
-                    >
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    Copied
-                  </span>
-                ) : (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onCopy?.(device.serial!, 'serial');
-                    }}
-                    className="hit-area-40 w-5 h-5 rounded flex items-center justify-center text-win-text-muted hover:text-win-text-primary hover:bg-win-btn-hover fluent-btn"
-                    title="Copy Serial"
-                    aria-label="Copy Serial"
-                  >
-                    <svg
-                      fill="none"
-                      height="12"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      viewBox="0 0 24 24"
-                      width="12"
-                    >
-                      <rect height="14" rx="2" ry="2" width="14" x="8" y="8"></rect>
-                      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
-                    </svg>
-                  </button>
-                )}
               </div>
-            </div>
-          )}
+            )}
+            {device.address && (
+              <div
+                className={`flex items-center justify-between text-[12px] ${copiedId === 'address' ? 'bg-win-green-surface -mx-1 px-1 py-0.5 rounded transition-all' : 'group/item'}`}
+              >
+                <span
+                  className={
+                    copiedId === 'address'
+                      ? 'text-win-text-secondary font-normal'
+                      : 'text-win-text-muted font-normal'
+                  }
+                >
+                  Address
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`${copiedId === 'address' ? 'text-win-green-text' : 'text-win-text-value'} font-mono text-[11.5px]`}
+                  >
+                    {device.address}
+                  </span>
+                  {copiedId === 'address' ? (
+                    <span
+                      data-testid="copied-badge"
+                      className="inline-flex items-center gap-1 text-[11px] text-win-green-text font-medium bg-win-green-surface border border-win-green-border px-1.5 py-0.5 rounded"
+                    >
+                      <svg
+                        fill="none"
+                        height="10"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2.5"
+                        viewBox="0 0 24 24"
+                        width="10"
+                      >
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      Copied
+                    </span>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCopy?.(device.address!, 'address');
+                      }}
+                      className="hit-area-40 w-5 h-5 rounded flex items-center justify-center text-win-text-muted hover:text-win-text-primary hover:bg-win-btn-hover fluent-btn"
+                      title="Copy Address"
+                      aria-label="Copy Address"
+                    >
+                      <svg
+                        fill="none"
+                        height="12"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                        width="12"
+                      >
+                        <rect height="14" rx="2" ry="2" width="14" x="8" y="8"></rect>
+                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            {device.serial && (
+              <div
+                className={`flex items-center justify-between text-[12px] ${copiedId === 'serial' ? 'bg-win-green-surface -mx-1 px-1 py-0.5 rounded transition-all' : 'group/item'}`}
+              >
+                <span
+                  className={
+                    copiedId === 'serial'
+                      ? 'text-win-text-secondary font-normal'
+                      : 'text-win-text-muted font-normal'
+                  }
+                >
+                  Serial
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`${copiedId === 'serial' ? 'text-win-green-text' : 'text-win-text-value'} font-mono text-[11.5px]`}
+                  >
+                    {device.serial}
+                  </span>
+                  {copiedId === 'serial' ? (
+                    <span
+                      data-testid="copied-badge"
+                      className="inline-flex items-center gap-1 text-[11px] text-win-green-text font-medium bg-win-green-surface border border-win-green-border px-1.5 py-0.5 rounded"
+                    >
+                      <svg
+                        fill="none"
+                        height="10"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2.5"
+                        viewBox="0 0 24 24"
+                        width="10"
+                      >
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      Copied
+                    </span>
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCopy?.(device.serial!, 'serial');
+                      }}
+                      className="hit-area-40 w-5 h-5 rounded flex items-center justify-center text-win-text-muted hover:text-win-text-primary hover:bg-win-btn-hover fluent-btn"
+                      title="Copy Serial"
+                      aria-label="Copy Serial"
+                    >
+                      <svg
+                        fill="none"
+                        height="12"
+                        stroke="currentColor"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        viewBox="0 0 24 24"
+                        width="12"
+                      >
+                        <rect height="14" rx="2" ry="2" width="14" x="8" y="8"></rect>
+                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>
+                      </svg>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

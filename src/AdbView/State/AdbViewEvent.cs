@@ -10,6 +10,13 @@ internal sealed record AdbServerStateChangedEvent(AdbServerStateChanged State) :
 
 internal sealed record SetPinnedEvent(bool Pinned) : AdbViewEvent;
 
+/// <summary>Windows appearance → shell theme / transparency / motion / contrast.</summary>
+internal sealed record ShellAppearanceChangedEvent(
+    ThemeKind Theme,
+    bool TransparencyEnabled,
+    bool ForcedColors,
+    bool ReducedMotion) : AdbViewEvent;
+
 /// <summary>Complete authoritative device list from DeviceTracker (ENGINEERING.md §6.10).</summary>
 internal sealed record DeviceListReceivedEvent(
     ImmutableArray<RawDevice> Devices,

@@ -319,11 +319,16 @@ public sealed record DeviceView
 
 public sealed record DeviceDetailView
 {
-    public required string Serial { get; init; }
+    /// <summary>
+    /// Hardware/display serial only. Null when unknown or when the only known
+    /// identifier is an ADB host:port transport selector (omit the Serial row).
+    /// Does not affect DeviceId or AdbSerial transport addressing.
+    /// </summary>
+    public string? Serial { get; init; }
     public string? ExactModel { get; init; }             // "SM-S921B"
     public string? AndroidVersion { get; init; }         // "15"
     public string? Address { get; init; }                // "192.168.1.42:37895" (Wi-Fi only)
-    public required ImmutableArray<CopyFieldView> CopyFields { get; init; } // serial, address
+    public required ImmutableArray<CopyFieldView> CopyFields { get; init; } // serial, address (omit unknown)
 }
 
 public sealed record CopyFieldView
@@ -425,7 +430,7 @@ export interface DeviceView {
 }
 
 export interface DeviceDetailView {
-  serial: string; exactModel: string | null; androidVersion: string | null;
+  serial: string | null; exactModel: string | null; androidVersion: string | null;
   address: string | null; copyFields: CopyFieldView[];
 }
 export interface CopyFieldView { key: string; label: string; value: string }
@@ -841,8 +846,10 @@ Never notified: metadata refresh (battery, model, version), `AdbRestoring`, wire
 - **Backdrop:** `DWMWA_USE_IMMERSIVE_DARK_MODE` per theme, `DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUNDSMALL` (matches the 8 px design radius), `DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_TRANSIENTWINDOW` (Desktop Acrylic). Two non-obvious requirements, both established practice in shipping Windows utilities:
   1. DWM ignores `DWMWA_SYSTEMBACKDROP_TYPE` on a truly frameless `WS_POPUP` window. The window therefore keeps `WS_CAPTION` and collapses its non-client area in `WM_NCCALCSIZE`, preserving the borderless look while DWM still draws material.
   2. DWM flattens the material to a solid tint on windows it considers inactive. A pinned flyout is usually inactive, so the window answers `WM_NCACTIVATE` with `TRUE` for compositing purposes only (no focus stealing, no activation side effects).
-- WebView2 background is transparent (`DefaultBackgroundColor = Color.Transparent`) so the native material shows through; the frontend paints only its token-driven layers. If transparency is unavailable (`DWM composition off`, contrast theme, or the backdrop call fails), the host sets `shell.transparencyEnabled = false` and the frontend switches to the opaque token set — same geometry, same components (`DESIGN.md §22`).
-- **Sizing:** width is always `376 effective px × dpiScale`. Height is content-driven: the frontend measures and sends `reportContentSize`; the host clamps to `[120, 560]` effective px and resizes. Until the first report, the window stays hidden (it is shown on the first `reportContentSize` after `ready`), so the user never sees a wrongly sized frame.
+  3. After custom-frame / backdrop establishment (and after theme changes), call `SetWindowPos(..., SWP_FRAMECHANGED)` via one host method (`RecalcNonClientFrame`) so the first visible frame already has a collapsed non-client area — never wait for a later resize to hide the native caption.
+- WebView2 background is transparent (`DefaultBackgroundColor = Color.Transparent`) so the native material shows through; the frontend paints only its token-driven layers. If transparency is unavailable (`DWM composition off`, contrast theme, or the backdrop call fails), the host sets `shell.transparencyEnabled = false` and the frontend switches to the opaque token set — same geometry, same components (`DESIGN.md §22`). Theme changes update both `shell.theme` and native `DWMWA_USE_IMMERSIVE_DARK_MODE` / opaque fallback on the same HWND.
+- **Sizing:** width is always `376 effective px × dpiScale`. Height is content-driven: the frontend measures (including intermediate layout during structural CSS transitions) and sends `reportContentSize`; the host clamps to `[120, 560]` effective px and resizes, anchored to the tray edge when unpinned. Until the first report, the window stays hidden.
+- **First show:** Normal interactive launch (no `--startup`, no fixture, no headless/selftest) requests one deferred show after WebView ready **and** the first valid `reportContentSize`. `--startup` (login/autostart) stays tray-only. Fixture/headed harness may show for visual capture. Second-instance named-pipe `toggle` is unchanged.
 
 ### 9.3 Placement
 

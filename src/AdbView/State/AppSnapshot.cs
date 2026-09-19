@@ -76,7 +76,11 @@ internal sealed record DeviceView {
 }
 
 internal sealed record DeviceDetailView {
-    public required string Serial { get; init; }
+    /// <summary>
+    /// User-visible hardware serial. Null when only a transport endpoint is known (Wi-Fi host:port).
+    /// Does not affect internal DeviceId or AdbSerial transport addressing.
+    /// </summary>
+    public string? Serial { get; init; }
     public string? ExactModel { get; init; }             // "SM-S921B"
     public string? AndroidVersion { get; init; }         // "15"
     public string? Address { get; init; }                // "192.168.1.42:37895" (Wi-Fi only)

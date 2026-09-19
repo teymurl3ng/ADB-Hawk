@@ -33,6 +33,10 @@ const extraArg = process.argv[4];
         if (action === 'measure-theme') {
             const mode = extraArg || 'dark';
             await page.emulateMedia({ colorScheme: mode });
+            // Authoritative shell.theme is dark in fixtures; force data-theme for D.1 token audits.
+            await page.evaluate((m) => {
+                document.documentElement.dataset.theme = m;
+            }, mode);
             await page.waitForTimeout(100);
 
             const metrics = await page.evaluate(() => {
@@ -64,38 +68,45 @@ const extraArg = process.argv[4];
                 cards.forEach((c, idx) => {
                     const hasExpandedChevron = !!c.querySelector('[data-testid="chevron-expanded"]') || !!c.querySelector('path[d*="18 15"]');
                     const hasCollapsedChevron = !!c.querySelector('[data-testid="chevron-collapsed"]') || !!c.querySelector('path[d*="6 9"]');
+                    const grid = c.querySelector('[data-testid="device-card-details-grid"]');
                     const details = c.querySelector('[data-testid="device-card-details"]') || c.querySelector('div.space-y-2');
+                    const gridExpanded = grid ? grid.classList.contains('is-expanded') : false;
+                    const gridHeight = grid ? grid.getBoundingClientRect().height : 0;
                     const detailsHeight = details ? details.getBoundingClientRect().height : 0;
 
-                    // Invariant: expanded chevron REQUIRES visible details (height > 0)
-                    if (hasExpandedChevron && detailsHeight <= 0) {
+                    // Invariant: expanded chevron REQUIRES expanded grid with visible details
+                    if (hasExpandedChevron && (!gridExpanded || detailsHeight <= 0)) {
                         violations.push({
                             rule: 'expanded-chevron-requires-visible-details',
                             cardIndex: idx,
                             detailsHeight,
-                            message: `Card ${idx} has expanded chevron but details region height is ${detailsHeight}`
+                            gridHeight,
+                            message: `Card ${idx} has expanded chevron but details not visibly expanded`
                         });
                     }
 
-                    // Invariant: collapsed chevron REQUIRES no visible details
-                    if (hasCollapsedChevron && detailsHeight > 0) {
+                    // Invariant: collapsed chevron REQUIRES collapsed grid (0fr — details may stay mounted)
+                    if (hasCollapsedChevron && (gridExpanded || gridHeight > 1)) {
                         violations.push({
                             rule: 'collapsed-chevron-forbids-visible-details',
                             cardIndex: idx,
                             detailsHeight,
-                            message: `Card ${idx} has collapsed chevron but details region height is ${detailsHeight}`
+                            gridHeight,
+                            message: `Card ${idx} has collapsed chevron but details grid still open (h=${gridHeight})`
                         });
                     }
 
-                    // Invariant: USB devices must NOT show Address or IP
-                    const cardText = c.innerText;
-                    const isUsb = cardText.includes('USB') && !cardText.includes('Wi-Fi');
-                    if (isUsb && (cardText.includes('Address') || /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(cardText))) {
-                        violations.push({
-                            rule: 'usb-device-must-not-show-address',
-                            cardIndex: idx,
-                            message: `Card ${idx} is USB but contains Address or IP pattern`
-                        });
+                    // Invariant: USB devices must NOT show Address or IP in the *visible* expanded region
+                    const isUsb = c.innerText.includes('USB') && !c.innerText.includes('Wi-Fi');
+                    if (isUsb && gridExpanded) {
+                        const detailText = details ? details.innerText : '';
+                        if (detailText.includes('Address') || /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/.test(detailText)) {
+                            violations.push({
+                                rule: 'usb-device-must-not-show-address',
+                                cardIndex: idx,
+                                message: `Card ${idx} is USB but contains Address or IP pattern`
+                            });
+                        }
                     }
                 });
 
@@ -178,8 +189,10 @@ const extraArg = process.argv[4];
                 const rect = c.getBoundingClientRect();
                 const chevronDown = !!c.querySelector('[data-testid="chevron-collapsed"]') || !!c.querySelector('path[d*="6 9"]');
                 const chevronUp = !!c.querySelector('[data-testid="chevron-expanded"]') || !!c.querySelector('path[d*="18 15"]');
+                const grid = c.querySelector('[data-testid="device-card-details-grid"]');
                 const details = c.querySelector('[data-testid="device-card-details"]') || c.querySelector('div.space-y-2');
-                const detailsHeight = details ? details.getBoundingClientRect().height : 0;
+                // Visible details height = grid box (0fr collapses to ~0; content may stay mounted).
+                const detailsHeight = grid ? grid.getBoundingClientRect().height : 0;
                 return {
                     width: rect.width,
                     height: rect.height,
@@ -197,15 +210,16 @@ const extraArg = process.argv[4];
             const chevron = await targetCard.$('.hit-area-40');
             if (chevron) await chevron.click();
             else await targetCard.click();
-            await page.waitForTimeout(150);
+            await page.waitForTimeout(300);
 
             // 3. Expanded State
             const expandedMetrics = await targetCard.evaluate((c) => {
                 const rect = c.getBoundingClientRect();
                 const chevronDown = !!c.querySelector('[data-testid="chevron-collapsed"]') || !!c.querySelector('path[d*="6 9"]');
                 const chevronUp = !!c.querySelector('[data-testid="chevron-expanded"]') || !!c.querySelector('path[d*="18 15"]');
+                const grid = c.querySelector('[data-testid="device-card-details-grid"]');
                 const details = c.querySelector('[data-testid="device-card-details"]') || c.querySelector('div.space-y-2');
-                const detailsHeight = details ? details.getBoundingClientRect().height : 0;
+                const detailsHeight = grid ? grid.getBoundingClientRect().height : 0;
                 const text = details ? details.innerText : '';
                 return {
                     width: rect.width,
@@ -230,15 +244,16 @@ const extraArg = process.argv[4];
             const chevron2 = await targetCard.$('.hit-area-40');
             if (chevron2) await chevron2.click();
             else await targetCard.click();
-            await page.waitForTimeout(150);
+            await page.waitForTimeout(300);
 
             // 5. Collapsed State
             const finalMetrics = await targetCard.evaluate((c) => {
                 const rect = c.getBoundingClientRect();
                 const chevronDown = !!c.querySelector('[data-testid="chevron-collapsed"]') || !!c.querySelector('path[d*="6 9"]');
                 const chevronUp = !!c.querySelector('[data-testid="chevron-expanded"]') || !!c.querySelector('path[d*="18 15"]');
+                const grid = c.querySelector('[data-testid="device-card-details-grid"]');
                 const details = c.querySelector('[data-testid="device-card-details"]') || c.querySelector('div.space-y-2');
-                const detailsHeight = details ? details.getBoundingClientRect().height : 0;
+                const detailsHeight = grid ? grid.getBoundingClientRect().height : 0;
                 return {
                     width: rect.width,
                     height: rect.height,
@@ -258,32 +273,32 @@ const extraArg = process.argv[4];
                 passed = 
                     beforeMetrics.chevronDown &&
                     !beforeMetrics.chevronUp &&
-                    beforeMetrics.detailsHeight === 0 &&
+                    beforeMetrics.detailsHeight <= 1 &&
                     expandedMetrics.chevronUp &&
                     !expandedMetrics.chevronDown &&
                     expandedMetrics.detailsPresent &&
-                    expandedMetrics.detailsHeight > 0 &&
+                    expandedMetrics.detailsHeight > 1 &&
                     expandedMetrics.height > beforeMetrics.height &&
                     pixelDiff &&
                     finalMetrics.chevronDown &&
                     !finalMetrics.chevronUp &&
-                    finalMetrics.detailsHeight === 0 &&
+                    finalMetrics.detailsHeight <= 1 &&
                     Math.abs(finalMetrics.height - beforeMetrics.height) <= 2;
             } else {
                 // Started expanded (e.g. 'expanded' fixture): test Collapse -> Details Hidden -> Re-expand -> Restore
                 passed = 
                     beforeMetrics.chevronUp &&
                     !beforeMetrics.chevronDown &&
-                    beforeMetrics.detailsHeight > 0 &&
+                    beforeMetrics.detailsHeight > 1 &&
                     expandedMetrics.chevronDown &&
                     !expandedMetrics.chevronUp &&
-                    expandedMetrics.detailsHeight === 0 &&
+                    expandedMetrics.detailsHeight <= 1 &&
                     expandedMetrics.height < beforeMetrics.height &&
                     pixelDiff &&
                     finalMetrics.chevronUp &&
                     !finalMetrics.chevronDown &&
                     finalMetrics.detailsPresent &&
-                    finalMetrics.detailsHeight > 0 &&
+                    finalMetrics.detailsHeight > 1 &&
                     Math.abs(finalMetrics.height - beforeMetrics.height) <= 2;
             }
 
@@ -308,17 +323,19 @@ const extraArg = process.argv[4];
                     if (!c) return null;
                     const chevronUp = !!c.querySelector('[data-testid="chevron-expanded"]') || !!c.querySelector('path[d*="18 15"]');
                     const chevronDown = !!c.querySelector('[data-testid="chevron-collapsed"]') || !!c.querySelector('path[d*="6 9"]');
+                    const grid = c.querySelector('[data-testid="device-card-details-grid"]');
                     const details = c.querySelector('[data-testid="device-card-details"]') || c.querySelector('div.space-y-2');
-                    const detailsHeight = details ? details.getBoundingClientRect().height : 0;
+                    const gridHeight = grid ? grid.getBoundingClientRect().height : 0;
+                    const gridExpanded = grid ? grid.classList.contains('is-expanded') : false;
                     const rect = c.getBoundingClientRect();
                     return {
                         index: i,
                         chevronUp,
                         chevronDown,
                         hasDetailsDOM: !!details,
-                        detailsHeight,
-                        isExpanded: chevronUp && !!details && detailsHeight > 0,
-                        isCollapsed: chevronDown && (!details || detailsHeight === 0),
+                        detailsHeight: gridHeight,
+                        isExpanded: chevronUp && gridExpanded && gridHeight > 1,
+                        isCollapsed: chevronDown && !gridExpanded && gridHeight <= 1,
                         width: rect.width,
                         height: rect.height
                     };
@@ -331,7 +348,7 @@ const extraArg = process.argv[4];
                     const chevron = await cards[idx].$('.hit-area-40');
                     if (chevron) await chevron.click();
                     else await cards[idx].click();
-                    await page.waitForTimeout(120);
+                    await page.waitForTimeout(300);
                 }
             };
 
@@ -340,6 +357,7 @@ const extraArg = process.argv[4];
                 await toggleCard(i);
                 const afterExpand = await getCardState(i);
                 const allStates = await Promise.all([0,1,2,3,4,5].map(getCardState));
+                // DESIGN: only one card expanded at a time.
                 const othersCollapsed = allStates.every((st, idx) => idx === i ? st.isExpanded : st.isCollapsed);
 
                 await toggleCard(i);
@@ -354,18 +372,18 @@ const extraArg = process.argv[4];
                 });
             }
 
-            // Combination tests:
+            // Combination tests (single-expand):
             // 1. Expand card 0
             await toggleCard(0);
             const s1_0 = await getCardState(0);
             const s1_1 = await getCardState(1);
 
-            // 2. Expand card 1 (both expanded)
+            // 2. Expand card 1 → card 0 collapses
             await toggleCard(1);
             const s2_0 = await getCardState(0);
             const s2_1 = await getCardState(1);
 
-            // 3. Collapse card 0 (card 1 stays expanded)
+            // 3. Expand card 0 → card 1 collapses
             await toggleCard(0);
             const s3_0 = await getCardState(0);
             const s3_1 = await getCardState(1);
@@ -378,10 +396,10 @@ const extraArg = process.argv[4];
             await page.waitForTimeout(100);
             await toggleCard(5);
             const s4_5 = await getCardState(5);
+            const s4_0 = await getCardState(0);
 
-            // Reset all
+            // Reset
             await toggleCard(5);
-            await toggleCard(1);
             await page.evaluate(() => {
                 const container = document.querySelector('.flex-1.overflow-y-auto');
                 if (container) container.scrollTop = 0;
@@ -420,11 +438,11 @@ const extraArg = process.argv[4];
                 };
             });
 
-            const combinationsPassed = 
+            const combinationsPassed =
                 s1_0.isExpanded && s1_1.isCollapsed &&
-                s2_0.isExpanded && s2_1.isExpanded &&
-                s3_0.isCollapsed && s3_1.isExpanded &&
-                s4_5.isExpanded;
+                s2_0.isCollapsed && s2_1.isExpanded &&
+                s3_0.isExpanded && s3_1.isCollapsed &&
+                s4_5.isExpanded && s4_0.isCollapsed;
 
             result.details = {
                 independentTests,

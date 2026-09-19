@@ -10,14 +10,16 @@ describe('App', () => {
 
   it('toggles expansion when clicking a device card chevron', () => {
     render(<App />);
-    // By default connected-wifi fixture renders Galaxy S24 collapsed
-    expect(screen.queryByTestId('device-card-details')).not.toBeInTheDocument();
+    // By default connected-wifi fixture renders Galaxy S24 collapsed (grid stays mounted).
+    const grid = screen.getByTestId('device-card-details-grid');
+    expect(grid.className).not.toContain('is-expanded');
+    expect(grid.getAttribute('aria-hidden')).toBe('true');
 
     const chevronCollapsed = screen.getByTestId('chevron-collapsed');
     fireEvent.click(chevronCollapsed);
 
     // Now expanded details should appear
-    expect(screen.getByTestId('device-card-details')).toBeInTheDocument();
+    expect(screen.getByTestId('device-card-details-grid').className).toContain('is-expanded');
     expect(screen.getByText('Model')).toBeInTheDocument();
     expect(screen.getByText('SM-S921W')).toBeInTheDocument();
     expect(screen.getByText('Address')).toBeInTheDocument();
@@ -25,7 +27,7 @@ describe('App', () => {
     // Clicking expanded chevron collapses it
     const chevronExpanded = screen.getByTestId('chevron-expanded');
     fireEvent.click(chevronExpanded);
-    expect(screen.queryByTestId('device-card-details')).not.toBeInTheDocument();
+    expect(screen.getByTestId('device-card-details-grid').className).not.toContain('is-expanded');
   });
 
   it('supports fixture switching via Ctrl+Shift+F shortcut', () => {

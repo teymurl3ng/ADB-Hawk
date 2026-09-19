@@ -34,6 +34,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly string _fixtureSuffix;
     private readonly bool _headless;
     private readonly bool _isFixtureMode;
+    private readonly bool _startupSilent;
+    private bool _pendingInitialShow;
+    private bool _initialShowCompleted;
+    private bool _webViewReadyForShow;
+    private ThemeKind _lastAppliedTheme = ThemeKind.Dark;
+    private bool _lastAppliedTransparency = true;
 
     private bool _isVisible;
     private int _currentEffectiveHeight = 500;
@@ -48,6 +54,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     internal NotificationCoordinator? NotificationCoordinator => _notificationCoordinator;
     internal INotificationSink? NotificationSink => _notificationSink;
     internal bool UsesRealBalloonNotificationSink { get; }
+    internal bool PendingInitialShow => _pendingInitialShow;
+    internal bool InitialShowCompleted => _initialShowCompleted;
 
     /// <summary>
     /// Real <see cref="BalloonNotificationSink"/> only for headed, non-fixture production.
@@ -56,13 +64,27 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     internal static bool ShouldConstructRealBalloonSink(bool headless, bool isFixtureMode) =>
         !headless && !isFixtureMode;
 
-    public AppHost(int sessionId, string fixtureSuffix = "")
-        : this(sessionId, fixtureSuffix, supervisorFactory: null, bridgeHost: null, headless: false) { }
+    /// <summary>Normal interactive first launch requests one deferred flyout show.</summary>
+    internal static bool ShouldRequestInitialShow(bool headless, bool isFixtureMode, bool startupSilent) =>
+        !headless && !isFixtureMode && !startupSilent;
+
+
+    public AppHost(int sessionId, string fixtureSuffix = "", bool headless = false, bool startupSilent = false)
+        : this(
+            sessionId,
+            fixtureSuffix,
+            supervisorFactory: null,
+            bridgeHost: null,
+            headless: headless,
+            startupSilent: startupSilent) { }
 
     /// <param name="headless">
     /// When true, skips WinForms/tray/webview/single-instance. Composition unit tests
     /// must use this: creating Controls installs WinFormsSynchronizationContext and
     /// async awaits deadlock without Application.Run.
+    /// </param>
+    /// <param name="startupSilent">
+    /// When true (--startup), stay tray-only; do not auto-show flyout on first launch.
     /// </param>
     internal AppHost(
         int sessionId,
@@ -76,16 +98,22 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         Adb.IMetadataProbe? metadataProbe = null,
         INotificationSink? notificationSink = null,
         Func<DateTimeOffset>? notificationClock = null,
-        Func<TimeSpan, CancellationToken, Task>? notificationDelay = null) {
+        Func<TimeSpan, CancellationToken, Task>? notificationDelay = null,
+        bool startupSilent = false) {
         _fixtureSuffix = fixtureSuffix;
         _headless = headless;
         _isFixtureMode = !string.IsNullOrEmpty(fixtureSuffix);
+        _startupSilent = startupSilent;
+        // Normal interactive first launch: request one deferred show once UI is presentable.
+        _pendingInitialShow = ShouldRequestInitialShow(headless, _isFixtureMode, startupSilent);
         LogConfig.Initialize();
         Log.Information(
-            "AppHost starting in session {SessionId} (headless={Headless} fixture={Fixture})",
+            "AppHost starting in session {SessionId} (headless={Headless} fixture={Fixture} startupSilent={StartupSilent} pendingShow={PendingShow})",
             sessionId,
             headless,
-            _isFixtureMode);
+            _isFixtureMode,
+            _startupSilent,
+            _pendingInitialShow);
 
         if (!headless) {
             Application.EnableVisualStyles();
@@ -150,6 +178,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         _stateEngine = new StateEngine(initialSnapshot);
         _stateEngine.SnapshotPublished += OnSnapshotPublished;
+
+        if (!_headless && !_isFixtureMode) {
+            PostCurrentShellAppearance();
+            SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        }
 
         IBridgeHost coordinatorHost = bridgeHost ?? (IBridgeHost)this;
         if (headless && bridgeHost == null) {
@@ -313,6 +346,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void OnSnapshotPublished(AppSnapshot snapshot) {
+        ApplyNativeShellFromSnapshot(snapshot);
         _notificationCoordinator?.AcceptSnapshot(snapshot);
 
         _coordinator?.UpdateSnapshot(snapshot);
@@ -345,16 +379,29 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _supervisorTask = Task.Run(() => _supervisor.RunAsync(_appLifetimeCts.Token));
         }
 
+        // Sync system theme onto the HWND before first paint (async shell event may lag).
+        bool transparency = SystemTheme.ReadTransparencyEnabled() && !SystemTheme.ReadForcedColors();
+        ThemeKind theme = SystemTheme.ReadAppsTheme();
+        _lastAppliedTheme = theme;
+        _lastAppliedTransparency = transparency;
+        _flyoutWindow!.ApplyShellAppearance(theme, transparency);
+
         // Force handle creation so OnHandleCreated/ApplyBackdrop runs before WebView2 init
-        var _ = _flyoutWindow!.Handle;
+        var _ = _flyoutWindow.Handle;
         Log.Information("FlyoutWindow handle forced: {Handle}", _flyoutWindow.Handle);
 
 #pragma warning disable CA2008 // TaskScheduler
         _webViewHost?.InitializeAsync(_fixtureSuffix).ContinueWith(t => {
             if (t.IsFaulted) Log.Error(t.Exception, "WebView initialization failed in background.");
-            else if (!string.IsNullOrEmpty(_fixtureSuffix)) {
-                // Headed Native Visual Harness hook
-                _flyoutWindow?.Invoke(new Action(ShowFlyout));
+            else {
+                _webViewReadyForShow = true;
+                if (!string.IsNullOrEmpty(_fixtureSuffix)) {
+                    // Headed Native Visual Harness hook
+                    _flyoutWindow?.Invoke(new Action(ShowFlyout));
+                }
+                else {
+                    _flyoutWindow?.Invoke(new Action(TryCompletePendingInitialShow));
+                }
             }
         });
 #pragma warning restore CA2008
@@ -412,6 +459,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _flyoutWindow.Bounds = physicalBounds;
         _flyoutWindow.TopMost = _flyoutWindow.IsPinned;
         _flyoutWindow.Show();
+        _flyoutWindow.RecalcNonClientFrame();
 
         // Take foreground explicitly so we actually receive Deactivate when clicking away
         if (!_flyoutWindow.IsPinned) {
@@ -505,6 +553,64 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         if (_isVisible && _flyoutWindow != null) {
             UpdateFlyoutBounds();
         }
+
+        TryCompletePendingInitialShow();
+    }
+
+    private void TryCompletePendingInitialShow() {
+        if (!_pendingInitialShow || _initialShowCompleted || _startupSilent || _isFixtureMode || _headless) {
+            return;
+        }
+
+        if (!_webViewReadyForShow) {
+            return;
+        }
+
+        // Require at least one valid content-size report (not the placeholder 500) before first paint.
+        if (_lastAppliedHeight == 0) {
+            return;
+        }
+
+        _pendingInitialShow = false;
+        _initialShowCompleted = true;
+        Log.Information("AppHost: completing pending initial flyout show (height={Height})", _currentEffectiveHeight);
+        ShowFlyout();
+    }
+
+    private void PostCurrentShellAppearance() {
+        _stateEngine?.Post(new ShellAppearanceChangedEvent(
+            SystemTheme.ReadAppsTheme(),
+            SystemTheme.ReadTransparencyEnabled() && !SystemTheme.ReadForcedColors(),
+            SystemTheme.ReadForcedColors(),
+            false));
+    }
+
+    private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e) {
+        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color or UserPreferenceCategory.VisualStyle) {
+            PostCurrentShellAppearance();
+        }
+    }
+
+    private void ApplyNativeShellFromSnapshot(AppSnapshot snapshot) {
+        if (_flyoutWindow is null) {
+            return;
+        }
+
+        var theme = snapshot.Shell.Theme;
+        bool transparency = snapshot.Shell.TransparencyEnabled && !snapshot.Shell.ForcedColors;
+        if (theme == _lastAppliedTheme && transparency == _lastAppliedTransparency) {
+            return;
+        }
+
+        _lastAppliedTheme = theme;
+        _lastAppliedTransparency = transparency;
+        if (TryMarshalToFlyoutUi(new Action(() => {
+            _flyoutWindow.ApplyShellAppearance(theme, transparency);
+        }))) {
+            return;
+        }
+
+        _flyoutWindow.ApplyShellAppearance(theme, transparency);
     }
 
     private void UpdateFlyoutBounds() {
@@ -519,6 +625,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             if (currentBounds.Width != physicalWidth || currentBounds.Height != physicalHeight) {
                 _flyoutWindow.Size = new Size(physicalWidth, physicalHeight);
                 Log.Information("UpdateFlyoutBounds (pinned): new size {Size}", _flyoutWindow.Size);
+                _flyoutWindow.RecalcNonClientFrame();
             }
         }
         else {
@@ -546,6 +653,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             if (_flyoutWindow.Bounds != physicalBounds) {
                 _flyoutWindow.Bounds = physicalBounds;
                 Log.Information("UpdateFlyoutBounds: physicalBounds={Bounds}", physicalBounds);
+                _flyoutWindow.RecalcNonClientFrame();
             }
         }
     }
@@ -592,6 +700,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         _notificationCoordinator?.Dispose();
         _balloonSink?.Dispose();
+
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
 
         if (_powerAndSession != null) {
             _powerAndSession.DisplaySettingsChanged -= OnDisplayChanged;

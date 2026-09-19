@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './device-card-motion.css';
 
 @theme {
   --font-sans:
@@ -67,6 +68,11 @@
   :root {
     color-scheme: dark;
 
+    --motion-feedback: 83ms;
+    --motion-state: 167ms;
+    --motion-structural: 250ms;
+    --motion-easing: cubic-bezier(0.1, 0.9, 0.2, 1);
+
     --win-base: #202329;
     --win-card: rgba(255, 255, 255, 0.04);
     --win-card-hover: rgba(255, 255, 255, 0.065);
@@ -126,7 +132,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme='dark']) {
     color-scheme: light;
 
     --win-base: #ffffff;
@@ -182,6 +188,63 @@
     background-color: transparent;
     color: var(--win-text-primary);
   }
+}
+
+/* Authoritative shell.theme from AppSnapshot (overrides OS preference when set). */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --win-base: #ffffff;
+  --win-card: #ffffff;
+  --win-card-hover: rgba(0, 0, 0, 0.02);
+  --win-card-border: rgba(0, 0, 0, 0.06);
+  --win-border-subtle: rgba(0, 0, 0, 0.05);
+
+  --win-text-primary: #1f2328;
+  --win-text-secondary: #64748b;
+  --win-text-muted: #94a3b8;
+  --win-text-value: #334155;
+
+  --win-glyph-bg: #f1f5f9;
+  --win-glyph-border: rgba(0, 0, 0, 0.04);
+  --win-glyph-text: #475569;
+
+  --win-btn-hover: rgba(0, 0, 0, 0.05);
+
+  --win-accent: #2563eb;
+  --win-accent-hover: #1d4ed8;
+  --win-accent-surface: rgba(37, 99, 235, 0.06);
+  --win-accent-border: rgba(37, 99, 235, 0.22);
+
+  --win-green: #16a34a;
+  --win-green-surface: rgba(22, 163, 74, 0.08);
+  --win-green-border: rgba(22, 163, 74, 0.25);
+  --win-green-text: #15803d;
+
+  --win-amber: #d97706;
+  --win-amber-surface: rgba(217, 119, 6, 0.08);
+  --win-amber-border: rgba(217, 119, 6, 0.25);
+  --win-amber-text: #b45309;
+
+  --win-red: #dc2626;
+  --win-red-surface: rgba(220, 38, 38, 0.08);
+  --win-red-border: rgba(220, 38, 38, 0.25);
+  --win-red-text: #b91c1c;
+
+  --win-sky: #0284c7;
+  --win-sky-surface: rgba(2, 132, 199, 0.08);
+  --win-sky-border: rgba(2, 132, 199, 0.25);
+  --win-sky-text: #0369a1;
+
+  --win-slot-bg: #ffffff;
+  --win-slot-border: rgba(0, 0, 0, 0.15);
+  --win-slot-text: #1f2328;
+
+  --win-surface-flyout: rgba(243, 244, 246, 0.94);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 @media (forced-colors: active) {
@@ -288,4 +351,18 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-feedback: 0ms;
+    --motion-state: 0ms;
+    --motion-structural: 0ms;
+  }
+}
+
+:root[data-reduced-motion='true'] {
+  --motion-feedback: 0ms;
+  --motion-state: 0ms;
+  --motion-structural: 0ms;
 }

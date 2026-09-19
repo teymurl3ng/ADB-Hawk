@@ -95,19 +95,14 @@
           "stateSince": "2026-09-17T11:30:00.000Z",
           "connectedSince": "2026-09-17T11:30:00.000Z",
           "detail": {
-            "serial": "192.168.1.50:5555",
+            "serial": null,
             "exactModel": "SM-S921B",
             "androidVersion": "14",
             "address": "192.168.1.50:5555",
             "copyFields": [
               {
-                "key": "serial",
-                "label": "Serial",
-                "value": "192.168.1.50:5555"
-              },
-              {
                 "key": "address",
-                "label": "Wi-Fi address",
+                "label": "Address",
                 "value": "192.168.1.50:5555"
               }
             ]
@@ -186,19 +181,14 @@
           "stateSince": "2026-09-17T11:30:00.000Z",
           "connectedSince": "2026-09-17T11:30:00.000Z",
           "detail": {
-            "serial": "192.168.1.50:5555",
+            "serial": null,
             "exactModel": null,
             "androidVersion": null,
             "address": "192.168.1.50:5555",
             "copyFields": [
               {
-                "key": "serial",
-                "label": "Serial",
-                "value": "192.168.1.50:5555"
-              },
-              {
                 "key": "address",
-                "label": "Wi-Fi address",
+                "label": "Address",
                 "value": "192.168.1.50:5555"
               }
             ]
@@ -417,19 +407,14 @@
           "stateSince": "2026-09-17T11:30:00.000Z",
           "connectedSince": "2026-09-17T11:30:00.000Z",
           "detail": {
-            "serial": "192.168.1.50:5555",
+            "serial": null,
             "exactModel": "SM-S921B",
             "androidVersion": "14",
             "address": "192.168.1.50:5555",
             "copyFields": [
               {
-                "key": "serial",
-                "label": "Serial",
-                "value": "192.168.1.50:5555"
-              },
-              {
                 "key": "address",
-                "label": "Wi-Fi address",
+                "label": "Address",
                 "value": "192.168.1.50:5555"
               }
             ]

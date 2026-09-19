@@ -71,7 +71,7 @@ export interface DeviceView {
 }
 
 export interface DeviceDetailView {
-  serial: string;
+  serial: string | null;
   exactModel: string | null;
   androidVersion: string | null;
   address: string | null;

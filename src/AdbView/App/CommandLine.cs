@@ -1,12 +1,39 @@
-using System;
-
 namespace AdbView.App;
 
+using System;
+
+/// <summary>
+/// Minimal argv parsing. ENGINEERING.md: --startup, --test-fixture, --verbose (future).
+/// </summary>
+internal sealed record LaunchOptions(
+    bool StartupSilent,
+    string FixtureSuffix,
+    bool HeadlessSelfTest);
+
 internal static class CommandLine {
-    // Minimal parsing for Phase 1. Add args as needed.
-    public static bool ShouldToggleAndExit(string[] args) {
-        // Actually, SingleInstance already handles toggling the owner process.
-        // We might not need explicit args for toggle yet, since second instance auto-toggles.
-        return false;
+    public static LaunchOptions Parse(string[] args) {
+        ArgumentNullException.ThrowIfNull(args);
+
+        bool startupSilent = false;
+        string fixtureSuffix = "";
+        bool headlessSelfTest = false;
+
+        foreach (string arg in args) {
+            if (string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase)) {
+                startupSilent = true;
+                continue;
+            }
+
+            if (string.Equals(arg, "--exit-after-startup-selftest", StringComparison.OrdinalIgnoreCase)) {
+                headlessSelfTest = true;
+                continue;
+            }
+
+            if (arg.StartsWith("--test-fixture=", StringComparison.OrdinalIgnoreCase)) {
+                fixtureSuffix = string.Concat("?fixture=", arg.AsSpan("--test-fixture=".Length));
+            }
+        }
+
+        return new LaunchOptions(startupSilent, fixtureSuffix, headlessSelfTest);
     }
 }

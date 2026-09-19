@@ -257,8 +257,8 @@ export function parseSnapshot(raw: unknown): AppSnapshot | null {
       console.warn(`parseSnapshot: device[${i}].detail must be an object`);
       return null;
     }
-    if (typeof d.detail.serial !== 'string') {
-      console.warn(`parseSnapshot: device[${i}].detail.serial must be a string`);
+    if (!(d.detail.serial === null || typeof d.detail.serial === 'string')) {
+      console.warn(`parseSnapshot: device[${i}].detail.serial must be a string or null`);
       return null;
     }
     if (d.detail.exactModel !== null && typeof d.detail.exactModel !== 'string') {
@@ -419,7 +419,7 @@ export function parseSnapshot(raw: unknown): AppSnapshot | null {
         stateSince: d.stateSince as string,
         connectedSince: d.connectedSince as string | null,
         detail: {
-          serial: detail.serial as string,
+          serial: (detail.serial as string | null) ?? null,
           exactModel: detail.exactModel as string | null,
           androidVersion: detail.androidVersion as string | null,
           address: detail.address as string | null,

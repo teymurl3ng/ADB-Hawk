@@ -117,7 +117,8 @@ internal static partial class DeviceViewMapper {
             connectedSince = state == DeviceStateKind.Connected ? at : null;
         }
 
-        string? address = ResolveAddress(transport, normalized.HardwareSerial);
+        string? address = ResolveAddress(transport, normalized.AdbSerial, normalized.HardwareSerial);
+        string? displaySerial = ResolveDisplaySerial(transport, normalized.HardwareSerial);
 
         var copyFields = ImmutableArray.CreateBuilder<CopyFieldView>(2);
         if (!string.IsNullOrEmpty(address)) {
@@ -128,11 +129,13 @@ internal static partial class DeviceViewMapper {
             });
         }
 
-        copyFields.Add(new CopyFieldView {
-            Key = Vocabulary.Device.CopySerialKey,
-            Label = Vocabulary.Device.CopySerialLabel,
-            Value = normalized.HardwareSerial,
-        });
+        if (!string.IsNullOrEmpty(displaySerial)) {
+            copyFields.Add(new CopyFieldView {
+                Key = Vocabulary.Device.CopySerialKey,
+                Label = Vocabulary.Device.CopySerialLabel,
+                Value = displaySerial,
+            });
+        }
 
         int? battery = preserveMetadata ? previous?.BatteryPercent : null;
         string? exactModel = preserveMetadata ? previous?.Detail.ExactModel : null;
@@ -155,7 +158,7 @@ internal static partial class DeviceViewMapper {
             StateSince = stateSince,
             ConnectedSince = connectedSince,
             Detail = new DeviceDetailView {
-                Serial = normalized.HardwareSerial,
+                Serial = displaySerial,
                 ExactModel = exactModel,
                 AndroidVersion = androidVersion,
                 Address = address,
@@ -169,11 +172,11 @@ internal static partial class DeviceViewMapper {
             return devices;
         }
 
-        // ENGINEERING.md §4.3: USB before Wi-Fi, then connectedSince ?? stateSince, then serial.
+        // ENGINEERING.md §4.3: USB before Wi-Fi, then connectedSince ?? stateSince, then serial/id.
         return devices
             .OrderBy(TransportRank)
             .ThenBy(d => d.ConnectedSince ?? d.StateSince)
-            .ThenBy(d => d.Detail.Serial, StringComparer.Ordinal)
+            .ThenBy(d => d.Detail.Serial ?? d.Detail.Address ?? string.Empty, StringComparer.Ordinal)
             .ThenBy(d => d.Id, StringComparer.Ordinal)
             .ToImmutableArray();
     }
@@ -247,13 +250,31 @@ internal static partial class DeviceViewMapper {
         _ => null,
     };
 
-    private static string? ResolveAddress(TransportKind transport, string hardwareSerial) {
+    private static string? ResolveAddress(
+        TransportKind transport,
+        string adbSerial,
+        string hardwareSerial) {
         if (transport != TransportKind.WiFi) {
             return null;
         }
 
-        // Truthful endpoint serial only (no mDNS enrichment).
+        // Prefer transport selector (AdbSerial); fall back to hardware when it is an endpoint.
+        if (EndpointSerialRegex().IsMatch(adbSerial)) {
+            return adbSerial;
+        }
+
         return EndpointSerialRegex().IsMatch(hardwareSerial) ? hardwareSerial : null;
+    }
+
+    /// <summary>
+    /// Hardware/display serial only — never an ADB host:port transport selector.
+    /// </summary>
+    private static string? ResolveDisplaySerial(TransportKind transport, string hardwareSerial) {
+        if (EndpointSerialRegex().IsMatch(hardwareSerial)) {
+            return null;
+        }
+
+        return string.IsNullOrEmpty(hardwareSerial) ? null : hardwareSerial;
     }
 
     [GeneratedRegex(@"^.+:\d+$", RegexOptions.CultureInvariant)]

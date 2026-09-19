@@ -34,6 +34,8 @@ internal static class StateReducer {
                 ReduceServerStateChanged(current, deviceState, serverChanged.State, now),
             SetPinnedEvent setPinned =>
                 ReduceSetPinned(current, deviceState, setPinned.Pinned, now),
+            ShellAppearanceChangedEvent appearance =>
+                ReduceShellAppearance(current, deviceState, appearance, now),
             DeviceListReceivedEvent list =>
                 ReduceDeviceList(current, deviceState, list, now),
             DeviceTrackerFailedEvent =>
@@ -91,6 +93,33 @@ internal static class StateReducer {
             Revision = NextRevision(current.Revision),
             GeneratedAt = now,
             Shell = current.Shell with { Pinned = pinned },
+        };
+
+        return ReduceResult.With(next, deviceState);
+    }
+
+    private static ReduceResult ReduceShellAppearance(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        ShellAppearanceChangedEvent appearance,
+        DateTimeOffset now) {
+        var shell = current.Shell;
+        if (shell.Theme == appearance.Theme
+            && shell.TransparencyEnabled == appearance.TransparencyEnabled
+            && shell.ForcedColors == appearance.ForcedColors
+            && shell.ReducedMotion == appearance.ReducedMotion) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        var next = current with {
+            Revision = NextRevision(current.Revision),
+            GeneratedAt = now,
+            Shell = shell with {
+                Theme = appearance.Theme,
+                TransparencyEnabled = appearance.TransparencyEnabled,
+                ForcedColors = appearance.ForcedColors,
+                ReducedMotion = appearance.ReducedMotion,
+            },
         };
 
         return ReduceResult.With(next, deviceState);
