@@ -696,6 +696,50 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
+    // 19c. PairingCoordinator / host:pair client do not reference State/UI (Phase 6B).
+    [Fact]
+    public void PairingCoordinatorLayerDoesNotReferenceForbiddenLayers() {
+        var files = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "PairingCoordinator.cs"),
+            RootFile("src", "AdbView", "Adb", "HostPairClient.cs"),
+            RootFile("src", "AdbView", "Adb", "PairCliFallback.cs"),
+            RootFile("src", "AdbView", "Adb", "PairingEndpoint.cs"),
+            RootFile("src", "AdbView", "Adb", "PairingCode.cs"),
+            RootFile("src", "AdbView", "Adb", "Model", "PairingProgressed.cs"),
+        };
+
+        var forbiddenTokens = new[]
+        {
+            "AdbView.State",
+            "StateEngine",
+            "StateReducer",
+            "AppSnapshot",
+            "PairingOfferView",
+            "PairingOperationView",
+            "DeviceView",
+            "AdbView.Bridge",
+            "BridgeCoordinator",
+            "AdbView.Host",
+            "System.Windows.Forms",
+            "Microsoft.Web.WebView2",
+            "System.Net.Http",
+            "Google.Protobuf",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in files) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
     // 20. Adb.Protocol still must not reference DeviceTracker / RawDevice (Phase 5A).
     [Fact]
     public void AdbProtocolDoesNotReferenceDeviceTrackerOrRawDevice() {

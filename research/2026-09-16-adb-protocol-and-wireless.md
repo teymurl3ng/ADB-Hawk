@@ -237,5 +237,40 @@ mDNS reconnect: **1 s, 2 s, 5 s, 15 s, 30 s** cap, ±20 % jitter (same disciplin
 
 ### Malformed handling
 
-Same as Phase 5A: valid frame + bad body → drop update, rate-limit diagnostic, keep stream; framing corruption / mid-frame EOF → terminate session, Failed, reconnect. Malformed â‰  unsupported.
+Same as Phase 5A: valid frame + bad body → drop update, rate-limit diagnostic, keep stream; framing corruption / mid-frame EOF → terminate session, Failed, reconnect. Malformed ≠ unsupported.
 
+## Phase 6B — host:pair + pairing coordinator (2026-09-19)
+
+### Immutable pins
+
+| Item | Pin | Evidence |
+|---|---|---|
+| CLI constructs `host:pair:<password>:<HOST[:PORT]>` | AOSP `1cf2f017d312f73b3dc53bda85ef2610e35a80e9` `client/commandline.cpp` | `StringPrintf("host:pair:%s:%s", password.c_str(), argv[1])`; code from argv[2] or stdin |
+| Server splits password at **first** `:` after `pair:` | same commit `services.cpp` | `ConsumePrefix(&name, "pair:")` then `strchr(name, ':')` → password / host remainder |
+| Success vs failure writeback | same commit `services.cpp` `pair_service` | Success if response starts with `"Successful"` → `SendProtocolString`; else `SendFail` |
+| Pairing work + messages | same commit `client/adb_wifi.cpp` | `Successfully paired to … [guid=…]`; `Failed: Wrong password…`; `Failed: Unable to start pairing client.`; parse via `ParseNetAddress` |
+| Live framing on 37.0.1-15733141 | this machine | After request: initial `OKAY` (service accepted), then later `FAIL`+hex+reason **or** hex-length + success text (no second OKAY on success path) |
+
+**Endpoint formatting for the second `%s`:** IPv4 `a.b.c.d:port`; IPv6 **`[addr]:port`** so the first-colon password split remains unambiguous. Port 1..65535.
+
+### Request / response framing
+
+1. Client sends standard length-prefixed `host:pair:<code>:<endpoint>`.
+2. Server replies `OKAY` when the pair service thread is created (or `FAIL` + reason if the host service cannot be created, e.g. unknown service).
+3. When pairing finishes, server writes either:
+   - **Success:** four-hex length + UTF-8/ASCII body starting with `Successful`
+   - **Failure:** `FAIL` + four-hex length + reason string
+
+`ExecuteOneShotAsync` (OKAY → length → body) is **not** sufficient alone: a failure result after the ack begins with `FAIL`, not hex. Phase 6B uses a dedicated pair reader.
+
+### CLI fallback (ENGINEERING §6.2)
+
+`adb.exe pair <endpoint>` with the six-digit code on **stdin** when `argc==2`. Never place the code in argv when using the stdin form. Absolute `adb.exe` path; inherited environment; UseShellExecute=false. Used only when the host service is explicitly unknown/unsupported — not for Wrong password / Unable to start.
+
+### V-10 (pair return vs tracker race) — domain closure
+
+ADB server may call `adb_secure_connect_by_service_name` after a successful pair (`adb_wifi.cpp`). That is **server** auto-connect, not an ADB View `connect` call. Domain success → `PairedWaitingForDevice` only. **No DeviceView.** Tracker appearance (6C+) clears waiting; pairing success must not fabricate a connected device.
+
+### Non-mutating live probe (2026-09-19)
+
+`host:pair:000000:127.0.0.1:1` → `OKAY` then `FAIL` / `Failed: Unable to start pairing client.` (no phone pairing screen; no real code). IPv6 form `host:pair:000000:[::1]:1` accepted at the service layer. **Real six-digit pair against Samsung: not exercised.**
