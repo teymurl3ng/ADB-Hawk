@@ -1,7 +1,7 @@
 # Tray balloon notifications (V-5)
 
 - **Date:** 2026-09-19
-- **Author:** agent (Phase 8A)
+- **Author:** agent (Phase 8A / 8B contract)
 - **Phase:** 8
 - **Status:** current
 
@@ -10,8 +10,8 @@
 Phase 8 must deliver notifications through the existing unpackaged WinForms
 tray icon (`ENGINEERING.md` §2.8 / §8.3) and record whether
 `NotifyIcon.ShowBalloonTip` meets the quality bar on current Windows 11,
-including quiet-time / Focus Assist behaviour and whether
-`NIIF_RESPECT_QUIET_TIME` is actually reachable from WinForms.
+including whether `NIIF_RESPECT_QUIET_TIME` is reachable from WinForms and
+what that flag actually means.
 
 ## Sources consulted
 
@@ -44,12 +44,20 @@ WinForms `NotifyIcon.ShowBalloonTip(timeout, title, text, tipIcon)` builds
 It then calls `Shell_NotifyIconW(NIM_MODIFY, …)`. **It never ORs
 `NIIF_RESPECT_QUIET_TIME` (0x80).**
 
-### NIIF_RESPECT_QUIET_TIME
+### NIIF_RESPECT_QUIET_TIME (Microsoft semantics)
 
-Official meaning (Windows 7+): do not display the balloon during “quiet
-time” (first hour after first logon / after OS upgrade or clean install).
-A notification sent with the flag during quiet time is **discarded, not
-queued**; `NIN_BALLOONHIDE` may be delivered.
+Official meaning (Windows 7+): do not display the balloon during Shell
+“quiet time” — specifically the **first hour after**:
+
+- first login to a new user account, or
+- an OS upgrade / clean installation.
+
+A notification sent with the flag during that window is **discarded, not
+queued**. Outside that period the flag has **no effect**.
+
+This is **not** general Windows Focus Assist / Do Not Disturb support.
+Focus Assist / DND can suppress banners independently; apps cannot override
+user Focus Assist preferences from shell balloons.
 
 **WinForms cannot express this flag** via public `ShowBalloonTip` APIs.
 
@@ -58,14 +66,22 @@ queued**; `NIN_BALLOONHIDE` may be delivered.
 WinForms raises `BalloonTipClicked` when the user activates the balloon.
 `ENGINEERING.md` §8.3 freezes click → show flyout (8B wires this).
 
+### Length limits (`NOTIFYICONDATAW`)
+
+| Field | Capacity (incl. null) |
+|---|---|
+| `szInfoTitle` | 64 WCHARs |
+| `szInfo` | 256 WCHARs |
+
+WinForms copies into these buffers; oversized strings must be truncated
+deterministically before delivery so they cannot throw or corrupt MODIFY.
+
 ### Windows 11 presentation (documented)
 
 - Legacy balloon/`NIF_INFO` notifications appear as **banner** notifications.
 - On Windows 11, when a banner times out or is dismissed, it **does not
   remain** in Notification Center (closer to legacy transient behaviour;
   Win10 retained them longer). Documented on `Shell_NotifyIconW` remarks.
-- Focus Assist / Do Not Disturb can suppress banners independently of
-  quiet-time; apps cannot override user Focus Assist from balloons.
 
 ### Unpackaged identity
 
@@ -78,46 +94,48 @@ registration is required for `ShowBalloonTip` on an unpackaged WinForms
 | Option | Pros | Cons |
 |---|---|---|
 | WinForms `ShowBalloonTip` only | Zero deps; matches §2.8 | No `NIIF_RESPECT_QUIET_TIME` |
-| Thin `Shell_NotifyIcon` MODIFY on existing icon | Can set quiet-time flag; still no WinAppSDK | Small Host-only native seam in 8B |
+| Thin `Shell_NotifyIcon` MODIFY on existing icon | Could set quiet-time flag | Needs private hwnd/uID reflection or GUID rewrite |
 | Windows App SDK `AppNotificationManager` | Official modern path | Forbidden unless V-5 forces swap; large dep |
 
 ## Chosen approach
 
 - **8A:** policy/coordinator only; no balloons.
-- **8B default:** `BalloonNotificationSink` via `ShowBalloonTip` +
-  `ToolTipIcon` severity map (INFO/WARNING/ERROR).
-- **8B quiet-time:** if ENGINEERING §8.3’s `NIIF_RESPECT_QUIET_TIME` must
-  be honoured literally, add the **smallest** Host-only
-  `Shell_NotifyIcon(NIM_MODIFY)` path that sets
-  `dwInfoFlags = NIIF_* \| NIIF_RESPECT_QUIET_TIME` on the existing icon
-  (reuse hwnd/id already owned by `NotifyIcon`). No WinAppSDK.
+- **8B:** `BalloonNotificationSink` via `ShowBalloonTip` + `ToolTipIcon`
+  severity map (INFO/WARNING/ERROR). **No** `NIIF_RESPECT_QUIET_TIME`
+  (contract Option A — see `docs/decisions/0001-niif-respect-quiet-time-8b-blocker.md`).
 - Re-evaluate V-5 presentation quality during 8C headed acceptance; swap
   sink only if balloons fail the quality bar (`ENGINEERING.md` §2.8 risk).
 
 ## Why
 
-Preserves zero-dependency tray citizenship, keeps packaging out of Phase 8,
-and isolates quiet-time to a reviewable Host seam if required.
+Preserves zero-dependency tray citizenship and Phase 1 tray architecture.
+Shell quiet-time is a narrow legacy window; paying reflection or a tray
+rewrite for it is not justified. v1 does not claim Focus Assist / DND
+integration.
 
 ## Rejected approaches
 
-- Pulling Windows App SDK solely for quiet-time
+- Private reflection to OR `NIIF_RESPECT_QUIET_TIME` (Option B)
+- Native GUID tray rewrite (Option C)
+- Windows App SDK solely for quiet-time (Option D)
 - Browser / WebView notifications
 - Emitting from policy without a sink (8A stays Windows-free)
 
 ## Compatibility concerns
 
-- Quiet time ≠ Focus Assist; both can hide balloons.
+- Shell quiet time ≠ Focus Assist / DND; do not conflate them in docs or tests.
 - Timeout argument is ignored on Vista+ (system accessibility timeout).
 - Concurrent balloons are serialized by the shell.
 
 ## Testing implications
 
 - 8A: hermetic timeline tests; `FakeNotificationSink` only.
-- 8B: unit-test sink mapping; optional live smoke that a balloon appears.
-- 8C: headed A06 acceptance; record DND/quiet-time if observed.
+- 8B: unit-test sink mapping against `ITrayBalloonHost`; fixture/headless
+  must not construct a real balloon sink; one explicit manual smoke only.
+- 8C: headed A06 acceptance; record DND observation if seen (environment-dependent).
 
 ## Open items
 
-- 8B: choose ShowBalloonTip-only vs Shell_NotifyIcon quiet-time OR.
+- **Closed (2026-09-19):** quiet-time flag requirement removed from §8.3
+  (Option A). See decision `0001`.
 - 8C: live V-5 presentation checklist on this host’s Win11 build.

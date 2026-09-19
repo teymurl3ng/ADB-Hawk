@@ -819,7 +819,9 @@ Never notified: metadata refresh (battery, model, version), `AdbRestoring`, wire
 
 ### 8.3 Delivery
 
-`INotificationSink` → `BalloonNotificationSink` (tray balloon, `NIIF_INFO`/`NIIF_WARNING`/`NIIF_ERROR`, `NIIF_RESPECT_QUIET_TIME`). No actions, no buttons, no deep links — clicking the balloon simply shows the flyout, which is the only place full truth lives. Delivery failures are logged and never retried.
+`INotificationSink` → `BalloonNotificationSink` using the existing tray icon's `NotifyIcon.ShowBalloonTip` backend with `ToolTipIcon.Info` / `Warning` / `Error` (WinForms maps these to `NIIF_INFO` / `NIIF_WARNING` / `NIIF_ERROR`). No actions, no buttons, no deep links — clicking the balloon simply shows the flyout, which is the only place full truth lives. Delivery failures are logged and never retried.
+
+`NIIF_RESPECT_QUIET_TIME` was researched during V-5 and intentionally not implemented: WinForms `NotifyIcon` does not expose that flag, and Microsoft's Shell "quiet time" is only the first hour after first login to a new account / after OS upgrade or clean install — not general Focus Assist or Do Not Disturb. v1 does not claim explicit Focus Assist / Do Not Disturb integration.
 
 ---
 
