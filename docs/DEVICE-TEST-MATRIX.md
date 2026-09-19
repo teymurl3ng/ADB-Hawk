@@ -98,7 +98,9 @@ Host `adb mdns services` / `host:track-mdns-services` returned **empty complete 
 
 ## Phase 7C — Real metadata + headed UI acceptance (2026-09-19)
 
-**Waves:** `929f928` (7A) · `342a998` (7B) · Wave 3 live validation (battery-observed-at on same-% refresh; metadata shell Information log; battery-failure cadence test)
+**Waves:** `929f928` (7A) · `342a998` (7B) · `44a3ff5` (7C live validation) · 7D closure (this docs wave)
+
+**Idle-cost acceptance (retained):** connected device + initial enrichment complete + flyout hidden and unpinned ≥60s → **ZERO** metadata shell requests (live-proven ≥62s, meta count 6→6).
 
 **Platform:** Windows 11 · production Release `AdbView.exe` (no `--test-fixture` for live path) · platform-tools **37.0.1**
 

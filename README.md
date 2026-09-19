@@ -4,7 +4,7 @@ ADB View is a small Windows 11 system-tray utility for observing, explaining, no
 
 ## Repository status
 
-**Phase 6 complete: wireless discovery and pairing into AppSnapshot.** mDNS tracker + pairing/connect/legacy classification, `host:pair` domain, inline pairing state wired through StateEngine/Bridge, paired ≠ connected, wireless warnings and PairingAvailable tray integration, fixture isolation preserved. Live Samsung A06: unicast pair + Wi-Fi device card proven; flyout PairingOffer path blocked on this host by empty ADB mDNS browse (documented). The next step is Phase 7 (device metadata enrichment) from `PHASES.md`.
+**Phase 7 complete: device metadata enrichment.** Direct ADB `host:transport` + classic shell probes populate BatteryPercent, ExactModel, and AndroidVersion for Connected devices only; once-per-generation model/version cache; visibility-aware battery refresh (>30 s visible, 120 s pinned+visible); hidden+unpinned idle metadata traffic is zero. DeviceTracker remains sole authority for presence/state/transport/timestamps. Live Samsung A06 USB+Wi-Fi proven (`SM-A065F` / Android 16). The next step is Phase 8 (Windows notifications) from `PHASES.md`.
 
 ## Governing documents
 

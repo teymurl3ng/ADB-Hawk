@@ -164,10 +164,20 @@ Hermetic FakeAdb multi-device transport selection; parser fixtures including
 Samsung-like dumps with `Capacity level:` and ACTION log lines; injected
 timeout/retry; live observe-only smoke when A06 attached.
 
+## Phase 7B/7C integration (closed 2026-09-19)
+
+- StateEngine generation-gated `PostMetadata`; Battery null clears;
+  Model/AndroidVersion null preserve; `AdbSerial` change bumps generation.
+- Same-percent battery success refreshes `BatteryObservedAt` without
+  AppSnapshot Revision bump (stops stale-open refresh spam).
+- ApplyTarget does not re-enter MaybeBattery (no failure tight loop).
+- Live headed A06 (PT 37.0.1): USB `R8VXA02SNKH` + Wi-Fi
+  `192.168.18.248:5555`; Battery 99→100; ExactModel `SM-A065F`;
+  AndroidVersion `16`; hidden idle ≥62s zero metadata shells; >30s open
+  battery-only refresh with getprop cached.
+
 ## Open items
 
-- 7B: StateEngine generation validation at reducer boundary; null semantics
-  for `MetadataReceived` (Battery=null clears; Model/AndroidVersion null
-  preserve cache); bump generation when `AdbSerial` changes.
 - V-7 optional: additional OEM dumpsys samples if dumpsys ever lacks `level:`
   on some devices (`cmd battery get level` fallback only after research).
+- Phase 8 notifications (out of Phase 7 scope).
