@@ -14,6 +14,7 @@ using AdbView.Adb;
 using AdbView.Adb.Model;
 using AdbView.Bridge;
 using AdbView.Host;
+using AdbView.Notifications;
 using AdbView.State;
 using Xunit;
 
@@ -133,6 +134,9 @@ public sealed class CompositionTests {
         Assert.Null(host.MetadataLifecycle);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
+        Assert.NotNull(host.NotificationCoordinator);
+        Assert.False(host.UsesRealBalloonNotificationSink);
+        Assert.Same(NullNotificationSink.Instance, host.NotificationSink);
     }
 
     [Fact]
@@ -158,12 +162,23 @@ public sealed class CompositionTests {
         Assert.NotNull(host.MetadataLifecycle);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
+        Assert.NotNull(host.NotificationCoordinator);
+        Assert.False(host.UsesRealBalloonNotificationSink);
+        Assert.Same(NullNotificationSink.Instance, host.NotificationSink);
 
         await host.Supervisor.RunIterationAsync();
         await host.StateEngine.DrainAsync();
 
         Assert.Equal(GlobalHealthKind.AdbRestoring, host.StateEngine.CurrentSnapshot.Health.Kind);
         Assert.False(host.DeviceTrackerLifecycle.IsRunning);
+    }
+
+    [Fact]
+    public void Scenario_8C_Composition_Rules_Headless_Fixture_And_Policy_Gate() {
+        Assert.True(AppHost.ShouldConstructRealBalloonSink(headless: false, isFixtureMode: false));
+        Assert.False(AppHost.ShouldConstructRealBalloonSink(headless: true, isFixtureMode: false));
+        Assert.False(AppHost.ShouldConstructRealBalloonSink(headless: false, isFixtureMode: true));
+        Assert.False(AppHost.ShouldConstructRealBalloonSink(headless: true, isFixtureMode: true));
     }
 
     [Fact]

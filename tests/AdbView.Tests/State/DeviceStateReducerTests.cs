@@ -271,16 +271,9 @@ public sealed class DeviceStateReducerTests {
             getUtcNow: () => T0,
             delay: async (delay, ct) => {
                 delays.Add((delay, ct));
-                var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                try {
-                    await Task.WhenAny(delayGate.Task, Task.Delay(Timeout.Infinite, linked.Token));
-                }
-                catch (OperationCanceledException) {
-                    // cancelled
-                }
-                finally {
-                    linked.Dispose();
-                }
+                // Must observe cancellation: a bare WhenAny completion after Cancel
+                // would return successfully and StateEngine would Post a stale grace expiry.
+                await delayGate.Task.WaitAsync(ct);
             });
 
         engine.Post(new DeviceListReceivedEvent(ImmutableArray.Create(Proto("S")), T0));

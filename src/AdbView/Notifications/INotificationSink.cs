@@ -3,7 +3,7 @@ namespace AdbView.Notifications;
 using System;
 using System.Collections.Generic;
 
-/// <summary>Delivery seam. 8A: fake/null. 8B: <c>Host.BalloonNotificationSink</c> (not wired in AppHost until 8C).</summary>
+/// <summary>Delivery seam. 8A: fake/null. 8B: <c>Host.BalloonNotificationSink</c>. 8C: AppHost wires real sink headed-only.</summary>
 internal interface INotificationSink {
     void Emit(NotificationIntent intent);
 }

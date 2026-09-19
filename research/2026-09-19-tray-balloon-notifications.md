@@ -132,10 +132,15 @@ integration.
 - 8A: hermetic timeline tests; `FakeNotificationSink` only.
 - 8B: unit-test sink mapping against `ITrayBalloonHost`; fixture/headless
   must not construct a real balloon sink; one explicit manual smoke only.
-- 8C: headed A06 acceptance; record DND observation if seen (environment-dependent).
+- 8C: `AppHost` wires `NotificationCoordinator` from `StateEngine.SnapshotPublished`;
+  headed non-fixture constructs `BalloonNotificationSink` on the existing `TrayIcon`;
+  fixture/headless use `NullNotificationSink`. Hermetic proof via injected Fake +
+  VirtualClock. Live A06 acceptance; record DND observation if seen (environment-dependent).
 
 ## Open items
 
 - **Closed (2026-09-19):** quiet-time flag requirement removed from §8.3
   (Option A). See decision `0001`.
-- 8C: live V-5 presentation checklist on this host’s Win11 build.
+- **Closed (2026-09-19):** 8C production wiring — AppHost composition + lifecycle
+  (startup baseline, resume/unlock rebaseline, suspend, BeginShutdown before teardown).
+- Live V-5 presentation checklist on this host’s Win11 build (manual).

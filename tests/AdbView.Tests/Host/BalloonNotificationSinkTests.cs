@@ -257,20 +257,23 @@ public sealed class BalloonNotificationSinkTests {
     }
 
     [Fact]
-    public void Q_AppHost_And_Fixture_Composition_Do_Not_Construct_Real_Sink() {
+    public void Q_AppHost_Wires_Real_Sink_Only_When_ShouldConstruct_True() {
+        Assert.True(AppHost.ShouldConstructRealBalloonSink(headless: false, isFixtureMode: false));
+        Assert.False(AppHost.ShouldConstructRealBalloonSink(headless: true, isFixtureMode: false));
+        Assert.False(AppHost.ShouldConstructRealBalloonSink(headless: false, isFixtureMode: true));
+        Assert.False(AppHost.ShouldConstructRealBalloonSink(headless: true, isFixtureMode: true));
+
         string root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", ".."));
         string appHost = Path.Combine(root, "src", "AdbView", "Host", "AppHost.cs");
-        string composition = Path.Combine(root, "tests", "AdbView.Tests", "State", "CompositionTests.cs");
         string program = Path.Combine(root, "src", "AdbView", "Program.cs");
         Assert.True(File.Exists(appHost), appHost);
-        Assert.True(File.Exists(composition), composition);
         Assert.True(File.Exists(program), program);
 
         string appHostText = File.ReadAllText(appHost);
-        string compositionText = File.ReadAllText(composition);
         string programText = File.ReadAllText(program);
-        Assert.DoesNotContain("BalloonNotificationSink", appHostText, StringComparison.Ordinal);
-        Assert.DoesNotContain("BalloonNotificationSink", compositionText, StringComparison.Ordinal);
+        // 8C: production AppHost must own BalloonNotificationSink construction.
+        Assert.Contains("BalloonNotificationSink", appHostText, StringComparison.Ordinal);
+        Assert.Contains("ShouldConstructRealBalloonSink", appHostText, StringComparison.Ordinal);
         Assert.DoesNotContain("BalloonSmokeHarness", appHostText, StringComparison.Ordinal);
         Assert.DoesNotContain("BalloonSmokeHarness", programText, StringComparison.Ordinal);
         Assert.DoesNotContain("--dev-balloon-smoke", programText, StringComparison.Ordinal);

@@ -6,8 +6,9 @@ using System.Windows.Forms;
 using AdbView.App;
 using AdbView.Bridge;
 using AdbView.Diagnostics;
-using AdbView.Host;
+using AdbView.Notifications;
 using AdbView.State;
+using Microsoft.Win32;
 using Serilog;
 
 namespace AdbView.Host;
@@ -25,9 +26,14 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly MdnsTrackerLifecycle? _mdnsTrackerLifecycle;
     private readonly PairingSession? _pairingSession;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
+    private readonly NotificationCoordinator? _notificationCoordinator;
+    private readonly INotificationSink? _notificationSink;
+    private readonly BalloonNotificationSink? _balloonSink;
     private readonly System.Threading.CancellationTokenSource _appLifetimeCts = new();
     private Task? _supervisorTask;
     private readonly string _fixtureSuffix;
+    private readonly bool _headless;
+    private readonly bool _isFixtureMode;
 
     private bool _isVisible;
     private int _currentEffectiveHeight = 500;
@@ -39,6 +45,16 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     internal MdnsTrackerLifecycle? MdnsTrackerLifecycle => _mdnsTrackerLifecycle;
     internal PairingSession? PairingSession => _pairingSession;
     internal DeviceMetadataLifecycle? MetadataLifecycle => _metadataLifecycle;
+    internal NotificationCoordinator? NotificationCoordinator => _notificationCoordinator;
+    internal INotificationSink? NotificationSink => _notificationSink;
+    internal bool UsesRealBalloonNotificationSink { get; }
+
+    /// <summary>
+    /// Real <see cref="BalloonNotificationSink"/> only for headed, non-fixture production.
+    /// Fixture and headless always use <see cref="NullNotificationSink"/> (or a test inject).
+    /// </summary>
+    internal static bool ShouldConstructRealBalloonSink(bool headless, bool isFixtureMode) =>
+        !headless && !isFixtureMode;
 
     public AppHost(int sessionId, string fixtureSuffix = "")
         : this(sessionId, fixtureSuffix, supervisorFactory: null, bridgeHost: null, headless: false) { }
@@ -57,10 +73,19 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         Func<Adb.DeviceTracker>? deviceTrackerFactory = null,
         Func<Adb.MdnsTracker>? mdnsTrackerFactory = null,
         Adb.PairingCoordinator? pairingCoordinator = null,
-        Adb.IMetadataProbe? metadataProbe = null) {
+        Adb.IMetadataProbe? metadataProbe = null,
+        INotificationSink? notificationSink = null,
+        Func<DateTimeOffset>? notificationClock = null,
+        Func<TimeSpan, CancellationToken, Task>? notificationDelay = null) {
         _fixtureSuffix = fixtureSuffix;
+        _headless = headless;
+        _isFixtureMode = !string.IsNullOrEmpty(fixtureSuffix);
         LogConfig.Initialize();
-        Log.Information("AppHost starting in session {SessionId} (headless={Headless})", sessionId, headless);
+        Log.Information(
+            "AppHost starting in session {SessionId} (headless={Headless} fixture={Fixture})",
+            sessionId,
+            headless,
+            _isFixtureMode);
 
         if (!headless) {
             Application.EnableVisualStyles();
@@ -74,6 +99,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _singleInstance = new SingleInstance(sessionId);
 
             if (!_singleInstance.IsOwner) {
+                UsesRealBalloonNotificationSink = false;
+                _notificationSink = NullNotificationSink.Instance;
+                _notificationCoordinator = null;
+                _balloonSink = null;
                 if (_singleInstance.TrySendToggleCommand(1000)) {
                     Log.Information("Toggled existing instance. Exiting.");
                 }
@@ -93,16 +122,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
             _powerAndSession = new PowerAndSession();
             _powerAndSession.DisplaySettingsChanged += OnDisplayChanged;
-            _powerAndSession.Suspend += (s, e) => {
-                _metadataLifecycle?.OnSuspend();
-                if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) HideFlyout();
-            };
-            _powerAndSession.Resume += (s, e) => {
-                _metadataLifecycle?.OnResume();
-            };
-            _powerAndSession.SessionSwitch += (s, e) => {
-                if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) HideFlyout();
-            };
+            _powerAndSession.Suspend += OnPowerSuspend;
+            _powerAndSession.Resume += OnPowerResume;
+            _powerAndSession.SessionSwitch += OnSessionSwitch;
 
             _flyoutWindow = new FlyoutWindow();
             _flyoutWindow.Deactivate += OnFlyoutDeactivate;
@@ -122,8 +144,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             }
         }
 
-        bool isFixtureMode = !string.IsNullOrEmpty(fixtureSuffix);
-
         var initialSnapshot = !string.IsNullOrEmpty(initialFixture)
             ? FixtureSnapshotProvider.GetSnapshot(initialFixture, isPinned: false, revision: 1)
             : StateEngine.CreateDefaultSnapshot(isPinned: false, revision: 1);
@@ -136,7 +156,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             throw new ArgumentException("headless AppHost requires an injected IBridgeHost.", nameof(bridgeHost));
         }
 
-        if (!isFixtureMode) {
+        if (!_isFixtureMode) {
             _supervisor = supervisorFactory != null
                 ? supervisorFactory()
                 : new Adb.AdbServerSupervisor(
@@ -183,6 +203,105 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _webViewHost = new WebViewHost(_flyoutWindow!, _coordinator);
             _trayIcon?.Apply(initialSnapshot.Health.Tray, initialSnapshot.Health.TrayTooltip);
         }
+
+        // Phase 8C: notifications from accepted StateEngine snapshots only.
+        UsesRealBalloonNotificationSink =
+            notificationSink is null && ShouldConstructRealBalloonSink(headless, _isFixtureMode);
+
+        if (notificationSink is not null) {
+            _notificationSink = notificationSink;
+            _balloonSink = null;
+        }
+        else if (UsesRealBalloonNotificationSink) {
+            _balloonSink = new BalloonNotificationSink(
+                _trayIcon!,
+                MarshalNotificationToUi,
+                ShowFlyoutOnly);
+            _notificationSink = _balloonSink;
+        }
+        else {
+            _notificationSink = NullNotificationSink.Instance;
+            _balloonSink = null;
+        }
+
+        Func<DateTimeOffset> clock = notificationClock ?? (() => App.SystemClock.UtcNow);
+        Func<TimeSpan, CancellationToken, Task> delay = notificationDelay ?? Task.Delay;
+        _notificationCoordinator = new NotificationCoordinator(clock, delay, _notificationSink);
+        // Silent baseline: first authoritative snapshot establishes NotifierState with zero balloons.
+        _notificationCoordinator.AcceptSnapshot(initialSnapshot);
+
+        Log.Information(
+            "AppHost notifications: RealBalloonSink={RealBalloon} Fixture={Fixture} Headless={Headless}",
+            UsesRealBalloonNotificationSink,
+            _isFixtureMode,
+            _headless);
+    }
+
+    private void MarshalNotificationToUi(Action work) {
+        if (_flyoutWindow is null) {
+            work();
+            return;
+        }
+
+        if (!_flyoutWindow.InvokeRequired) {
+            work();
+            return;
+        }
+
+        if (Application.MessageLoop) {
+            _flyoutWindow.Invoke(work);
+            return;
+        }
+
+        if (_flyoutWindow.IsHandleCreated) {
+            _ = _flyoutWindow.BeginInvoke(work);
+            return;
+        }
+
+        // No message loop yet (tests / pre-Run): deliver synchronously so sinks stay testable.
+        work();
+    }
+
+    /// <summary>
+    /// Balloon click: show-only. Never toggles a visible flyout closed; never deep-links.
+    /// </summary>
+    private void ShowFlyoutOnly() {
+        if (_flyoutWindow is null || _trayIcon is null) {
+            return;
+        }
+
+        if (TryMarshalToFlyoutUi(new Action(ShowFlyoutOnly))) {
+            return;
+        }
+
+        // Already visible (pinned or not) → remain; ShowFlyout repositions but does not hide.
+        ShowFlyout();
+    }
+
+    private void OnPowerSuspend(object? sender, EventArgs e) {
+        _notificationCoordinator?.OnSuspend();
+        _metadataLifecycle?.OnSuspend();
+        if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) {
+            HideFlyout();
+        }
+    }
+
+    private void OnPowerResume(object? sender, EventArgs e) {
+        if (_stateEngine is not null) {
+            _notificationCoordinator?.RebaselineForResume(_stateEngine.CurrentSnapshot);
+        }
+
+        _metadataLifecycle?.OnResume();
+    }
+
+    private void OnSessionSwitch(object? sender, SessionSwitchEventArgs e) {
+        if (e.Reason == SessionSwitchReason.SessionUnlock && _stateEngine is not null) {
+            _notificationCoordinator?.RebaselineForResume(_stateEngine.CurrentSnapshot);
+        }
+
+        if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) {
+            HideFlyout();
+        }
     }
 
     private void OnSupervisorStateChanged(Adb.Model.AdbServerStateChanged state) {
@@ -192,6 +311,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void OnSnapshotPublished(AppSnapshot snapshot) {
+        _notificationCoordinator?.AcceptSnapshot(snapshot);
+
         _coordinator?.UpdateSnapshot(snapshot);
         if (_metadataLifecycle is not null) {
             bool pinned = _flyoutWindow?.IsPinned ?? snapshot.Shell.Pinned;
@@ -443,6 +564,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             return;
         }
 
+        // Phase 8C: stop notification intents before producer teardown can invent removals.
+        _notificationCoordinator?.BeginShutdown();
+
         _appLifetimeCts.Cancel();
         try {
             if (_supervisorTask != null && !_supervisorTask.IsCompleted) {
@@ -460,8 +584,14 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _stateEngine?.Dispose();
         _appLifetimeCts.Dispose();
 
+        _notificationCoordinator?.Dispose();
+        _balloonSink?.Dispose();
+
         if (_powerAndSession != null) {
             _powerAndSession.DisplaySettingsChanged -= OnDisplayChanged;
+            _powerAndSession.Suspend -= OnPowerSuspend;
+            _powerAndSession.Resume -= OnPowerResume;
+            _powerAndSession.SessionSwitch -= OnSessionSwitch;
             _powerAndSession.Dispose();
         }
         if (_flyoutWindow != null) {
