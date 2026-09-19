@@ -22,6 +22,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly StateEngine? _stateEngine;
     private readonly Adb.AdbServerSupervisor? _supervisor;
     private readonly DeviceTrackerLifecycle? _deviceTrackerLifecycle;
+    private readonly MdnsTrackerLifecycle? _mdnsTrackerLifecycle;
+    private readonly PairingSession? _pairingSession;
     private readonly System.Threading.CancellationTokenSource _appLifetimeCts = new();
     private Task? _supervisorTask;
     private readonly string _fixtureSuffix;
@@ -33,6 +35,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     internal StateEngine? StateEngine => _stateEngine;
     internal Adb.AdbServerSupervisor? Supervisor => _supervisor;
     internal DeviceTrackerLifecycle? DeviceTrackerLifecycle => _deviceTrackerLifecycle;
+    internal MdnsTrackerLifecycle? MdnsTrackerLifecycle => _mdnsTrackerLifecycle;
+    internal PairingSession? PairingSession => _pairingSession;
 
     public AppHost(int sessionId, string fixtureSuffix = "")
         : this(sessionId, fixtureSuffix, supervisorFactory: null, bridgeHost: null, headless: false) { }
@@ -48,7 +52,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         Func<Adb.AdbServerSupervisor>? supervisorFactory,
         IBridgeHost? bridgeHost = null,
         bool headless = false,
-        Func<Adb.DeviceTracker>? deviceTrackerFactory = null) {
+        Func<Adb.DeviceTracker>? deviceTrackerFactory = null,
+        Func<Adb.MdnsTracker>? mdnsTrackerFactory = null,
+        Adb.PairingCoordinator? pairingCoordinator = null) {
         _fixtureSuffix = fixtureSuffix;
         LogConfig.Initialize();
         Log.Information("AppHost starting in session {SessionId} (headless={Headless})", sessionId, headless);
@@ -123,17 +129,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             throw new ArgumentException("headless AppHost requires an injected IBridgeHost.", nameof(bridgeHost));
         }
 
-        _coordinator = new BridgeCoordinator(
-            coordinatorHost,
-            isPinned: false,
-            initialSnapshot: initialSnapshot,
-            onSetPinned: pinned => _stateEngine.Post(new SetPinnedEvent(pinned)));
-
-        if (!headless) {
-            _webViewHost = new WebViewHost(_flyoutWindow!, _coordinator);
-            _trayIcon?.Apply(initialSnapshot.Health.Tray, initialSnapshot.Health.TrayTooltip);
-        }
-
         if (!isFixtureMode) {
             _supervisor = supervisorFactory != null
                 ? supervisorFactory()
@@ -147,13 +142,40 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 post: evt => _stateEngine.Post(evt),
                 trackerFactory: deviceTrackerFactory);
 
+            _mdnsTrackerLifecycle = new MdnsTrackerLifecycle(
+                post: evt => _stateEngine.Post(evt),
+                trackerFactory: mdnsTrackerFactory);
+
+            _pairingSession = new PairingSession(
+                post: evt => _stateEngine.Post(evt),
+                resolveOffer: offerId => {
+                    var state = _stateEngine.CurrentDeviceState;
+                    return state.OfferBindings.TryGetValue(offerId, out var binding) ? binding : null;
+                },
+                coordinator: pairingCoordinator);
+
             _supervisor.StateChanged += OnSupervisorStateChanged;
+        }
+
+        _coordinator = new BridgeCoordinator(
+            coordinatorHost,
+            isPinned: false,
+            initialSnapshot: initialSnapshot,
+            onSetPinned: pinned => _stateEngine.Post(new SetPinnedEvent(pinned)),
+            onPairStart: offerId => _pairingSession?.Start(offerId),
+            onPairSubmit: (offerId, code) => _pairingSession?.Submit(offerId, code),
+            onPairCancel: offerId => _pairingSession?.Cancel(offerId));
+
+        if (!headless) {
+            _webViewHost = new WebViewHost(_flyoutWindow!, _coordinator);
+            _trayIcon?.Apply(initialSnapshot.Health.Tray, initialSnapshot.Health.TrayTooltip);
         }
     }
 
     private void OnSupervisorStateChanged(Adb.Model.AdbServerStateChanged state) {
         _stateEngine?.Post(new AdbServerStateChangedEvent(state));
         _deviceTrackerLifecycle?.OnServerStateChanged(state);
+        _mdnsTrackerLifecycle?.OnServerStateChanged(state);
     }
 
     private void OnSnapshotPublished(AppSnapshot snapshot) {
@@ -402,6 +424,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             // Clean shutdown
         }
 
+        _pairingSession?.Dispose();
+        _mdnsTrackerLifecycle?.Dispose();
         _deviceTrackerLifecycle?.Dispose();
         _stateEngine?.Dispose();
         _appLifetimeCts.Dispose();

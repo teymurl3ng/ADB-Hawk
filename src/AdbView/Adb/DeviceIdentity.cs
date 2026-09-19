@@ -40,14 +40,20 @@ internal sealed partial class DeviceIdentity {
         _onUnknownStateDiagnostic = onUnknownStateDiagnostic;
     }
 
-    public NormalizedDevice Normalize(RawDevice raw) {
+    public NormalizedDevice Normalize(
+        RawDevice raw,
+        ImmutableArray<RawMdnsService> mdnsServices = default) {
         ArgumentNullException.ThrowIfNull(raw);
+        if (mdnsServices.IsDefault) {
+            mdnsServices = ImmutableArray<RawMdnsService>.Empty;
+        }
 
         DeviceTransport transport = MapTransport(raw.ConnectionType);
-        string hardwareSerial = ResolveHardwareSerial(raw.Serial);
+        string hardwareSerial = ResolveHardwareSerial(raw.Serial, mdnsServices);
         string id = BuildId(transport, hardwareSerial);
         DeviceSemanticState state = MapState(raw);
-        string displayName = ResolveDisplayName(raw.Model, raw.Product, hardwareSerial);
+        string? givenName = FindConnectGivenName(raw.Serial, hardwareSerial, mdnsServices);
+        string displayName = ResolveDisplayName(givenName, raw.Model, raw.Product, hardwareSerial);
 
         return new NormalizedDevice {
             Id = id,
@@ -61,18 +67,22 @@ internal sealed partial class DeviceIdentity {
         };
     }
 
-    public ImmutableArray<NormalizedDevice> NormalizeList(ImmutableArray<RawDevice> devices) {
+    public ImmutableArray<NormalizedDevice> NormalizeList(
+        ImmutableArray<RawDevice> devices,
+        ImmutableArray<RawMdnsService> mdnsServices = default) {
         if (devices.IsDefaultOrEmpty) {
             return ImmutableArray<NormalizedDevice>.Empty;
         }
 
-        var builder = ImmutableArray.CreateBuilder<NormalizedDevice>(devices.Length);
-        foreach (RawDevice raw in devices) {
-            builder.Add(Normalize(raw));
+        if (mdnsServices.IsDefault) {
+            mdnsServices = ImmutableArray<RawMdnsService>.Empty;
         }
 
-        // Preserve duplicates as distinct list entries (USB/Wi-Fi stay distinct by Id;
-        // same-Id collisions are not merged or suffix-renamed — ENGINEERING has no merge rule).
+        var builder = ImmutableArray.CreateBuilder<NormalizedDevice>(devices.Length);
+        foreach (RawDevice raw in devices) {
+            builder.Add(Normalize(raw, mdnsServices));
+        }
+
         return builder.ToImmutable();
     }
 
@@ -95,10 +105,15 @@ internal sealed partial class DeviceIdentity {
 
     /// <summary>
     /// Hardware serial resolution (ENGINEERING.md §6.7 rule 2).
-    /// Phase 5: mDNS connect lookup for host:port is unavailable → keep host:port.
+    /// Rule 2c: host:port serials resolve via matching <c>_adb-tls-connect._tcp</c> serial when present.
     /// </summary>
-    internal static string ResolveHardwareSerial(string serial) {
+    internal static string ResolveHardwareSerial(
+        string serial,
+        ImmutableArray<RawMdnsService> mdnsServices = default) {
         ArgumentNullException.ThrowIfNull(serial);
+        if (mdnsServices.IsDefault) {
+            mdnsServices = ImmutableArray<RawMdnsService>.Empty;
+        }
 
         Match mdns = AdbMdnsInstanceSerialRegex().Match(serial);
         if (mdns.Success) {
@@ -106,7 +121,11 @@ internal sealed partial class DeviceIdentity {
         }
 
         if (EndpointSerialRegex().IsMatch(serial)) {
-            // Rule 2c without Phase 6 mDNS enrichment.
+            string? fromConnect = FindConnectSerial(serial, mdnsServices);
+            if (!string.IsNullOrEmpty(fromConnect)) {
+                return fromConnect;
+            }
+
             return serial;
         }
 
@@ -122,7 +141,18 @@ internal sealed partial class DeviceIdentity {
         return prefix + hardwareSerial;
     }
 
-    internal static string ResolveDisplayName(string? model, string? product, string hardwareSerial) {
+    /// <summary>
+    /// DisplayName = mdns.given_name ?? model ?? product ?? hardwareSerial (ENGINEERING.md §6.7).
+    /// </summary>
+    internal static string ResolveDisplayName(
+        string? givenName,
+        string? model,
+        string? product,
+        string hardwareSerial) {
+        if (!string.IsNullOrEmpty(givenName)) {
+            return givenName;
+        }
+
         if (!string.IsNullOrEmpty(model)) {
             return model;
         }
@@ -132,6 +162,115 @@ internal sealed partial class DeviceIdentity {
         }
 
         return hardwareSerial;
+    }
+
+    /// <summary>Back-compat overload used by older call sites/tests.</summary>
+    internal static string ResolveDisplayName(string? model, string? product, string hardwareSerial) =>
+        ResolveDisplayName(null, model, product, hardwareSerial);
+
+    private static string? FindConnectSerial(string endpointSerial, ImmutableArray<RawMdnsService> services) {
+        if (services.IsDefaultOrEmpty) {
+            return null;
+        }
+
+        foreach (RawMdnsService service in services) {
+            if (service.Kind != MdnsServiceKind.Connect
+                || !string.Equals(service.ServiceType, MdnsServiceTypes.Connect, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            if (!EndpointMatchesService(endpointSerial, service)) {
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(service.Serial)) {
+                return service.Serial;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FindConnectGivenName(
+        string endpointOrSerial,
+        string hardwareSerial,
+        ImmutableArray<RawMdnsService> services) {
+        if (services.IsDefaultOrEmpty) {
+            return null;
+        }
+
+        foreach (RawMdnsService service in services) {
+            if (service.Kind != MdnsServiceKind.Connect
+                || !string.Equals(service.ServiceType, MdnsServiceTypes.Connect, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            bool match = EndpointMatchesService(endpointOrSerial, service)
+                || (!string.IsNullOrEmpty(service.Serial)
+                    && string.Equals(service.Serial, hardwareSerial, StringComparison.Ordinal));
+            if (!match) {
+                continue;
+            }
+
+            if (!string.IsNullOrEmpty(service.GivenName)) {
+                return service.GivenName;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool EndpointMatchesService(string endpointSerial, RawMdnsService service) {
+        if (!TrySplitEndpoint(endpointSerial, out string host, out int port)) {
+            return false;
+        }
+
+        if (service.Port != port) {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(service.Ipv4)
+            && string.Equals(service.Ipv4, host, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (!service.Ipv6.IsDefaultOrEmpty) {
+            foreach (string v6 in service.Ipv6) {
+                if (string.Equals(v6, host, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TrySplitEndpoint(string endpoint, out string host, out int port) {
+        host = string.Empty;
+        port = 0;
+        if (string.IsNullOrEmpty(endpoint)) {
+            return false;
+        }
+
+        if (endpoint.StartsWith('[')) {
+            int close = endpoint.IndexOf(']', StringComparison.Ordinal);
+            if (close < 2 || close + 2 >= endpoint.Length || endpoint[close + 1] != ':') {
+                return false;
+            }
+
+            host = endpoint[1..close];
+            return int.TryParse(endpoint[(close + 2)..], System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out port);
+        }
+
+        int colon = endpoint.LastIndexOf(':');
+        if (colon <= 0 || colon == endpoint.Length - 1) {
+            return false;
+        }
+
+        host = endpoint[..colon];
+        return int.TryParse(endpoint[(colon + 1)..], System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out port);
     }
 
     private DeviceSemanticState MapState(RawDevice raw) {

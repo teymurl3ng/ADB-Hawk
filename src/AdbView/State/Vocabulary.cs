@@ -3,6 +3,7 @@ namespace AdbView.State;
 /// <summary>
 /// Dynamic semantic/state wording shared across flyout, tooltip, and notifications.
 /// Device copy follows DESIGN.md §12 / ENGINEERING.md §4.3.
+/// Pairing / wireless copy follows DESIGN.md §14–§18.
 /// </summary>
 internal static class Vocabulary {
     internal static class Health {
@@ -48,5 +49,29 @@ internal static class Vocabulary {
         public const string CopySerialLabel = "Serial";
         public const string CopyAddressKey = "address";
         public const string CopyAddressLabel = "Address";
+    }
+
+    internal static class Pairing {
+        public const string OfferHeading = "Wireless pairing available";
+        public const string OfferDetail = "Waiting for a pairing code";
+        public const string ActionLabel = "Pair";
+        public const string DefaultDeviceName = "Android device";
+
+        public const string CodeEntryDetail = "Enter the six-digit code shown on the phone.";
+        public const string ProgressDetail = "Keep the phone nearby while pairing completes.";
+        public const string SuccessDetail = "Waiting for ADB connection…";
+        public const string FailedTitle = "Pairing failed";
+        public const string FailedDetail = "Check the code and try again.";
+
+        public static string CodeEntryTitle(string displayName) => "Pairing with " + displayName;
+        public static string ProgressTitle(string displayName) => "Pairing with " + displayName + "…";
+        public static string SuccessTitle(string displayName) => "Paired with " + displayName;
+    }
+
+    internal static class Wireless {
+        public const string UnavailableTitle = "Wireless discovery unavailable";
+        public const string UnavailableDetail = "USB ADB is still working normally.";
+        public const string RestoringTitle = "Restoring wireless discovery…";
+        public const string RestoringDetail = "USB ADB is still working normally.";
     }
 }

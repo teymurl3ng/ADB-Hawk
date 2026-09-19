@@ -740,6 +740,29 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
+    // 19d. Phase 6C Host lifecycles may post State events but Adb trackers stay free of State.
+    [Fact]
+    public void Phase6CAdbTrackersStillDoNotReferenceState() {
+        var files = new[]
+        {
+            RootFile("src", "AdbView", "Adb", "MdnsTracker.cs"),
+            RootFile("src", "AdbView", "Adb", "PairingCoordinator.cs"),
+            RootFile("src", "AdbView", "Adb", "HostPairClient.cs"),
+        };
+        var forbidden = new[] { "AdbView.State", "StateEngine", "AppSnapshot", "PairingOfferView" };
+        var violations = new List<string>();
+        foreach (var file in files) {
+            var text = ReadText(file);
+            foreach (var token in forbidden) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
     // 20. Adb.Protocol still must not reference DeviceTracker / RawDevice (Phase 5A).
     [Fact]
     public void AdbProtocolDoesNotReferenceDeviceTrackerOrRawDevice() {

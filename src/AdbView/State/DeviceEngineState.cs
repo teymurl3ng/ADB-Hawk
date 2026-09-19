@@ -2,22 +2,65 @@ namespace AdbView.State;
 
 using System;
 using System.Collections.Immutable;
+using AdbView.Adb.Model;
 
 /// <summary>
-/// Engine-private bookkeeping for device-list ordering and tracker-down grace.
-/// Not part of AppSnapshot / bridge contract.
+/// Engine-private bookkeeping for device-list ordering, mDNS discovery, pairing wait,
+/// and wireless-warning timers. Not part of AppSnapshot / bridge contract.
 /// </summary>
 internal sealed record DeviceEngineState {
     public static DeviceEngineState Empty { get; } = new() {
         LatestAppliedListAt = null,
         ActiveGraceGeneration = 0,
+        LatestAppliedMdnsAt = null,
+        LatestMdnsServices = ImmutableArray<RawMdnsService>.Empty,
+        OfferBindings = ImmutableDictionary<string, PairingOfferBinding>.Empty,
+        WirelessFailed = false,
+        ActiveWirelessRestoringGeneration = 0,
+        ActiveWirelessUnavailableGeneration = 0,
+        ActivePairingWaitGeneration = 0,
+        ActivePairingOfferId = null,
+        ActivePairingHost = null,
+        ActivePairingSerial = null,
+        ActivePairingDisplayName = null,
     };
 
     public DateTimeOffset? LatestAppliedListAt { get; init; }
 
     /// <summary>Non-zero while a tracker-failure grace window is armed.</summary>
     public long ActiveGraceGeneration { get; init; }
+
+    public DateTimeOffset? LatestAppliedMdnsAt { get; init; }
+
+    public ImmutableArray<RawMdnsService> LatestMdnsServices { get; init; } = ImmutableArray<RawMdnsService>.Empty;
+
+    public ImmutableDictionary<string, PairingOfferBinding> OfferBindings { get; init; } =
+        ImmutableDictionary<string, PairingOfferBinding>.Empty;
+
+    public bool WirelessFailed { get; init; }
+
+    public long ActiveWirelessRestoringGeneration { get; init; }
+
+    public long ActiveWirelessUnavailableGeneration { get; init; }
+
+    public long ActivePairingWaitGeneration { get; init; }
+
+    public string? ActivePairingOfferId { get; init; }
+
+    public string? ActivePairingHost { get; init; }
+
+    public string? ActivePairingSerial { get; init; }
+
+    public string? ActivePairingDisplayName { get; init; }
 }
+
+/// <summary>Resolved pairing offer endpoint kept out of AppSnapshot.</summary>
+internal sealed record PairingOfferBinding(
+    string OfferId,
+    string Host,
+    int Port,
+    string? Serial,
+    string DisplayName);
 
 internal enum GraceCommandKind {
     None,
@@ -34,7 +77,25 @@ internal readonly record struct GraceCommand(GraceCommandKind Kind, long Generat
 internal readonly record struct ReduceResult(
     AppSnapshot Snapshot,
     DeviceEngineState DeviceState,
-    GraceCommand Grace) {
+    GraceCommand Grace,
+    GraceCommand PairingWait,
+    GraceCommand WirelessRestoring,
+    GraceCommand WirelessUnavailable) {
     public static ReduceResult Unchanged(AppSnapshot snapshot, DeviceEngineState deviceState) =>
-        new(snapshot, deviceState, GraceCommand.None);
+        new(snapshot, deviceState, GraceCommand.None, GraceCommand.None, GraceCommand.None, GraceCommand.None);
+
+    public static ReduceResult With(
+        AppSnapshot snapshot,
+        DeviceEngineState deviceState,
+        GraceCommand? grace = null,
+        GraceCommand? pairingWait = null,
+        GraceCommand? wirelessRestoring = null,
+        GraceCommand? wirelessUnavailable = null) =>
+        new(
+            snapshot,
+            deviceState,
+            grace ?? GraceCommand.None,
+            pairingWait ?? GraceCommand.None,
+            wirelessRestoring ?? GraceCommand.None,
+            wirelessUnavailable ?? GraceCommand.None);
 }

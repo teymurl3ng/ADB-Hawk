@@ -22,3 +22,34 @@ internal sealed record DeviceTrackerFailedEvent(string Reason) : AdbViewEvent;
 /// Internal grace-expiry signal. Generation must match the active grace token or the event is ignored.
 /// </summary>
 internal sealed record DeviceTrackerGraceExpiredEvent(long Generation) : AdbViewEvent;
+
+/// <summary>Complete authoritative mDNS service list (ENGINEERING.md §6.10).</summary>
+internal sealed record MdnsServicesReceivedEvent(
+    ImmutableArray<RawMdnsService> Services,
+    DateTimeOffset At) : AdbViewEvent;
+
+/// <summary>mDNS tracker failure; local wireless warning only (ENGINEERING.md §7.4 / §11).</summary>
+internal sealed record MdnsTrackerFailedEvent(string Reason) : AdbViewEvent;
+
+/// <summary>
+/// Delayed wireless-discovery Restoring arm (ENGINEERING.md §11 row 8 — after 5 s).
+/// </summary>
+internal sealed record WirelessDiscoveryRestoringExpiredEvent(long Generation) : AdbViewEvent;
+
+/// <summary>
+/// Delayed wireless-discovery Unavailable arm (ENGINEERING.md §11 row 9 — after 60 s).
+/// </summary>
+internal sealed record WirelessDiscoveryUnavailableExpiredEvent(long Generation) : AdbViewEvent;
+
+/// <summary>Domain pairing progress adapted into State (ENGINEERING.md §6.10).</summary>
+internal sealed record PairingProgressedEvent(
+    string OfferId,
+    AdbView.Adb.Model.PairingPhase Phase,
+    string? FailureReason,
+    AdbView.Adb.Model.PairingFailureKind FailureKind,
+    string? DisplayName) : AdbViewEvent;
+
+/// <summary>
+/// Quiet clear of PairedWaitingForDevice after 60 s (ENGINEERING.md §6.8 / §11 row 13).
+/// </summary>
+internal sealed record PairingWaitExpiredEvent(long Generation) : AdbViewEvent;

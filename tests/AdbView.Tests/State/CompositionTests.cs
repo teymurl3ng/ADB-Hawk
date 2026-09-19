@@ -104,6 +104,7 @@ public sealed class CompositionTests {
     public void ScenarioR_FixtureMode_DoesNotStartSupervisor() {
         int factoryCallCount = 0;
         int trackerFactoryCount = 0;
+        int mdnsFactoryCount = 0;
         using var host = new AppHost(
             sessionId: 54321,
             fixtureSuffix: "?fixture=empty",
@@ -116,12 +117,19 @@ public sealed class CompositionTests {
             deviceTrackerFactory: () => {
                 trackerFactoryCount++;
                 return new DeviceTracker(connectionFactory: () => throw new System.IO.IOException("no"));
+            },
+            mdnsTrackerFactory: () => {
+                mdnsFactoryCount++;
+                return new MdnsTracker(connectionFactory: () => throw new System.IO.IOException("no"));
             });
 
         Assert.Equal(0, factoryCallCount);
         Assert.Equal(0, trackerFactoryCount);
+        Assert.Equal(0, mdnsFactoryCount);
         Assert.Null(host.Supervisor);
         Assert.Null(host.DeviceTrackerLifecycle);
+        Assert.Null(host.MdnsTrackerLifecycle);
+        Assert.Null(host.PairingSession);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
     }
@@ -144,6 +152,8 @@ public sealed class CompositionTests {
         Assert.Equal(1, factoryCallCount);
         Assert.NotNull(host.Supervisor);
         Assert.NotNull(host.DeviceTrackerLifecycle);
+        Assert.NotNull(host.MdnsTrackerLifecycle);
+        Assert.NotNull(host.PairingSession);
         Assert.NotNull(host.StateEngine);
         Assert.NotNull(host.Coordinator);
 
@@ -155,8 +165,9 @@ public sealed class CompositionTests {
     }
 
     [Fact]
-    public async Task ScenarioAN_ProductionUp_StartsExactlyOneTracker() {
-        int trackerStarts = 0;
+    public async Task ScenarioAN_AO_ProductionUp_StartsDeviceAndMdnsTrackers() {
+        int deviceStarts = 0;
+        int mdnsStarts = 0;
 
         using var host = new AppHost(
             sessionId: 54324,
@@ -165,30 +176,41 @@ public sealed class CompositionTests {
             bridgeHost: new MockBridgeHost(),
             headless: true,
             deviceTrackerFactory: () => {
-                trackerStarts++;
-                var tracker = new DeviceTracker(
+                deviceStarts++;
+                return new DeviceTracker(
                     connectionFactory: () => throw new System.IO.IOException("block-connect"));
-                // Lifecycle starts RunAsync which will fail and emit Failed; we only count constructions.
-                return tracker;
+            },
+            mdnsTrackerFactory: () => {
+                mdnsStarts++;
+                return new MdnsTracker(
+                    connectionFactory: () => throw new System.IO.IOException("block-connect"));
             });
 
         Assert.NotNull(host.DeviceTrackerLifecycle);
-        host.DeviceTrackerLifecycle!.OnServerStateChanged(
-            new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 7));
+        Assert.NotNull(host.MdnsTrackerLifecycle);
+        var up = new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 7);
+        host.DeviceTrackerLifecycle!.OnServerStateChanged(up);
+        host.MdnsTrackerLifecycle!.OnServerStateChanged(up);
         await Task.Delay(50);
-        Assert.Equal(1, trackerStarts);
+        Assert.Equal(1, deviceStarts);
+        Assert.Equal(1, mdnsStarts);
         Assert.Equal(7, host.DeviceTrackerLifecycle.RunningGeneration);
+        Assert.Equal(7, host.MdnsTrackerLifecycle.RunningGeneration);
 
-        host.DeviceTrackerLifecycle.OnServerStateChanged(
-            new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 7));
+        var upSame = new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 7);
+        host.DeviceTrackerLifecycle.OnServerStateChanged(upSame);
+        host.MdnsTrackerLifecycle.OnServerStateChanged(upSame);
         await Task.Delay(20);
-        Assert.Equal(1, trackerStarts);
+        Assert.Equal(1, deviceStarts);
+        Assert.Equal(1, mdnsStarts);
 
-        host.DeviceTrackerLifecycle.OnServerStateChanged(
-            new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 8));
+        var upNext = new AdbServerStateChanged(AdbServerPhase.Up, null, 41, 8);
+        host.DeviceTrackerLifecycle.OnServerStateChanged(upNext);
+        host.MdnsTrackerLifecycle.OnServerStateChanged(upNext);
         await Task.Delay(50);
-        Assert.Equal(2, trackerStarts);
-        Assert.Equal(8, host.DeviceTrackerLifecycle.RunningGeneration);
+        Assert.Equal(2, deviceStarts);
+        Assert.Equal(2, mdnsStarts);
+        Assert.Equal(8, host.MdnsTrackerLifecycle.RunningGeneration);
     }
 
     [Fact]

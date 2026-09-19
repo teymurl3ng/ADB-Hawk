@@ -19,11 +19,16 @@ internal static partial class DeviceViewMapper {
         ImmutableArray<RawDevice> rawDevices,
         ImmutableArray<DeviceView> previous,
         DateTimeOffset at,
-        DeviceIdentity identity) {
+        DeviceIdentity identity,
+        ImmutableArray<RawMdnsService> mdnsServices = default) {
         ArgumentNullException.ThrowIfNull(identity);
 
         if (rawDevices.IsDefaultOrEmpty) {
             return ImmutableArray<DeviceView>.Empty;
+        }
+
+        if (mdnsServices.IsDefault) {
+            mdnsServices = ImmutableArray<RawMdnsService>.Empty;
         }
 
         var previousById = previous.IsDefaultOrEmpty
@@ -34,7 +39,7 @@ internal static partial class DeviceViewMapper {
         var builder = ImmutableArray.CreateBuilder<DeviceView>(rawDevices.Length);
 
         foreach (RawDevice raw in rawDevices) {
-            NormalizedDevice normalized = identity.Normalize(raw);
+            NormalizedDevice normalized = identity.Normalize(raw, mdnsServices);
             if (!seenIds.Add(normalized.Id)) {
                 if (DuplicateIdDiagnostics.TryAdd(normalized.Id)) {
                     Log.Information(

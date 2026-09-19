@@ -13,6 +13,9 @@ internal sealed class BridgeCoordinator {
     private bool _isReady;
 
     private readonly Action<bool>? _onSetPinned;
+    private readonly Action<string>? _onPairStart;
+    private readonly Action<string, string>? _onPairSubmit;
+    private readonly Action<string>? _onPairCancel;
 
     public AppSnapshot CurrentSnapshot => _currentSnapshot;
     public long Revision => _revision;
@@ -22,11 +25,17 @@ internal sealed class BridgeCoordinator {
         IBridgeHost host,
         bool isPinned = false,
         AppSnapshot? initialSnapshot = null,
-        Action<bool>? onSetPinned = null) {
+        Action<bool>? onSetPinned = null,
+        Action<string>? onPairStart = null,
+        Action<string, string>? onPairSubmit = null,
+        Action<string>? onPairCancel = null) {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _currentSnapshot = initialSnapshot ?? StateEngine.CreateDefaultSnapshot(isPinned, 1);
         _revision = _currentSnapshot.Revision;
         _onSetPinned = onSetPinned;
+        _onPairStart = onPairStart;
+        _onPairSubmit = onPairSubmit;
+        _onPairCancel = onPairCancel;
     }
 
     public void UpdateSnapshot(AppSnapshot snapshot) {
@@ -86,10 +95,17 @@ internal sealed class BridgeCoordinator {
             case ReportContentSizeAction size:
                 HandleReportContentSize(size);
                 break;
-            case PairStartAction:
-            case PairSubmitAction:
-            case PairCancelAction:
-                Log.Information("BridgeCoordinator: pair action received in Wave 2 (contract shape only): {Type}", action.GetType().Name);
+            case PairStartAction pairStart:
+                Log.Information("BridgeCoordinator: pairStart dispatch");
+                _onPairStart?.Invoke(pairStart.OfferId);
+                break;
+            case PairSubmitAction pairSubmit:
+                Log.Information("BridgeCoordinator: pairSubmit dispatch");
+                _onPairSubmit?.Invoke(pairSubmit.OfferId, pairSubmit.Code);
+                break;
+            case PairCancelAction pairCancel:
+                Log.Information("BridgeCoordinator: pairCancel dispatch");
+                _onPairCancel?.Invoke(pairCancel.OfferId);
                 break;
             default:
                 Log.Warning("bridge.action.rejected: unhandled action type {Type}", action.GetType().Name);

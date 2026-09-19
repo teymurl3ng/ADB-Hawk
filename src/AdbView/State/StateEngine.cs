@@ -19,6 +19,9 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
     private AppSnapshot _currentSnapshot;
     private DeviceEngineState _deviceState = DeviceEngineState.Empty;
     private CancellationTokenSource? _graceCts;
+    private CancellationTokenSource? _pairingWaitCts;
+    private CancellationTokenSource? _wirelessRestoringCts;
+    private CancellationTokenSource? _wirelessUnavailableCts;
     private int _disposed;
 
     public AppSnapshot CurrentSnapshot => Volatile.Read(ref _currentSnapshot);
@@ -113,7 +116,10 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         var result = StateReducer.ReduceWithDeviceState(current, deviceState, evt, now);
 
         Volatile.Write(ref _deviceState, result.DeviceState);
-        ApplyGraceCommand(result.Grace);
+        ApplyTimerCommand(ref _graceCts, result.Grace, StateReducer.TrackerFailureGrace, gen => new DeviceTrackerGraceExpiredEvent(gen));
+        ApplyTimerCommand(ref _pairingWaitCts, result.PairingWait, StateReducer.PairingWaitTimeout, gen => new PairingWaitExpiredEvent(gen));
+        ApplyTimerCommand(ref _wirelessRestoringCts, result.WirelessRestoring, StateReducer.WirelessRestoringDelay, gen => new WirelessDiscoveryRestoringExpiredEvent(gen));
+        ApplyTimerCommand(ref _wirelessUnavailableCts, result.WirelessUnavailable, StateReducer.WirelessUnavailableDelay, gen => new WirelessDiscoveryUnavailableExpiredEvent(gen));
 
         if (!ReferenceEquals(result.Snapshot, current) && result.Snapshot != current) {
             Volatile.Write(ref _currentSnapshot, result.Snapshot);
@@ -121,24 +127,28 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         }
     }
 
-    private void ApplyGraceCommand(GraceCommand command) {
+    private void ApplyTimerCommand(
+        ref CancellationTokenSource? slot,
+        GraceCommand command,
+        TimeSpan delay,
+        Func<long, AdbViewEvent> factory) {
         switch (command.Kind) {
             case GraceCommandKind.Cancel:
-                CancelGraceTimer();
+                CancelTimer(ref slot);
                 break;
             case GraceCommandKind.Schedule:
-                CancelGraceTimer();
+                CancelTimer(ref slot);
                 var cts = new CancellationTokenSource();
-                _graceCts = cts;
+                slot = cts;
                 long generation = command.Generation;
 #pragma warning disable CA2008 // TaskScheduler
                 _ = Task.Run(async () => {
                     try {
-                        await _delay(StateReducer.TrackerFailureGrace, cts.Token).ConfigureAwait(false);
-                        Post(new DeviceTrackerGraceExpiredEvent(generation));
+                        await _delay(delay, cts.Token).ConfigureAwait(false);
+                        Post(factory(generation));
                     }
                     catch (OperationCanceledException) {
-                        // Grace cancelled by newer list or dispose.
+                        // Cancelled by newer schedule or dispose.
                     }
                 });
 #pragma warning restore CA2008
@@ -146,29 +156,26 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         }
     }
 
-    private void CancelGraceTimer() {
-        var cts = _graceCts;
-        _graceCts = null;
+    private static void CancelTimer(ref CancellationTokenSource? slot) {
+        var cts = slot;
+        slot = null;
         if (cts is null) {
             return;
         }
 
         try {
-#pragma warning disable CA1849 // Sync dispose/cancel path; CancelAsync is used from StopAsync.
+#pragma warning disable CA1849
             cts.Cancel();
 #pragma warning restore CA1849
         }
         catch (ObjectDisposedException) {
-            // Already disposed.
         }
         finally {
             cts.Dispose();
         }
     }
 
-    private async Task CancelGraceTimerAsync() {
-        var cts = _graceCts;
-        _graceCts = null;
+    private static async Task CancelTimerAsync(CancellationTokenSource? cts) {
         if (cts is null) {
             return;
         }
@@ -177,7 +184,6 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
             await cts.CancelAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException) {
-            // Already disposed.
         }
         finally {
             cts.Dispose();
@@ -189,7 +195,15 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
             return;
         }
 
-        await CancelGraceTimerAsync().ConfigureAwait(false);
+        await CancelTimerAsync(_graceCts).ConfigureAwait(false);
+        _graceCts = null;
+        await CancelTimerAsync(_pairingWaitCts).ConfigureAwait(false);
+        _pairingWaitCts = null;
+        await CancelTimerAsync(_wirelessRestoringCts).ConfigureAwait(false);
+        _wirelessRestoringCts = null;
+        await CancelTimerAsync(_wirelessUnavailableCts).ConfigureAwait(false);
+        _wirelessUnavailableCts = null;
+
         _channel.Writer.TryComplete();
         try {
             await _processingTask.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -212,7 +226,10 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
             return;
         }
 
-        CancelGraceTimer();
+        CancelTimer(ref _graceCts);
+        CancelTimer(ref _pairingWaitCts);
+        CancelTimer(ref _wirelessRestoringCts);
+        CancelTimer(ref _wirelessUnavailableCts);
         _channel.Writer.TryComplete();
         try {
             if (!_processingTask.Wait(TimeSpan.FromSeconds(2))) {
