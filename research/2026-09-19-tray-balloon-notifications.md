@@ -143,4 +143,11 @@ integration.
   (Option A). See decision `0001`.
 - **Closed (2026-09-19):** 8C production wiring — AppHost composition + lifecycle
   (startup baseline, resume/unlock rebaseline, suspend, BeginShutdown before teardown).
-- Live V-5 presentation checklist on this host’s Win11 build (manual).
+- **Closed (2026-09-19) live V-5 presentation (8D):** On Windows 11 10.0.26100,
+  production `ShowBalloonTip` succeeded twice (DeviceDisconnected + DeviceConnected
+  after external `adb disconnect` / `adb connect` on `192.168.18.248:5555`); logs
+  recorded `host.tray balloon delivered (Info)`. No clickable banner was found via
+  UI Automation in this environment — **OS presentation NOT OBSERVED**; live
+  `BalloonTipClicked` therefore **NOT EXERCISED**. Keep WinForms balloons; do not
+  claim Focus Assist / DND. Empty disconnect body requires a non-empty tip text
+  at the `TrayIcon` delivery seam (WinForms ArgumentException otherwise).

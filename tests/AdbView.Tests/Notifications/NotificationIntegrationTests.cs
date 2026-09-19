@@ -337,6 +337,47 @@ public sealed class NotificationIntegrationTests {
         Assert.DoesNotContain(h.Sink.Emitted, i => i.Key.Kind == NotificationKind.AdbUnavailable);
     }
 
+    [Fact]
+    public async Task L2_Offline_Then_Absent_Disconnects() {
+        // Real adb disconnect often reports offline briefly before dropping the transport.
+        await using var h = CreateHarness();
+        await h.ExitStartupSuppressAsync();
+        await h.PostAndDrainAsync(new DeviceListReceivedEvent(
+            ImmutableArray.Create(Proto("R8", model: "Phone")), T0));
+        await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(2.5));
+        await WaitUntilAsync(() => h.Sink.Emitted.Any(i => i.Key.Kind == NotificationKind.DeviceConnected));
+        h.Sink.Clear();
+
+        await h.PostAndDrainAsync(new DeviceListReceivedEvent(
+            ImmutableArray.Create(Proto("R8", state: 6, model: "Phone")), T0.AddSeconds(1)));
+        Assert.Equal(DeviceStateKind.Offline, h.Engine.CurrentSnapshot.Devices[0].State);
+        await h.PostAndDrainAsync(new DeviceListReceivedEvent(
+            ImmutableArray<RawDevice>.Empty, T0.AddSeconds(2)));
+        Assert.Empty(h.Engine.CurrentSnapshot.Devices);
+
+        await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(2.5));
+        await WaitUntilAsync(() => h.Sink.Emitted.Any(i => i.Key.Kind == NotificationKind.DeviceDisconnected));
+        Assert.Contains(h.Sink.Emitted, i => i.Key.Kind == NotificationKind.DeviceDisconnected);
+        Assert.DoesNotContain(h.Sink.Emitted, i => i.Key.Kind == NotificationKind.DeviceProblem);
+    }
+
+    [Fact]
+    public async Task L3_Connected_Hold_Survives_Metadata_Snapshot() {
+        // Live metadata ticks must not cancel an in-flight DeviceConnected hold.
+        await using var h = CreateHarness();
+        await h.ExitStartupSuppressAsync();
+        await h.PostAndDrainAsync(new DeviceListReceivedEvent(
+            ImmutableArray.Create(Proto("R8", model: "Phone")), T0));
+        Assert.Contains(h.Engine.CurrentSnapshot.Devices, d => d.State == DeviceStateKind.Connected);
+
+        // Same connected roster again (metadata-style) before the 2.5s hold elapses.
+        await h.PostAndDrainAsync(new DeviceListReceivedEvent(
+            ImmutableArray.Create(Proto("R8", model: "Phone")), T0.AddMilliseconds(200)));
+        await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(2.5));
+        await WaitUntilAsync(() => h.Sink.Emitted.Any(i => i.Key.Kind == NotificationKind.DeviceConnected));
+        Assert.Contains(h.Sink.Emitted, i => i.Key.Kind == NotificationKind.DeviceConnected);
+    }
+
     // --- M/N/O global / wireless -------------------------------------------
 
     [Fact]

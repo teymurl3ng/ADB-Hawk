@@ -225,7 +225,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         Func<DateTimeOffset> clock = notificationClock ?? (() => App.SystemClock.UtcNow);
-        Func<TimeSpan, CancellationToken, Task> delay = notificationDelay ?? Task.Delay;
+        // Explicit lambda: method-group Task.Delay can bind ambiguously across TFMs.
+        Func<TimeSpan, CancellationToken, Task> delay = notificationDelay
+            ?? ((TimeSpan d, CancellationToken ct) => Task.Delay(d, ct));
         _notificationCoordinator = new NotificationCoordinator(clock, delay, _notificationSink);
         // Silent baseline: first authoritative snapshot establishes NotifierState with zero balloons.
         _notificationCoordinator.AcceptSnapshot(initialSnapshot);

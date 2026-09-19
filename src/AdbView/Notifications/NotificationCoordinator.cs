@@ -169,6 +169,11 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
         catch (OperationCanceledException) {
             // superseded or shutdown
         }
+#pragma warning disable CA1031 // Hold timer boundary: log and continue; never crash the host.
+        catch (Exception ex) {
+            Serilog.Log.Warning(ex, "NotificationCoordinator hold failed {Kind}", hold.Key.Kind);
+        }
+#pragma warning restore CA1031
         finally {
             lock (_gate) {
                 if (_pending.TryGetValue(hold.Key.Composite, out PendingEntry? entry)
@@ -262,6 +267,11 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
 
         foreach (NotificationIntent intent in toEmit) {
             try {
+                Serilog.Log.Information(
+                    "NotificationCoordinator emitting {Kind} subject-len={SubjectLen} title={Title}",
+                    intent.Key.Kind,
+                    intent.Key.Subject.Length,
+                    intent.Title);
                 _sink.Emit(intent);
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not ObjectDisposedException) {

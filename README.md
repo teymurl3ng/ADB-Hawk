@@ -4,7 +4,7 @@ ADB View is a small Windows 11 system-tray utility for observing, explaining, no
 
 ## Repository status
 
-**Phase 7 complete: device metadata enrichment.** Direct ADB `host:transport` + classic shell probes populate BatteryPercent, ExactModel, and AndroidVersion for Connected devices only; once-per-generation model/version cache; visibility-aware battery refresh (>30 s visible, 120 s pinned+visible); hidden+unpinned idle metadata traffic is zero. DeviceTracker remains sole authority for presence/state/transport/timestamps. Live Samsung A06 USB+Wi-Fi proven (`SM-A065F` / Android 16). The next step is Phase 8 (Windows notifications) from `PHASES.md`.
+**Phase 8 complete: Windows notifications.** Quiet transition-based tray balloons (`NotifyIcon.ShowBalloonTip`) for DeviceConnected / DeviceDisconnected / AuthorizationRequired / DeviceProblem / PairingAvailable / PairingResult / AdbUnavailable / burst aggregate, with startup and resume suppression, holds, dedup, and burst collapse. Balloon click shows the flyout (show-only). Live Samsung A06 Wi-Fi disconnect/reconnect delivery proven; fixture/headless remain externally silent. The next step is Phase 9 (reliability / chaos hardening) from `PHASES.md`.
 
 ## Governing documents
 

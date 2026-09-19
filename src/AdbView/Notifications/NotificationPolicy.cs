@@ -285,7 +285,7 @@ internal static class NotificationPolicy {
                 && (before is null || before.State != DeviceStateKind.Connected)) {
                 Arm(arm, new NotificationKey(NotificationKind.DeviceConnected, device.Id), now, HoldConnected);
             }
-            else {
+            else if (device.State != DeviceStateKind.Connected) {
                 Cancel(cancel, new NotificationKey(NotificationKind.DeviceConnected, device.Id));
             }
 
@@ -307,14 +307,23 @@ internal static class NotificationPolicy {
         }
 
         foreach (DeviceView was in previous.Devices) {
-            if (was.State == DeviceStateKind.Connected && !nextById.ContainsKey(was.Id)) {
-                Arm(
-                    arm,
-                    new NotificationKey(NotificationKind.DeviceDisconnected, was.Id),
-                    now,
-                    HoldDisconnected,
-                    was.DisplayName);
+            if (!nextById.ContainsKey(was.Id)) {
+                // Presence ended. Cancel in-flight per-device holds for this id.
                 Cancel(cancel, new NotificationKey(NotificationKind.DeviceConnected, was.Id));
+                Cancel(cancel, new NotificationKey(NotificationKind.AuthorizationRequired, was.Id));
+                Cancel(cancel, new NotificationKey(NotificationKind.DeviceProblem, was.Id));
+
+                // Connected → absent (ENGINEERING §8) and Offline → absent (ADB often
+                // reports offline briefly before dropping a transport, e.g. adb disconnect).
+                if (was.State == DeviceStateKind.Connected
+                    || was.State == DeviceStateKind.Offline) {
+                    Arm(
+                        arm,
+                        new NotificationKey(NotificationKind.DeviceDisconnected, was.Id),
+                        now,
+                        HoldDisconnected,
+                        was.DisplayName);
+                }
             }
             else if (nextById.ContainsKey(was.Id)) {
                 Cancel(cancel, new NotificationKey(NotificationKind.DeviceDisconnected, was.Id));

@@ -86,6 +86,12 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(body);
 
+        // WinForms NotifyIcon.ShowBalloonTip rejects empty tip text (ArgumentException).
+        // Policy may use an empty disconnect body; delivery requires a non-empty tip.
+        if (body.Length == 0) {
+            body = " ";
+        }
+
         ToolTipIcon tipIcon = severity switch {
             NotificationSeverity.Info => ToolTipIcon.Info,
             NotificationSeverity.Warning => ToolTipIcon.Warning,

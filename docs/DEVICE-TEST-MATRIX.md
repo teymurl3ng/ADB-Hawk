@@ -153,3 +153,45 @@ Legend for this section: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 
 **Defect fixed during 7C:** same battery percent used to skip `BatteryObservedAt` update, so >30s open kept re-querying; reducer now refreshes observation time without Revision when values unchanged. Also stopped ApplyTarget from re-entering MaybeBattery on every target publish (failure tight-loop risk).
 
+## Phase 8 — Windows notifications (2026-09-19)
+
+**Waves:** `ccfba10` (8A) · `9ab81a5` (quiet-time) · `2e25be4` (8B) · `7b8b232` (8C) · 8D closure (this docs wave)
+
+**Platform:** Windows 11 · production Release `AdbView.exe` (no `--test-fixture`, no headless, real `BalloonNotificationSink` + `TrayIcon`) · platform-tools **37.0.1**
+
+**Device:** Samsung Galaxy A06 · USB `R8VXA02SNKH` · Wi-Fi `192.168.18.248:5555`
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+### LIVE PASS
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Startup with USB+Wi-Fi already attached → zero notifications | **LIVE PASS** | After baseline + 5s suppress: no `emitting` / `balloon delivered` before operator action |
+| Real Wi-Fi disconnect → DeviceDisconnected balloon | **LIVE PASS** | External `adb disconnect 192.168.18.248:5555`; path Offline→absent cancelled DeviceProblem then emitted DeviceDisconnected; `host.tray balloon delivered (Info)` at 22:42:28; title `SM_A065F disconnected`; body title-only (empty → delivery space); no DeviceId/IP/pairing code in title |
+| Real Wi-Fi reconnect → DeviceConnected balloon | **LIVE PASS** | External `adb connect 192.168.18.248:5555`; one DeviceConnected; title `SM_A065F connected`; body Vocabulary `Connected over Wi-Fi`; severity Info; `balloon delivered` at 22:43:10 |
+| Stable no-spam after transitions | **LIVE PASS** | ≥60s idle after reconnect: no duplicate Connected/Disconnected; metadata refresh silent |
+| Fixture / headless externally silent | **LIVE PASS** | Production headed only constructs real sink; fixture/headless `NullNotificationSink` (composition + live fixture path) |
+
+### AUTOMATED PASS
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Startup baseline / 5s suppress / holds / flap / disconnect / grace / Unauthorized / Offline / AdbUnavailable / silent restore / pairing cooldown / PairingResult / metadata silence / wireless-warning silence / burst / resume+8s / shutdown / sink failure isolation / Explorer recreation / click show-only / fixture silence / balloon severity+privacy | **AUTOMATED PASS** | `NotificationTimelineTests`, `NotificationIntegrationTests` (incl. Mut1–8), `BalloonNotificationSinkTests`, Composition fixture/headless |
+| Offline→absent → DeviceDisconnected (not stuck Problem) | **AUTOMATED PASS** | `L2_Offline_Then_Absent_Disconnects` |
+| Connected hold survives metadata-style snapshot | **AUTOMATED PASS** | `L3_Connected_Hold_Survives_Metadata_Snapshot` (live defect: bare `else` cancelled Connected on still-connected snapshots) |
+
+### NOT EXERCISED (live)
+
+| Scenario | Result | Notes |
+|---|---|---|
+| OS-visible clickable banner + BalloonTipClicked → flyout | **NOT EXERCISED** | Sink delivery proven (`ShowBalloonTip` + `balloon delivered`); UI Automation found no banner; **OS presentation NOT OBSERVED** — do not claim live click PASS. Hermetic click → `ShowFlyoutOnly` remains covered |
+| Physical USB unplug/replug balloons | **NOT EXERCISED** | Wi-Fi path preferred and exercised |
+| AuthorizationRequired / PairingAvailable / AdbUnavailable live balloons | **NOT EXERCISED** | Hermetic coverage; not deliberately provoked |
+| Focus Assist / DND claims | **NOT EXERCISED** | Not asserted |
+
+**Closure defects fixed in 8D:** (1) WinForms rejects empty disconnect tip text — `TrayIcon.ShowBalloon` substitutes a single space; (2) Offline→absent arms DeviceDisconnected; (3) Connected hold no longer cancelled by still-connected follow-up snapshots (metadata).
+
+**Pipeline proven headed:**  
+`StateEngine.SnapshotPublished` → `NotificationCoordinator.AcceptSnapshot` → hold → `BalloonNotificationSink` → `TrayIcon.ShowBalloonTip`.
+
