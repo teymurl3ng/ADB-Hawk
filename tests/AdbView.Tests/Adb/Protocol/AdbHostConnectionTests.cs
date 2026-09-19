@@ -419,11 +419,12 @@ public sealed class AdbHostConnectionTests {
     public async Task ExecuteFramedStreamAsync_CallerCancellation_PropagatesOperationCanceledException() {
         // Stream Requirement G: caller cancellation terminates enumeration cleanly
         await using var server = new FakeAdbServer();
-        var clientBlocked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Signal only after the *client* has yielded the first frame. Server-side
+        // "send complete" races the reader on slow CI agents and left frames empty.
+        var firstFrameReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
         server.SetHandler(async (socket, cmd) => {
             await socket.SendAsync("OKAY0005first"u8.ToArray(), SocketFlags.None);
-            clientBlocked.SetResult();
             await Task.Delay(TimeSpan.FromSeconds(30));
         });
 
@@ -434,13 +435,14 @@ public sealed class AdbHostConnectionTests {
         async Task ConsumeAsync() {
             await foreach (var frame in connection.ExecuteFramedStreamAsync("host:track-devices", cts.Token)) {
                 frames.Add(Encoding.ASCII.GetString(frame.Span));
+                firstFrameReceived.TrySetResult();
             }
         }
 
         var streamTask = ConsumeAsync();
 
         // Deterministic wait: client received first frame and is blocked waiting for second
-        await clientBlocked.Task;
+        await firstFrameReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         // Cancel caller token
         await cts.CancelAsync();
