@@ -235,6 +235,12 @@ mDNS reconnect: **1 s, 2 s, 5 s, 15 s, 30 s** cap, ±20 % jitter (same disciplin
 - `host:track-mdns-services` / CLI `--proto-text` → same service with IPv4 + IPv6 + `product_model: SM-A065F`, `hostname: Android-5.local`, `mdns_service_version: "1"`.
 - **No** `_adb-tls-pairing` / `_adb-tls-connect` observed (wireless pairing screen not open; not fabricated).
 
+### Phase 6D host-browse regression (same day, later)
+
+Same workstation later returned **empty** `host:track-mdns-services` / `adb mdns services` while unicast `adb pair` / `adb connect` still worked. Audited as **host mDNS browse failure**, not Adb View offer mapping — see `research/2026-09-19-host-mdns-empty-while-tcp-works.md`.
+
+**Operator follow-ups tried (still empty):** Tailscale service Stopped + tunnel down; `adb kill-server` / `start-server` restored `adb` bind on UDP 5353 (`mdns_enabled: true`, `LIBADBMDNS`); Edge/ChatGPT intermittently also bound 5353; Hyper-V `vEthernet (Default Switch)` remained Up (disable required elevation). Google empty-track diagnostic still applies.
+
 ### Malformed handling
 
 Same as Phase 5A: valid frame + bad body → drop update, rate-limit diagnostic, keep stream; framing corruption / mid-frame EOF → terminate session, Failed, reconnect. Malformed ≠ unsupported.
