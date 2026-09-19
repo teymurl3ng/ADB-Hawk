@@ -195,3 +195,48 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 **Pipeline proven headed:**  
 `StateEngine.SnapshotPublished` → `NotificationCoordinator.AcceptSnapshot` → hold → `BalloonNotificationSink` → `TrayIcon.ShowBalloonTip`.
 
+---
+
+## Phase 9 — Reliability / chaos (2026-09-19)
+
+**Platform:** Windows 11 · Release tests + `scripts/soak-phase9.ps1` · platform-tools **37.0.1**
+
+**Device:** Samsung Galaxy A06 · USB `R8VXA02SNKH` · Wi-Fi `192.168.18.248:5555`
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+### LIVE PASS
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Wi-Fi `adb disconnect` / `adb connect` churn | **LIVE PASS** | External disconnect removed `192.168.18.248:5555`; reconnect restored device (transport_id 10). Safe Phase 9 churn only — no kill-server / revoke-auth / recovery modes |
+| USB remains while Wi-Fi flaps | **LIVE PASS** | USB `R8VXA02SNKH` stayed `device` across Wi-Fi disconnect/reconnect |
+
+### AUTOMATED PASS
+
+| Scenario | Result | Notes |
+|---|---|---|
+| §11 rows 1, 3, 5, 8, 11, 26 (hermetic Chaos*) | **AUTOMATED PASS** | `tests/.../Integration/Chaos/ChaosHermeticTests` + FakeAdbServer; no kill-server |
+| §11 rows 16, 17 (WebView backoff / tray-only) | **AUTOMATED PASS** | `ChaosWebViewRecoveryTests` — recreate 1/5/15/60 + 3-in-5-min tray-only; renderer path |
+| §11 row 24 (second instance mutex) | **AUTOMATED PASS** | `ChaosWindowsLifecycleTests.Row24_*` |
+| §11 row 19 TaskbarCreated path | **AUTOMATED PASS** | Hermetic HandleTaskbarCreated + existing BalloonNotificationSink Explorer recreate |
+| Channel backlog warning (row 26) | **AUTOMATED PASS** | Threshold 256, 30 s rate-limit; `StateEngine.PendingCount` |
+| Hermetic churn soak (2000 list cycles) | **AUTOMATED PASS** | `Hermetic_Churn_Soak_TwoThousand_List_Cycles` |
+| Audit: no bare `catch {}` / no `lock` in State / no Adb·State Delay loops | **AUTOMATED PASS** | `ChaosAuditTests` |
+| Soak smoke (budget gates) | **AUTOMATED PASS** | `scripts/soak-phase9.ps1 -Minutes 3 -SampleSeconds 20` → `SOAK_OK`; WS/handles Δ gates; log `%LOCALAPPDATA%\ADBView\logs\soak-phase9.log` |
+| Idle hidden metadata (re-check) | **AUTOMATED PASS** | Phase 7 hidden+unpinned zero metadata remains; no new Adb/State timers introduced in Phase 9 |
+
+### NOT EXERCISED (live)
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Real Explorer process kill/restart with live tray | **NOT EXERCISED** | Gated: `ADBVIEW_CHAOS_EXPLORER=1` + `Row19_Real_Explorer_Restart_Gated`; hermetic TaskbarCreated covered |
+| Live Chromium ProcessFailed (renderer/browser) | **NOT EXERCISED** | Test-hook SimulateProcessFailed; no forced live WebView kill |
+| Full 12-hour overnight soak | **NOT EXERCISED** | Same script default `-Hours 12`; smoke gates proven. Run overnight before Phase 11 release hardening |
+| Lock/unlock / suspend/resume live | **NOT EXERCISED** | Covered hermetically via notification resume rebaseline + PowerAndSession seams from prior phases |
+| Forced recovery / bootloader / revoke-auth | **NOT EXERCISED** | Explicitly out of Phase 9 safe LIVE scope |
+
+**Production gaps closed:** WebView recreate backoff aligned to ENGINEERING §9.7; StateEngine backlog warning; DeviceTracker/MdnsTracker degraded/malformed Serilog wiring; `State/` `lock` removed from DeviceViewMapper once-set.
+
+**Deferred visuals (parked):** `docs/decisions/0002-park-phase9-deferred-acrylic-typography.md` → Phase 11.
+

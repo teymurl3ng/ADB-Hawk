@@ -379,6 +379,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private void ShowFlyout() {
         if (_flyoutWindow == null || _trayIcon == null) return;
 
+        if (_webViewHost is { IsTrayOnly: true }) {
+            _ = _webViewHost.TryRecoverFromTrayOnlyAsync();
+        }
+
         var placement = _trayIcon.GetPlacementInfo();
         Log.Information("ShowFlyout: trayRect={Rect}, edge={Edge}", placement.Rect, placement.Edge);
 

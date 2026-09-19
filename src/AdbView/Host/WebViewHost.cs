@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using AdbView.App;
 using AdbView.Bridge;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -11,17 +13,46 @@ using Serilog;
 namespace AdbView.Host;
 
 internal sealed class WebViewHost : IDisposable {
+    /// <summary>ENGINEERING.md §9.7 browser-process recreate backoff.</summary>
+    internal static readonly TimeSpan[] RecreateBackoff = [
+        TimeSpan.FromSeconds(1),
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(15),
+        TimeSpan.FromSeconds(60),
+    ];
+
+    internal const int MaxRecoveriesInWindow = 3;
+    internal static readonly TimeSpan RecoveryWindow = TimeSpan.FromMinutes(5);
+
     private readonly Control _parent;
     private readonly BridgeCoordinator _coordinator;
+    private readonly Func<DateTimeOffset> _clock;
+    private readonly Func<TimeSpan, Task> _delay;
     private WebView2? _webView;
-    private int _recoveryAttempts;
-    private const int MaxRecoveryAttempts = 3;
+    private readonly List<DateTimeOffset> _recoveryAttemptAt = new();
+    private int _recreateBackoffIndex;
+    private bool _trayOnlyUntilClick;
     private string _initialUrlSuffix = "";
     private string _currentFixtureName = "";
 
-    public WebViewHost(Control parent, BridgeCoordinator coordinator) {
+    public WebViewHost(
+        Control parent,
+        BridgeCoordinator coordinator,
+        Func<DateTimeOffset>? clock = null,
+        Func<TimeSpan, Task>? delay = null) {
         _parent = parent;
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
+        _clock = clock ?? (() => SystemClock.UtcNow);
+        _delay = delay ?? (ts => Task.Delay(ts));
+    }
+
+    internal bool IsTrayOnly => _trayOnlyUntilClick;
+
+    internal int RecoveryAttemptsInWindow {
+        get {
+            PruneRecoveryWindow(_clock());
+            return _recoveryAttemptAt.Count;
+        }
     }
 
     public async Task InitializeAsync(string initialUrlSuffix = "") {
@@ -76,16 +107,33 @@ internal sealed class WebViewHost : IDisposable {
                 _webView.NavigateToString("<html><body style='color: white; background: transparent;'>ADB View Shell</body></html>");
             }
 
-            _recoveryAttempts = 0; // Reset on success
+            _trayOnlyUntilClick = false;
+            _recreateBackoffIndex = 0;
             Log.Information("WebView2 initialized successfully.");
         }
 #pragma warning disable CA1031
         catch (Exception ex) {
             Log.Error(ex, "Failed to initialize WebView2.");
-            HandleFailure();
+            await HandleFailureAsync().ConfigureAwait(true);
         }
 #pragma warning restore CA1031
     }
+
+    /// <summary>ENGINEERING §9.7: retry after tray-only stop on next left-click.</summary>
+    public Task TryRecoverFromTrayOnlyAsync() {
+        if (!_trayOnlyUntilClick && _webView?.CoreWebView2 is not null) {
+            return Task.CompletedTask;
+        }
+
+        _trayOnlyUntilClick = false;
+        _recreateBackoffIndex = 0;
+        PruneRecoveryWindow(_clock());
+        return InitializeAsync(_initialUrlSuffix);
+    }
+
+    /// <summary>Test seam for §11 rows 16–17 without crashing Chromium.</summary>
+    internal Task SimulateProcessFailedForTestsAsync(CoreWebView2ProcessFailedKind kind) =>
+        OnProcessFailedCoreAsync(kind, reason: "test");
 
     private void ConfigureSecurity() {
         if (_webView?.CoreWebView2 == null) return;
@@ -136,7 +184,8 @@ internal sealed class WebViewHost : IDisposable {
         _webView.CoreWebView2.NavigationCompleted += async (s, e) => {
             if (e.IsSuccess) {
                 Log.Information("WebView2 NavigationCompleted successfully: {Id}", e.NavigationId);
-                _recoveryAttempts = 0;
+                _recreateBackoffIndex = 0;
+                _trayOnlyUntilClick = false;
 
                 // Diagnostic: log the WebView's computed prefers-color-scheme
                 try {
@@ -200,53 +249,84 @@ internal sealed class WebViewHost : IDisposable {
     }
 
     private async void OnProcessFailed(object? sender, CoreWebView2ProcessFailedEventArgs e) {
-        Log.Warning("WebView2 ProcessFailed: {Kind}, Reason: {Reason}", e.ProcessFailedKind, e.Reason);
+        await OnProcessFailedCoreAsync(e.ProcessFailedKind, e.Reason.ToString()).ConfigureAwait(true);
+    }
 
-        switch (e.ProcessFailedKind) {
+    private async Task OnProcessFailedCoreAsync(CoreWebView2ProcessFailedKind kind, string reason) {
+        Log.Warning("WebView2 ProcessFailed: {Kind}, Reason: {Reason}", kind, reason);
+
+        switch (kind) {
             case CoreWebView2ProcessFailedKind.BrowserProcessExited:
-                // Browser process died. Complete recreation required.
-                HandleFailure();
+                await HandleFailureAsync().ConfigureAwait(true);
                 break;
             case CoreWebView2ProcessFailedKind.RenderProcessExited:
             case CoreWebView2ProcessFailedKind.RenderProcessUnresponsive:
-                // Renderer crashed or hung. Try to reload.
-                if (_recoveryAttempts < MaxRecoveryAttempts && _webView?.CoreWebView2 != null) {
-                    _recoveryAttempts++;
-                    Log.Information("Attempting to reload renderer. Attempt {Attempt}", _recoveryAttempts);
-                    _webView.Reload();
+                if (!_trayOnlyUntilClick && _webView?.CoreWebView2 != null) {
+                    Log.Information("Attempting to reload renderer (ENGINEERING §11 row 16)");
+                    try {
+                        _webView.Reload();
+                        await _delay(TimeSpan.FromSeconds(1)).ConfigureAwait(true);
+                    }
+#pragma warning disable CA1031
+                    catch (Exception ex) {
+                        Log.Warning(ex, "WebView2 Reload failed; recreating");
+                        await HandleFailureAsync().ConfigureAwait(true);
+                    }
+#pragma warning restore CA1031
                 }
                 else {
-                    HandleFailure();
+                    await HandleFailureAsync().ConfigureAwait(true);
                 }
+
                 break;
-            case (CoreWebView2ProcessFailedKind)7: // GpuProcessExited (7 in older SDKs or named in newer)
-            case (CoreWebView2ProcessFailedKind)8: // UtilityProcessExited (8)
-            case (CoreWebView2ProcessFailedKind)9: // SandboxHelperProcessExited (9)
-            case (CoreWebView2ProcessFailedKind)10: // GpuProcessHung (10)
+            case (CoreWebView2ProcessFailedKind)7: // GpuProcessExited
+            case (CoreWebView2ProcessFailedKind)8: // UtilityProcessExited
+            case (CoreWebView2ProcessFailedKind)9: // SandboxHelperProcessExited
+            case (CoreWebView2ProcessFailedKind)10: // GpuProcessHung
             case (CoreWebView2ProcessFailedKind)4: // FrameRenderProcessExited
-                // These processes are typically recovered automatically by the WebView2 browser process.
-                Log.Information("Non-fatal or self-recovering process failure ({Kind}). No explicit recovery needed.", e.ProcessFailedKind);
+                Log.Information("Non-fatal or self-recovering process failure ({Kind}). No explicit recovery needed.", kind);
                 break;
             default:
-                // Unknown/other failures default to complete recreation if they affect the app
-                Log.Information("Unknown process failure ({Kind}). Will wait and see if it recovers, or we can handle it if needed.", e.ProcessFailedKind);
+                Log.Information("Unknown process failure ({Kind}). Will wait and see if it recovers, or we can handle it if needed.", kind);
                 break;
         }
     }
 
-    private async void HandleFailure() {
-        if (_recoveryAttempts >= MaxRecoveryAttempts) {
-            Log.Error("Max WebView2 recovery attempts reached. Giving up.");
+    /// <summary>When true, recreate delay is applied but InitializeAsync is skipped (unit tests).</summary>
+    internal bool SuppressRecreateForTests { get; set; }
+
+    private async Task HandleFailureAsync() {
+        DateTimeOffset now = _clock();
+        PruneRecoveryWindow(now);
+        if (_recoveryAttemptAt.Count >= MaxRecoveriesInWindow) {
+            _trayOnlyUntilClick = true;
+            Log.Error(
+                "WebView2 recovery rate limit: {Count} in {Window}; staying tray-only until next left-click",
+                MaxRecoveriesInWindow,
+                RecoveryWindow);
             return;
         }
 
-        _recoveryAttempts++;
-        Log.Information("Attempting complete recreation of WebView2. Attempt {Attempt}", _recoveryAttempts);
+        _recoveryAttemptAt.Add(now);
+        TimeSpan backoff = RecreateBackoff[Math.Min(_recreateBackoffIndex, RecreateBackoff.Length - 1)];
+        _recreateBackoffIndex = Math.Min(_recreateBackoffIndex + 1, RecreateBackoff.Length - 1);
+
+        Log.Information(
+            "Attempting complete recreation of WebView2 after {Backoff} (in-window {Count})",
+            backoff,
+            _recoveryAttemptAt.Count);
 
         DisposeWebView();
-        // Wait briefly before recreating
-        await Task.Delay(1000).ConfigureAwait(true);
+        await _delay(backoff).ConfigureAwait(true);
+        if (SuppressRecreateForTests) {
+            return;
+        }
+
         await InitializeAsync(_initialUrlSuffix).ConfigureAwait(true);
+    }
+
+    private void PruneRecoveryWindow(DateTimeOffset now) {
+        _recoveryAttemptAt.RemoveAll(t => now - t > RecoveryWindow);
     }
 
     private void DisposeWebView() {

@@ -25,7 +25,9 @@ internal sealed class DeviceTrackerLifecycle : IDisposable {
     public DeviceTrackerLifecycle(Action<AdbViewEvent> post, Func<DeviceTracker>? trackerFactory = null) {
         ArgumentNullException.ThrowIfNull(post);
         _post = post;
-        _trackerFactory = trackerFactory ?? (() => new DeviceTracker());
+        _trackerFactory = trackerFactory ?? (() => new DeviceTracker(
+            onDegraded: reason => Log.Warning("DeviceTracker degraded: {Reason}", reason),
+            onMalformedPayload: reason => Log.Information("DeviceTracker malformed payload: {Reason}", reason)));
     }
 
     public int? RunningGeneration {

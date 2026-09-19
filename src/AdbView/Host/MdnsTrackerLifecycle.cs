@@ -25,7 +25,9 @@ internal sealed class MdnsTrackerLifecycle : IDisposable {
     public MdnsTrackerLifecycle(Action<AdbViewEvent> post, Func<MdnsTracker>? trackerFactory = null) {
         ArgumentNullException.ThrowIfNull(post);
         _post = post;
-        _trackerFactory = trackerFactory ?? (() => new MdnsTracker());
+        _trackerFactory = trackerFactory ?? (() => new MdnsTracker(
+            onDegraded: reason => Log.Warning("MdnsTracker degraded: {Reason}", reason),
+            onMalformedPayload: reason => Log.Information("MdnsTracker malformed payload: {Reason}", reason)));
     }
 
     public int? RunningGeneration {

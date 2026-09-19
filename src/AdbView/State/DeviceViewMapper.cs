@@ -1,6 +1,7 @@
 namespace AdbView.State;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -259,13 +260,8 @@ internal static partial class DeviceViewMapper {
     private static partial Regex EndpointSerialRegex();
 
     private sealed class ConcurrentOnceSet {
-        private readonly HashSet<string> _keys = new(StringComparer.Ordinal);
-        private readonly object _gate = new();
+        private readonly ConcurrentDictionary<string, byte> _keys = new(StringComparer.Ordinal);
 
-        public bool TryAdd(string key) {
-            lock (_gate) {
-                return _keys.Add(key);
-            }
-        }
+        public bool TryAdd(string key) => _keys.TryAdd(key, 0);
     }
 }

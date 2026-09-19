@@ -25,8 +25,18 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
     private CancellationTokenSource? _wirelessRestoringCts;
     private CancellationTokenSource? _wirelessUnavailableCts;
     private int _disposed;
+    private int _pendingCount;
+
+    /// <summary>ENGINEERING.md §11 row 26: warn when pending work exceeds this count.</summary>
+    internal const int BacklogWarnThreshold = 256;
+
+    private static readonly TimeSpan BacklogWarnCooldown = TimeSpan.FromSeconds(30);
+    private DateTimeOffset _lastBacklogWarningUtc = DateTimeOffset.MinValue;
 
     public AppSnapshot CurrentSnapshot => Volatile.Read(ref _currentSnapshot);
+
+    /// <summary>Diagnostic: pending engine messages (unbounded channel; Interlocked counter).</summary>
+    internal int PendingCount => Volatile.Read(ref _pendingCount);
 
     internal DeviceEngineState CurrentDeviceState => Volatile.Read(ref _deviceState)!;
 
@@ -81,7 +91,13 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
 
     public bool Post(AdbViewEvent evt) {
         ArgumentNullException.ThrowIfNull(evt);
-        return _channel.Writer.TryWrite(new DomainMessage(evt));
+        bool written = _channel.Writer.TryWrite(new DomainMessage(evt));
+        if (written) {
+            Interlocked.Increment(ref _pendingCount);
+            MaybeWarnBacklog();
+        }
+
+        return written;
     }
 
     /// <summary>
@@ -90,13 +106,40 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
     /// </summary>
     public bool PostMetadata(long expectedGeneration, MetadataReceivedEvent evt) {
         ArgumentNullException.ThrowIfNull(evt);
-        return _channel.Writer.TryWrite(new MetadataWorkMessage(expectedGeneration, evt));
+        bool written = _channel.Writer.TryWrite(new MetadataWorkMessage(expectedGeneration, evt));
+        if (written) {
+            Interlocked.Increment(ref _pendingCount);
+            MaybeWarnBacklog();
+        }
+
+        return written;
+    }
+
+    private void MaybeWarnBacklog() {
+        int pending = Volatile.Read(ref _pendingCount);
+        if (pending < BacklogWarnThreshold) {
+            return;
+        }
+
+        DateTimeOffset now = _getUtcNow();
+        if (now - _lastBacklogWarningUtc < BacklogWarnCooldown) {
+            return;
+        }
+
+        _lastBacklogWarningUtc = now;
+        Serilog.Log.Warning(
+            "StateEngine backlog pending={Pending} threshold={Threshold} (ENGINEERING §11 row 26)",
+            pending,
+            BacklogWarnThreshold);
     }
 
     public Task DrainAsync() {
         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_channel.Writer.TryWrite(new BarrierMessage(tcs))) {
             tcs.TrySetResult();
+        }
+        else {
+            Interlocked.Increment(ref _pendingCount);
         }
 
         return tcs.Task;
@@ -107,6 +150,7 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
             var reader = _channel.Reader;
             while (await reader.WaitToReadAsync(_cts.Token).ConfigureAwait(false)) {
                 while (reader.TryRead(out var msg)) {
+                    Interlocked.Decrement(ref _pendingCount);
                     switch (msg) {
                         case DomainMessage domain:
                             ApplyDomainEvent(domain.Event);

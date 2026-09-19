@@ -4,7 +4,7 @@ ADB View is a small Windows 11 system-tray utility for observing, explaining, no
 
 ## Repository status
 
-**Phase 8 complete: Windows notifications.** Quiet transition-based tray balloons (`NotifyIcon.ShowBalloonTip`) for DeviceConnected / DeviceDisconnected / AuthorizationRequired / DeviceProblem / PairingAvailable / PairingResult / AdbUnavailable / burst aggregate, with startup and resume suppression, holds, dedup, and burst collapse. Balloon click shows the flyout (show-only). Live Samsung A06 Wi-Fi disconnect/reconnect delivery proven; fixture/headless remain externally silent. The next step is Phase 9 (reliability / chaos hardening) from `PHASES.md`.
+**Phase 9 complete: reliability / chaos hardening.** ENGINEERING.md §11 rows exercised via `tests/.../Integration/Chaos*` (hermetic FakeAdbServer + WebView backoff + single-instance + gated Explorer). Production gaps closed: WebView recreate backoff 1/5/15/60 + tray-only stop, StateEngine backlog warning (≥256, rate-limited), tracker degraded/malformed logging. Soak script `scripts/soak-phase9.ps1` (12 h default; smoke validated). Deferred Acrylic/typography visuals parked for Phase 11. The next step is Phase 10 (packaging) from `PHASES.md`.
 
 ## Governing documents
 
