@@ -74,4 +74,46 @@ internal static class Vocabulary {
         public const string RestoringTitle = "Restoring wireless discovery…";
         public const string RestoringDetail = "USB ADB is still working normally.";
     }
+
+    /// <summary>
+    /// Notification titles/bodies — same canonical strings as flyout / tooltip surfaces.
+    /// </summary>
+    internal static class Notifications {
+        public static string DeviceConnectedTitle(string displayName) => displayName + " connected";
+
+        public static string DeviceConnectedBody(string transportLabel) =>
+            "Connected over " + transportLabel;
+
+        public static string DeviceDisconnectedTitle(string displayName) => displayName + " disconnected";
+
+        public static string AuthorizationRequiredTitle(string displayName) =>
+            displayName + " needs authorization";
+
+        public static string AuthorizationRequiredBody => Device.UnauthorizedGuidance;
+
+        public static string DeviceProblemTitle(string displayName) => displayName + " is offline";
+
+        public static string DeviceProblemBody => Device.OfflineGuidance;
+
+        public static string PairingAvailableTitle => Pairing.OfferHeading;
+
+        public static string PairingAvailableBody(string displayName) =>
+            displayName + " is waiting for a pairing code";
+
+        public static string PairingSuccessTitle(string displayName) => Pairing.SuccessTitle(displayName);
+
+        public static string PairingSuccessBody => Pairing.SuccessDetail;
+
+        public static string PairingFailedTitle => Pairing.FailedTitle;
+
+        public static string PairingFailedBody => Pairing.FailedDetail;
+
+        public static string AdbUnavailableTitle => Health.AdbUnavailableTitle;
+
+        public static string AdbUnavailableBody => Health.AdbUnavailableDetail;
+
+        public static string DevicesChangedTitle(int count) => count + " devices changed";
+
+        public static string DevicesChangedBody => string.Empty;
+    }
 }

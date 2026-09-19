@@ -784,6 +784,43 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
+    // 19g. Phase 8A notification domain stays free of Host/ADB protocol/Windows UI.
+    [Fact]
+    public void NotificationDomainDoesNotReferenceForbiddenLayers() {
+        var dir = RootFile("src", "AdbView", "Notifications");
+        var files = Directory.Exists(dir)
+            ? Directory.GetFiles(dir, "*.cs", SearchOption.AllDirectories)
+            : Array.Empty<string>();
+
+        var forbiddenTokens = new[]
+        {
+            "System.Windows.Forms",
+            "NotifyIcon",
+            "ShowBalloonTip",
+            "Microsoft.Web.WebView2",
+            "BridgeCoordinator",
+            "DeviceTracker",
+            "MdnsTracker",
+            "MetadataProbe",
+            "MetadataDeviceShellClient",
+            "host:transport",
+            "System.Net.Http",
+            "Shell_NotifyIcon",
+        };
+
+        var violations = new List<string>();
+        foreach (var file in files) {
+            var text = ReadText(file);
+            foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+        }
+
+        AssertNoViolations(violations);
+    }
+
     // 19f. Phase 7B metadata lifecycle does not reference WinForms/WebView/Bridge protocol.
     [Fact]
     public void DeviceMetadataLifecycleDoesNotReferenceForbiddenLayers() {
