@@ -14,7 +14,7 @@ Legend:
 
 ## Phase 5 — Device tracking (2026-09-19)
 
-**Closure commit:** (recorded after docs commit)
+**Closure commit:** `a64ae7e`
 
 **Platform:** Windows 11 · production Release `AdbView.exe` (no `--test-fixture`)
 
