@@ -38,7 +38,7 @@ finally {
 Write-Host 'INTERACTION: Pair button Playwright hit-test / 50-cycle feedback...'
 Push-Location (Join-Path $repo 'ui')
 try {
-    npx.cmd playwright test --project=pairing
+    node (Join-Path (Get-Location) 'node_modules\@playwright\test\cli.js') test --project=pairing
     Assert-Ok 'playwright-pairing'
 }
 finally {

@@ -38,7 +38,7 @@ finally {
 Write-Host 'MOTION: Playwright rapid-toggle...'
 Push-Location (Join-Path $repo 'ui')
 try {
-    npx.cmd playwright test --project=motion
+    node (Join-Path (Get-Location) 'node_modules\@playwright\test\cli.js') test --project=motion
     Assert-Ok 'playwright-motion'
 }
 finally {

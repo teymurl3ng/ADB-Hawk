@@ -40,7 +40,8 @@ finally {
 Write-Host 'PAIRING_FLOW: Playwright pairing project (button + motion)...'
 Push-Location (Join-Path $repo 'ui')
 try {
-    npx.cmd playwright test --project=pairing
+    # Invoke via node — `npx`/`*.cmd` shims break when the repo path contains spaces.
+    node (Join-Path (Get-Location) 'node_modules\@playwright\test\cli.js') test --project=pairing
     Assert-Ok 'playwright-pairing'
 }
 finally {

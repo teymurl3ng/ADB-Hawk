@@ -6,7 +6,14 @@
     Toolchain pins (SDK, Node, npm) live in global.json / .node-version / ui/package.json.
   -->
   <PropertyGroup>
+    <!-- Single packaging / assembly version source (PHASES Phase 10 / ENGINEERING §17.3). -->
     <Version>0.1.0</Version>
+    <!-- User-facing Windows metadata. Company/Copyright intentionally unset — no governed legal entity. -->
+    <AssemblyTitle>ADB View</AssemblyTitle>
+    <Product>ADB View</Product>
+    <Description>ADB View</Description>
+    <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>
+    <GenerateAssemblyCopyrightAttribute>false</GenerateAssemblyCopyrightAttribute>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

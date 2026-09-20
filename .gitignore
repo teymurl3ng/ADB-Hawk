@@ -5,6 +5,9 @@ artifacts/
 TestResults/
 audit-result.json
 
+# Downloaded packaging redistributables (acquired by scripts/package.ps1)
+installer/redist/
+
 # Frontend build output (copied to src/AdbView/wwwroot by scripts/build.ps1)
 ui/dist/
 src/AdbView/wwwroot/

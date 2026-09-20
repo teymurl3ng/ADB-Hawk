@@ -49,8 +49,11 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npx vite',
+    // Direct local Vite entry (avoid `npx`, which breaks when the repo path has spaces).
+    // Scripts that launch Playwright put the pinned node on PATH first.
+    command: 'node ./node_modules/vite/bin/vite.js',
     url: 'http://localhost:5173',
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
   },
 });

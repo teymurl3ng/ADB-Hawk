@@ -145,7 +145,7 @@ Invoke-MutationStep -Name 'M3: blank DeviceCard on toggle' -Path $app -Original 
         Push-Location (Join-Path $repo 'ui')
         try {
             $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-            & npx.cmd playwright test --project=motion tests/motion/rapid-toggle.spec.ts
+            node (Join-Path (Get-Location) 'node_modules\@playwright\test\cli.js') test --project=motion tests/motion/rapid-toggle.spec.ts
             $script:LASTEXITCODE = $LASTEXITCODE
             $ErrorActionPreference = $prev
         }
@@ -155,7 +155,7 @@ Invoke-MutationStep -Name 'M3: blank DeviceCard on toggle' -Path $app -Original 
         Push-Location (Join-Path $repo 'ui')
         try {
             $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-            & npx.cmd playwright test --project=motion tests/motion/rapid-toggle.spec.ts
+            node (Join-Path (Get-Location) 'node_modules\@playwright\test\cli.js') test --project=motion tests/motion/rapid-toggle.spec.ts
             $script:LASTEXITCODE = $LASTEXITCODE
             $ErrorActionPreference = $prev
         }

@@ -7,8 +7,11 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RootNamespace>AdbView</RootNamespace>
     <AssemblyName>AdbView</AssemblyName>
-    <PlatformTarget>x64</PlatformTarget>
+    <!-- CsWin32 APIs require a concrete architecture (not AnyCPU). RID publish selects arm64; otherwise x64. -->
+    <PlatformTarget Condition="'$(RuntimeIdentifier)' == 'win-arm64'">arm64</PlatformTarget>
+    <PlatformTarget Condition="'$(RuntimeIdentifier)' != 'win-arm64'">x64</PlatformTarget>
     <ApplicationIcon>..\..\assets\icons\aperture-link-idle.ico</ApplicationIcon>
+    <ApplicationTitle>ADB View</ApplicationTitle>
   </PropertyGroup>
 
   <ItemGroup>

@@ -19,13 +19,14 @@ if (-not $hasSpecs) {
 
 Push-Location (Join-Path $repo 'ui')
 try {
-    npx.cmd playwright install chromium
+    $playwrightCli = Join-Path (Get-Location) 'node_modules\@playwright\test\cli.js'
+    node $playwrightCli install chromium
     if ($Accept) {
         Write-Host 'visual: updating baselines (-Accept). Record the WebView2 runtime version in the commit.'
-        npx.cmd playwright test --update-snapshots
+        node $playwrightCli test --update-snapshots
     }
     else {
-        npx.cmd playwright test
+        node $playwrightCli test
     }
 
     if ($LASTEXITCODE -ne 0) {
