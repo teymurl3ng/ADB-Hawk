@@ -1,10 +1,11 @@
 # ADB View — Release packaging (internal)
 
 Internal release-engineering notes for Phase 10. Not marketing copy.
+Public GitHub Releases and production signing are Phase 11 / business work.
 
-## Prerequisites
+## Prerequisites (local)
 
-- Windows 11 x64 development machine (arm64 publish is cross-compile; arm64 runtime proof is Phase 10C)
+- Windows 11 x64 development machine (arm64 publish is cross-compile)
 - Pinned .NET SDK from `global.json` (10.0.401)
 - Pinned Node/npm from `.node-version` / `ui/package.json` (or `node_tool/`)
 - **Inno Setup 6** with `ISCC.exe` on disk  
@@ -12,22 +13,32 @@ Internal release-engineering notes for Phase 10. Not marketing copy.
   `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`  
   `%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe`  
   Or pass `-InnoCompiler <path>`  
-  `scripts/package.ps1` does **not** install Inno Setup.
-- Network access once per machine to download the Microsoft WebView2 Evergreen Bootstrapper into `installer/redist/` (Authenticode-validated; gitignored)
+  Local `scripts/package.ps1` does **not** install Inno Setup (CI installs it).
+- Network access once per machine/job to download the Microsoft WebView2 Evergreen
+  Bootstrapper into `installer/redist/` (Authenticode-validated; **gitignored**)
 
-## Package command
+## Version source
+
+Only `Directory.Build.props` `<Version>` (currently `0.1.0`).
+
+- Do **not** hard-code a release version in YAML.
+- Do **not** set `1.0.0` until Phase 11.
+- Do **not** tag `v1.0.0` in Phase 10.
+
+## Local packaging
 
 From the repository root:
 
 ```powershell
 .\scripts\package.ps1
+.\scripts\test-package.ps1
 ```
 
 Defaults:
 
-- Version = `Directory.Build.props` `<Version>` (currently `0.1.0`)
+- Version = `Directory.Build.props` `<Version>`
 - Both RIDs: `win-x64`, `win-arm64`
-- Runs `scripts/verify.ps1` unless `-SkipVerify` (developer-only; do not use for release evidence)
+- Runs `scripts/verify.ps1` unless `-SkipVerify` (**developer-only**; never for release/CI evidence)
 
 Optional:
 
@@ -38,15 +49,35 @@ Optional:
 .\scripts\package.ps1 -OutputDirectory artifacts\release
 ```
 
-Validate artifacts:
+## CI packaging workflow
 
-```powershell
-.\scripts\test-package.ps1
+Workflow file: `.github/workflows/release.yml`
+
+| Item | Value |
+|---|---|
+| Name | `release` |
+| Triggers | `workflow_dispatch` (manual); push of tags `v*` / `phase-*-complete` |
+| Runner | `windows-latest` |
+| Tooling | .NET **10.0.401**, Node from `.node-version`, npm **11.19.0**, Inno Setup **6** via Chocolatey |
+| Bootstrapper | Official Microsoft Evergreen URL via `Ensure-WebView2Bootstrapper` (not committed) |
+| Package entrypoint | `scripts/package.ps1` (**no** `-SkipVerify`) |
+| Validation | `scripts/test-package.ps1` |
+| Upload | Actions artifact `ADBView-<version>-packages` (public outputs only) |
+| Retention | 30 days (CI evidence — **not** permanent public distribution) |
+
+Manual run (Actions UI → **release** → **Run workflow**), or:
+
+```bash
+gh workflow run release.yml --ref <commit-or-branch>
 ```
+
+Normal CI (`.github/workflows/ci.yml`) remains separate and continues to run `scripts/verify.ps1` on push/PR. Packaging CI complements it; it does not replace it.
+
+**Does not:** create GitHub Releases, upload public release assets, create version tags, push commits, or sign binaries.
 
 ## Output artifacts
 
-Under `artifacts/release/<version>/` (gitignored):
+Under `artifacts/release/<version>/` (gitignored) — same set uploaded by CI:
 
 | Artifact | Purpose |
 |---|---|
@@ -57,10 +88,11 @@ Under `artifacts/release/<version>/` (gitignored):
 | `ADBView-<ver>-manifest.json` | Machine-readable package metadata |
 | `ADBView-<ver>-SHA256SUMS.txt` | SHA-256 lines for each public artifact + manifest |
 
-Staging (not redistributed as-is):
+Staging (not redistributed / not uploaded):
 
 - `win-x64/publish`, `win-x64/package`
 - `win-arm64/publish`, `win-arm64/package`
+- `installer/redist/MicrosoftEdgeWebview2Setup.exe`
 
 ## Publish mode
 
@@ -72,6 +104,12 @@ Staging (not redistributed as-is):
 
 Public package contents after staging cleanup: `AdbView.exe` + `wwwroot/**` (plus only files proven required). No PDBs, no docs XML, no `adb.exe`.
 
+## Architecture
+
+- Separate artifacts per RID (no dual-arch mega-installer)
+- PE machine of `AdbView.exe` must match RID (`x64` / `arm64`) or packaging fails
+- `win-arm64` is **cross-published** on x64 hosts/runners; live ARM64 runtime proof is deferred to Phase 11
+
 ## Checksums
 
 `ADBView-<ver>-SHA256SUMS.txt` uses:
@@ -80,12 +118,19 @@ Public package contents after staging cleanup: `AdbView.exe` + `wwwroot/**` (plu
 <sha256>  <filename>
 ```
 
-Integrity only — not a substitute for Authenticode signing.
+Generated **after** final public artifacts exist. Integrity only — not Authenticode trust.
 
-## Architecture
+### Future signing order (Phase 11)
 
-- Separate artifacts per RID (no dual-arch mega-installer)
-- PE machine of `AdbView.exe` must match RID (`x64` / `arm64`) or packaging fails
+When production signing is introduced:
+
+1. `dotnet publish` / stage package payload  
+2. Sign `AdbView.exe` (and any other signed binaries)  
+3. Build Inno installer over the signed payload  
+4. Sign the installer  
+5. Write `SHA256SUMS` / manifest **after** signing  
+
+Do not compute release checksums before signing. Phase 10 ships **unsigned** artifacts deliberately.
 
 ## WebView2 behavior
 
@@ -100,7 +145,6 @@ Integrity only — not a substitute for Authenticode signing.
 - **Not bundled**
 - Discovery unchanged (`AdbExecutableLocator`)
 - Fresh install without platform-tools is valid; UI shows existing ADB-unavailable truth
-- Phase 10C installs platform-tools and proves recovery
 
 ## Installer scope
 
@@ -120,19 +164,26 @@ Integrity only — not a substitute for Authenticode signing.
 
 ## Portable usage
 
-1. Extract ZIP
-2. Run `AdbView.exe`
-3. No registry / auto-start changes
-4. Still requires Evergreen WebView2 Runtime on the machine
-5. Still requires user-supplied platform-tools for ADB features
+1. Extract ZIP  
+2. Run `AdbView.exe`  
+3. No registry / auto-start changes  
+4. Still requires Evergreen WebView2 Runtime on the machine  
+5. Still requires user-supplied platform-tools for ADB features  
 
-## Unsigned build warning
+## Unsigned / SmartScreen
 
-Phase 10 may produce **unsigned** EXE/installer artifacts. SmartScreen may warn on new or unsigned binaries. Installer technology does not create reputation. Code signing is a Phase 11 / business decision before public v1.
+Phase 10 produces **unsigned** EXE/installer artifacts. SmartScreen may warn on new or downloaded unsigned binaries. Installer technology does not create reputation. Code signing and Mark-of-the-Web public-download evidence are Phase 11.
 
-## Phase 10C status
+## Reproducibility note
 
-Phase 10C package-lifecycle acceptance is **COMPLETE** on the development host (installer, portable, no-ADB, recovery, upgrade, AppMutex, wwwroot purge, uninstall, WebView2-present, denylist, dual-RID package construction).
+CI proves the **same packaging command and policy** (file set, version, RID, AppId, denylist, checksums matching generated files). Byte-for-byte identical installer/ZIP hashes across separate builds are **not** claimed (timestamps / compression / tool metadata may differ).
+
+## Phase 10C / 10D status
+
+- **10C COMPLETE** — host package-lifecycle acceptance (installer, portable, no-ADB, recovery, upgrade, AppMutex, wwwroot purge, uninstall, WebView2-present, denylist, dual-RID construction).
+- **10D COMPLETE** when `.github/workflows/release.yml` runs green on the phase-complete commit and uploads `ADBView-<version>-packages`.
+
+Public release is **not** automatic from this workflow.
 
 ## Phase 11 / pre-v1 deferred validation
 
@@ -145,7 +196,4 @@ Remain **NOT EXERCISED** (not PASS) until release hardening:
 | C | Genuinely WebView2-free machine — bootstrapper detect/install/continue-or-fail |
 | D | Real reboot/sign-in auto-start with `--startup` (tray only, no flyout) |
 | E | SmartScreen / Mark-of-the-Web on a real downloaded artifact |
-
-## Version source
-
-Only `Directory.Build.props` `<Version>`. Do not set `1.0.0` until Phase 11. Do not tag `v1.0.0` in Phase 10.
+| F | Production Authenticode signing + checksums-after-sign |

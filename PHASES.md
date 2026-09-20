@@ -199,17 +199,20 @@
 
 **Research:** note on single-file self-contained publish with the WebView2 loader on clean x64/arm64 Windows 11, Evergreen runtime detection and the official bootstrapper, Inno Setup per-user install patterns and `HKCU\...\Run` handling (V-6).
 
-**Scope:** Reproducible builds, installer, portable zip, package lifecycle acceptance on a development host; pristine clean-VM / ARM64-runtime / reboot / WebView2-missing / SmartScreen validation deferred to Phase 11 (human-approved 2026-09-20).
+**Scope:** Reproducible builds, installer, portable zip, package lifecycle acceptance on a development host, and GitHub Actions packaging CI; pristine clean-VM / ARM64-runtime / reboot / WebView2-missing / SmartScreen validation deferred to Phase 11 (human-approved 2026-09-20).
 
-**Files/subsystems:** `scripts/{build,package,test-package,test-install-acceptance}.ps1`, `installer/AdbView.iss`, `docs/RELEASE.md`, `.github/workflows/release.yml` (workflow lands in Wave 10D).
+**Files/subsystems:** `scripts/{build,package,test-package,test-install-acceptance}.ps1`, `installer/AdbView.iss`, `docs/RELEASE.md`, `.github/workflows/release.yml`.
 
-**Tests:** Build-fails-without-`wwwroot` test; no-absolute-URL asset check; packaging denylist + SHA-256; silent install → inventory → optional Run → upgrade N→N+1 with wwwroot purge → uninstall; headed host install/portable/single-instance/AppMutex proofs.
+**Tests:** Build-fails-without-`wwwroot` test; no-absolute-URL asset check; packaging denylist + SHA-256; silent install → inventory → optional Run → upgrade N→N+1 with wwwroot purge → uninstall; headed host install/portable/single-instance/AppMutex proofs; CI `package.ps1` + `test-package.ps1` + Actions artifact upload.
 
-**Acceptance (Phase 10C — closed):** Deterministic `win-x64` + `win-arm64` package construction; x64 host live installer + portable; first launch; no-ADB (platform-tools removed); platform-tools recovery; single-instance; upgrade N→N+1; running-app upgrade protection (`AppMutex`); stale Vite asset purge; uninstall cleanup; optional Run semantics; WebView2-present path; denylist; self-contained publish; architecture metadata; full product regression gates green.
+**Acceptance:**
 
-**Deferred to Phase 11 / pre-public-v1 (remain NOT EXERCISED — not PASS):** pristine Windows 11 x64 VM without developer tooling; Windows 11 ARM64 runtime execution; genuinely WebView2-free bootstrap live test; real reboot/sign-in auto-start; SmartScreen / Mark-of-the-Web public-download behavior. If ARM64 runtime cannot be validated before public v1, either validate it or explicitly remove ARM64 from public v1 support.
+- **10A–10C:** Deterministic `win-x64` + `win-arm64` package construction; x64 host live installer + portable; first launch; no-ADB (platform-tools removed); platform-tools recovery; single-instance; upgrade N→N+1; running-app upgrade protection (`AppMutex`); stale Vite asset purge; uninstall cleanup; optional Run semantics; WebView2-present path; denylist; self-contained publish; architecture metadata; full product regression gates green.
+- **10D:** `.github/workflows/release.yml` builds both RIDs via `scripts/package.ps1` (no `-SkipVerify`), validates with `scripts/test-package.ps1`, uploads public CI artifacts only (no GitHub Release publication).
 
-**Out of scope:** Code signing purchase, Store submission, auto-update, MSIX.
+**Deferred to Phase 11 / pre-public-v1 (remain NOT EXERCISED — not PASS):** pristine Windows 11 x64 VM without developer tooling; Windows 11 ARM64 runtime execution; genuinely WebView2-free bootstrap live test; real reboot/sign-in auto-start; SmartScreen / Mark-of-the-Web public-download behavior; production signing. If ARM64 runtime cannot be validated before public v1, either validate it or explicitly remove ARM64 from public v1 support.
+
+**Out of scope:** Code signing purchase, Store submission, auto-update, MSIX, automatic public GitHub Releases.
 
 ---
 
