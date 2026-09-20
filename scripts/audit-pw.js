@@ -157,15 +157,18 @@ const extraArg = process.argv[4];
                     });
                 }
 
-                // Invariant: html and body backgrounds transparent in Acrylic
+                // Invariant: v1 opaque intentional surface (decision 0004 — Acrylic deferred)
                 const htmlBg = window.getComputedStyle(document.documentElement).backgroundColor;
                 const bodyBg = window.getComputedStyle(document.body).backgroundColor;
-                if (htmlBg !== 'rgba(0, 0, 0, 0)' || bodyBg !== 'rgba(0, 0, 0, 0)') {
+                const opaqueOk =
+                    (htmlBg === 'rgb(32, 35, 41)' && bodyBg === 'rgb(32, 35, 41)') ||
+                    (htmlBg === 'rgb(243, 244, 246)' && bodyBg === 'rgb(243, 244, 246)');
+                if (!opaqueOk) {
                     violations.push({
-                        rule: 'acrylic-transparency',
+                        rule: 'opaque-v1-surface',
                         htmlBg,
                         bodyBg,
-                        message: `Backgrounds are not transparent in Acrylic mode (html: ${htmlBg}, body: ${bodyBg})`
+                        message: `Backgrounds must be intentional opaque v1 tokens (html: ${htmlBg}, body: ${bodyBg})`
                     });
                 }
 

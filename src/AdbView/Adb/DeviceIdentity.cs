@@ -116,9 +116,18 @@ internal sealed partial class DeviceIdentity {
             mdnsServices = ImmutableArray<RawMdnsService>.Empty;
         }
 
-        Match mdns = AdbMdnsInstanceSerialRegex().Match(serial);
+        // Strip DNS-SD service-type suffixes some trackers append to the instance name.
+        string candidate = StripDnsSdServiceSuffix(serial);
+
+        Match mdns = AdbMdnsInstanceSerialRegex().Match(candidate);
         if (mdns.Success) {
             return mdns.Groups["serial"].Value;
+        }
+
+        // Broader adb-<hardware>-… form (spaces / duplicate markers after the guid segment).
+        Match loose = AdbMdnsLooseInstanceSerialRegex().Match(candidate);
+        if (loose.Success) {
+            return loose.Groups["serial"].Value;
         }
 
         if (EndpointSerialRegex().IsMatch(serial)) {
@@ -130,7 +139,13 @@ internal sealed partial class DeviceIdentity {
             return serial;
         }
 
-        return serial;
+        // Prefer stripped candidate so DNS-SD residues never become HardwareSerial.
+        return candidate;
+    }
+
+    internal static string StripDnsSdServiceSuffix(string serial) {
+        Match suffix = DnsSdServiceSuffixRegex().Match(serial);
+        return suffix.Success ? serial[..suffix.Index] : serial;
     }
 
     internal static string BuildId(DeviceTransport transport, string hardwareSerial) {
@@ -352,6 +367,12 @@ internal sealed partial class DeviceIdentity {
     // mDNS-style wireless instance name used as adb serial on some builds.
     [GeneratedRegex(@"^adb-(?<serial>[^-]+)-[A-Za-z0-9]+$", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture)]
     private static partial Regex AdbMdnsInstanceSerialRegex();
+
+    [GeneratedRegex(@"^adb-(?<serial>[^-]+)-", RegexOptions.CultureInvariant | RegexOptions.ExplicitCapture)]
+    private static partial Regex AdbMdnsLooseInstanceSerialRegex();
+
+    [GeneratedRegex(@"\._adb(?:-tls-(?:connect|pairing))?\._tcp\s*$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex DnsSdServiceSuffixRegex();
 
     // host:port including IPv4 and bracketed IPv6 ([addr]:port).
     [GeneratedRegex(@"^.+:\d+$", RegexOptions.CultureInvariant)]

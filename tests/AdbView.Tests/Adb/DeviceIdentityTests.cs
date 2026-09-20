@@ -203,6 +203,17 @@ public sealed class DeviceIdentityTests {
     }
 
     [Fact]
+    public void AdbMdnsServiceInstanceWithDnsSdSuffix_ExtractsHardwareSerial() {
+        var n = new DeviceIdentity().Normalize(Proto(
+            "adb-R8VXA02SNKH-28BYjJ (2)._adb-tls-connect._tcp",
+            8,
+            connectionType: 2));
+        Assert.Equal("R8VXA02SNKH", n.HardwareSerial);
+        Assert.Equal("wifi:R8VXA02SNKH", n.Id);
+        Assert.Equal("adb-R8VXA02SNKH-28BYjJ (2)._adb-tls-connect._tcp", n.AdbSerial);
+    }
+
+    [Fact]
     public void HostPort_RemainsHostPort_InPhase5() {
         var n = new DeviceIdentity().Normalize(Proto("10.0.0.5:5555", 8, connectionType: 2));
         Assert.Equal("10.0.0.5:5555", n.HardwareSerial);

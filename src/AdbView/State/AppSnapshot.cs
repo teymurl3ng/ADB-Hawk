@@ -96,7 +96,7 @@ internal sealed record CopyFieldView {
 // ---------- pairing (independent of devices) ----------
 internal sealed record PairingOfferView {
     public required string Id { get; init; }          // stable per mDNS instance
-    public required string DisplayName { get; init; } // given_name ?? model ?? "Android device"
+    public required string DisplayName { get; init; } // PairingDisplayName mapper (never raw adb-* instance)
     public required string Heading { get; init; }     // "Wireless pairing available"
     public required string Detail { get; init; }      // "Waiting for a pairing code"
     public required string ActionLabel { get; init; } // "Pair"

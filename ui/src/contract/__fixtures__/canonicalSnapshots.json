@@ -14,7 +14,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -39,7 +39,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -50,7 +50,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00B7 USB",
+        "statusLine": "Connected \u00b7 USB",
         "guidance": null,
         "transport": "usb",
         "transportLabel": "USB",
@@ -93,7 +93,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -104,7 +104,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00B7 Wi-Fi",
+        "statusLine": "Connected \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -152,7 +152,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -163,7 +163,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00B7 Wi-Fi",
+        "statusLine": "Connected \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -211,7 +211,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -222,7 +222,7 @@
         "state": "unauthorized",
         "severity": "attention",
         "stateLabel": "Unauthorized",
-        "statusLine": "Unauthorized \u00B7 Wi-Fi",
+        "statusLine": "Unauthorized \u00b7 Wi-Fi",
         "guidance": "Check the phone and allow USB debugging.",
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -270,7 +270,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -281,7 +281,7 @@
         "state": "offline",
         "severity": "neutral",
         "stateLabel": "Offline",
-        "statusLine": "Offline \u00B7 Wi-Fi",
+        "statusLine": "Offline \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -329,7 +329,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -340,7 +340,7 @@
         "state": "recovery",
         "severity": "informational",
         "stateLabel": "Recovery",
-        "statusLine": "Recovery \u00B7 Wi-Fi",
+        "statusLine": "Recovery \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -388,7 +388,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -399,7 +399,7 @@
         "state": "bootloader",
         "severity": "informational",
         "stateLabel": "Bootloader",
-        "statusLine": "Bootloader \u00B7 Wi-Fi",
+        "statusLine": "Bootloader \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -447,7 +447,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -458,7 +458,7 @@
         "state": "sideload",
         "severity": "informational",
         "stateLabel": "Sideload",
-        "statusLine": "Sideload \u00B7 Wi-Fi",
+        "statusLine": "Sideload \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -506,7 +506,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -517,7 +517,7 @@
         "state": "unknown",
         "severity": "informational",
         "stateLabel": "Unknown",
-        "statusLine": "Unknown \u00B7 Wi-Fi",
+        "statusLine": "Unknown \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -565,7 +565,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -576,7 +576,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00B7 Wi-Fi",
+        "statusLine": "Connected \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -609,7 +609,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00B7 USB",
+        "statusLine": "Connected \u00b7 USB",
         "guidance": null,
         "transport": "usb",
         "transportLabel": "USB",
@@ -637,7 +637,7 @@
         "state": "unauthorized",
         "severity": "attention",
         "stateLabel": "Unauthorized",
-        "statusLine": "Unauthorized \u00B7 USB",
+        "statusLine": "Unauthorized \u00b7 USB",
         "guidance": "Check the phone and allow USB debugging.",
         "transport": "usb",
         "transportLabel": "USB",
@@ -665,7 +665,7 @@
         "state": "recovery",
         "severity": "informational",
         "stateLabel": "Recovery",
-        "statusLine": "Recovery \u00B7 USB",
+        "statusLine": "Recovery \u00b7 USB",
         "guidance": null,
         "transport": "usb",
         "transportLabel": "USB",
@@ -693,7 +693,7 @@
         "state": "offline",
         "severity": "neutral",
         "stateLabel": "Offline",
-        "statusLine": "Offline \u00B7 Wi-Fi",
+        "statusLine": "Offline \u00b7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -726,7 +726,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00B7 USB",
+        "statusLine": "Connected \u00b7 USB",
         "guidance": null,
         "transport": "usb",
         "transportLabel": "USB",
@@ -769,7 +769,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -802,7 +802,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -837,7 +837,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -872,7 +872,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },
@@ -907,7 +907,7 @@
     "shell": {
       "pinned": false,
       "theme": "dark",
-      "transparencyEnabled": true,
+      "transparencyEnabled": false,
       "forcedColors": false,
       "reducedMotion": false
     },

@@ -27,7 +27,7 @@ public sealed class CompositionTests {
         public void SendSnapshot(SnapshotEnvelope envelope) => SentSnapshots.Add(envelope);
         public void SetPinned(bool isPinned) => PinnedStates.Add(isPinned);
         public void HideFlyout() { }
-        public void ResizeFlyout(int clampedEffectiveHeight) { }
+        public void ResizeFlyout(int clampedEffectiveHeight, AdbView.Bridge.ContentSizePhase phase = AdbView.Bridge.ContentSizePhase.Live, string? layoutKey = null) { }
     }
 
     [Fact]

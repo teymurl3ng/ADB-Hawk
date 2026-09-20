@@ -14,11 +14,15 @@ public sealed class BridgeCoordinatorTests {
         public List<bool> PinnedStates { get; } = new();
         public int HideFlyoutCalls { get; private set; }
         public List<int> ResizedHeights { get; } = new();
+        public List<ContentSizePhase> ResizedPhases { get; } = new();
 
         public void SendSnapshot(SnapshotEnvelope envelope) => SentSnapshots.Add(envelope);
         public void SetPinned(bool isPinned) => PinnedStates.Add(isPinned);
         public void HideFlyout() => HideFlyoutCalls++;
-        public void ResizeFlyout(int clampedEffectiveHeight) => ResizedHeights.Add(clampedEffectiveHeight);
+        public void ResizeFlyout(int clampedEffectiveHeight, ContentSizePhase phase = ContentSizePhase.Live, string? layoutKey = null) {
+            ResizedHeights.Add(clampedEffectiveHeight);
+            ResizedPhases.Add(phase);
+        }
     }
 
     [Fact]
@@ -176,6 +180,21 @@ public sealed class BridgeCoordinatorTests {
 
         Assert.Single(host.ResizedHeights);
         Assert.Equal(expectedClamped, host.ResizedHeights[0]);
+    }
+
+    [Fact]
+    public void ReportContentSize_Structural_Phase_Is_Forwarded() {
+        var host = new TestBridgeHost();
+        var coordinator = new BridgeCoordinator(host);
+
+        coordinator.HandleAction(new ReportContentSizeAction {
+            HeightEffectivePx = 400,
+            Phase = "structural",
+        });
+
+        Assert.Single(host.ResizedHeights);
+        Assert.Equal(400, host.ResizedHeights[0]);
+        Assert.Equal(ContentSizePhase.Structural, host.ResizedPhases[0]);
     }
 
     [Theory]

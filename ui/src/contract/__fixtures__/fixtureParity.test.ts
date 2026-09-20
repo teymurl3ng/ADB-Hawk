@@ -211,6 +211,7 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       isPairing: true,
       state: 'pairing-offer',
       deviceName: 'Galaxy S24',
+      offerId: 'offer-1',
     });
 
     // code
@@ -224,6 +225,7 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       isPairing: true,
       state: 'pairing-code',
       deviceName: 'Galaxy S24',
+      offerId: 'offer-1',
     });
 
     // progress
@@ -237,6 +239,7 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       isPairing: true,
       state: 'pairing-progress',
       deviceName: 'Galaxy S24',
+      offerId: 'offer-1',
     });
 
     // success
@@ -250,6 +253,7 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       isPairing: true,
       state: 'pairing-success',
       deviceName: 'Galaxy S24',
+      offerId: 'offer-1',
     });
 
     // failure
@@ -263,6 +267,7 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       isPairing: true,
       state: 'pairing-failure',
       deviceName: 'Galaxy S24',
+      offerId: 'offer-1',
     });
   });
 

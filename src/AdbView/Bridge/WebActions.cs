@@ -25,6 +25,17 @@ internal sealed record RequestDismissAction : WebAction;
 
 internal sealed record ReportContentSizeAction : WebAction {
     public required double HeightEffectivePx { get; init; }
+
+    /// <summary>
+    /// Optional. Omit / null / "live" = immediate; "structural" = native 333 ms;
+    /// "reconcile" = post-animation truth. Additive — not a protocol bump.
+    /// </summary>
+    public string? Phase { get; init; }
+
+    /// <summary>
+    /// Optional structural layout identity. Unchanged key suppresses live HWND churn.
+    /// </summary>
+    public string? LayoutKey { get; init; }
 }
 
 internal sealed record PairStartAction : WebAction {

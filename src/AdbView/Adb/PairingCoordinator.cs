@@ -139,52 +139,70 @@ internal sealed class PairingCoordinator {
         ArgumentNullException.ThrowIfNull(offerId);
 
         if (!PairingCode.IsValid(code)) {
-            // Prefer reject before quota / network (Phase 6B rules).
+            bool rejectAsUserAction;
             lock (_gate) {
-                if (!string.Equals(_activeOfferId, offerId, StringComparison.Ordinal)
-                    || _phase != PairingPhase.AwaitingCode) {
-                    return;
+                if (string.Equals(_activeOfferId, offerId, StringComparison.Ordinal)
+                    && _phase == PairingPhase.AwaitingCode) {
+                    _phase = PairingPhase.Failed;
+                    rejectAsUserAction = true;
                 }
-
-                _phase = PairingPhase.Failed;
+                else {
+                    // USER-ACTION REJECTED: wrong offer/phase.
+                    rejectAsUserAction = true;
+                }
             }
 
-            Emit(offerId, PairingPhase.Failed, "invalid pairing code", PairingFailureKind.InvalidRequest);
+            if (rejectAsUserAction) {
+                Emit(offerId, PairingPhase.Failed, "invalid pairing code", PairingFailureKind.InvalidRequest);
+            }
+
             return;
         }
 
-        PairingEndpoint endpoint;
-        int generation;
-        CancellationTokenSource pairCts;
+        PairingEndpoint? endpoint = null;
+        int generation = 0;
+        CancellationTokenSource? pairCts = null;
+        bool userRejected = false;
         lock (_gate) {
+            if (_phase == PairingPhase.Pairing
+                && string.Equals(_activeOfferId, offerId, StringComparison.Ordinal)) {
+                // VALID IDEMPOTENT: duplicate concurrent submit.
+                return;
+            }
+
             if (!string.Equals(_activeOfferId, offerId, StringComparison.Ordinal)
-                || _activeEndpoint is null) {
-                return;
+                || _activeEndpoint is null
+                || _phase is not (PairingPhase.AwaitingCode or PairingPhase.Failed)) {
+                userRejected = true;
             }
-
-            if (_phase == PairingPhase.Pairing) {
-                // Duplicate concurrent submit — ignore; do not send code twice.
-                return;
-            }
-
-            if (_phase is not (PairingPhase.AwaitingCode or PairingPhase.Failed)) {
-                return;
-            }
-
-            if (!TryConsumeRateLimit_NoLock(offerId)) {
-                Emit(offerId, PairingPhase.Failed, "rate limited", PairingFailureKind.RateLimited);
+            else if (!TryConsumeRateLimit_NoLock(offerId)) {
                 _phase = PairingPhase.Failed;
-                return;
+                userRejected = false;
+                // Rate limit — emit after lock.
+                endpoint = null;
+                generation = -1; // sentinel: rate limited
             }
-
-            endpoint = _activeEndpoint;
-            _phase = PairingPhase.Pairing;
-            generation = _operationGeneration;
-            pairCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            pairCts.CancelAfter(_pairTimeout);
-            _pairCts = pairCts;
+            else {
+                endpoint = _activeEndpoint;
+                _phase = PairingPhase.Pairing;
+                generation = _operationGeneration;
+                pairCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                pairCts.CancelAfter(_pairTimeout);
+                _pairCts = pairCts;
+            }
         }
 
+        if (generation == -1) {
+            Emit(offerId, PairingPhase.Failed, "rate limited", PairingFailureKind.RateLimited);
+            return;
+        }
+
+        if (userRejected || endpoint is null || pairCts is null) {
+            Emit(offerId, PairingPhase.Failed, "pairing request rejected", PairingFailureKind.InvalidRequest);
+            return;
+        }
+
+        // Immediate Pairing before host:pair completes.
         Emit(offerId, PairingPhase.Pairing, null, PairingFailureKind.None);
 
         HostPairResult result;

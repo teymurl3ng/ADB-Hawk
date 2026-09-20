@@ -5,8 +5,15 @@ import { DeviceCard } from './components/DeviceCard';
 import { PairingCard } from './components/PairingCard';
 import { useSnapshot } from './bridge/useSnapshot';
 import { useContentSize } from './bridge/useContentSize';
-import { isTestMode, requestDismiss } from './bridge/actions';
-import { mapDeviceViewToDeviceInfo, derivePairingState } from './bridge/adapters';
+import { isTestMode, requestDismiss, pairStart, pairCancel, pairSubmit } from './bridge/actions';
+import { mapDeviceViewToDeviceInfo } from './bridge/adapters';
+import {
+  createDwellController,
+  resolvePairingPresentation,
+  type DwellController,
+  type PairingPresentationState,
+  PAIRING_SUCCESS_DWELL_MS,
+} from './bridge/pairingPresentation';
 import type { FixtureName } from './types';
 
 const FIXTURES: FixtureName[] = [
@@ -42,16 +49,37 @@ export function App() {
 
   const [showFixtureMenu, setShowFixtureMenu] = React.useState(false);
   const [copiedId, setCopiedId] = React.useState<'serial' | 'address' | null>(null);
+  const [presentation, setPresentation] = React.useState<PairingPresentationState | null>(null);
+  const [dwellTick, setDwellTick] = React.useState(0);
 
   const headerRef = React.useRef<HTMLElement>(null);
   const contentWrapperRef = React.useRef<HTMLDivElement>(null);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const mainRef = React.useRef<HTMLElement>(null);
+  const dwellRef = React.useRef<DwellController>(createDwellController());
 
-  useContentSize({ headerRef, contentRef: contentWrapperRef }, [snapshot, expandedIds]);
+  // Resolve presentation (success dwell) from authoritative snapshot.
+  React.useLayoutEffect(() => {
+    const now = performance.now();
+    const resolved = resolvePairingPresentation(snapshot, dwellRef.current, now);
+    dwellRef.current = resolved.dwell;
+    setPresentation(resolved.presentation);
 
-  // Synchronize expansion state when snapshot updates:
-  // - Retain expansion for devices that still exist
-  // - Prune disappeared devices
-  // - Ensure initial expansion in test mode for 'expanded' fixture
+    if (resolved.presentation?.dwellingSuccess && resolved.dwell.dwellUntilMs > now) {
+      const remain = resolved.dwell.dwellUntilMs - now;
+      const t = window.setTimeout(() => setDwellTick((n) => n + 1), remain + 1);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [snapshot, dwellTick]);
+
+  // Host freezes HWND while visible; reports still feed next-show height.
+  useContentSize({ headerRef, contentRef: contentWrapperRef }, [
+    snapshot,
+    expandedIds,
+    presentation,
+  ]);
+
   React.useEffect(() => {
     if (!snapshot) return;
     const currentDeviceIds = new Set(snapshot.devices.map((d) => d.id));
@@ -70,7 +98,6 @@ export function App() {
     });
   }, [snapshot]);
 
-  // Handle Escape dismiss and fixture toggle hotkey Ctrl+Shift+F
   React.useEffect(() => {
     const keydown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -99,18 +126,27 @@ export function App() {
   };
 
   const handleToggleExpand = (id: string) => {
+    // Latest click wins immediately — no animation queue / FLIP.
     setExpandedIds((prev) => {
-      // Exactly one card expanded at a time (DESIGN §§24–26).
-      if (prev.has(id)) {
-        return new Set<string>();
-      }
+      if (prev.has(id)) return new Set<string>();
       return new Set<string>([id]);
     });
   };
 
-  // Drive tokens from shell.theme (authoritative in production).
-  // Test/fixture harness: Playwright emulateMedia(colorScheme) must win so light audits
-  // and visual projects exercise D.1 tokens (fixtures hardcode shell.theme=dark).
+  React.useEffect(() => {
+    if (!isTestMode() || typeof window === 'undefined') return;
+    const win = window as unknown as {
+      __adbToggleExpand?: (id: string) => void;
+      __adbPairingDwellMs?: number;
+    };
+    win.__adbToggleExpand = (deviceId: string) => handleToggleExpand(deviceId);
+    win.__adbPairingDwellMs = PAIRING_SUCCESS_DWELL_MS;
+    return () => {
+      delete win.__adbToggleExpand;
+      delete win.__adbPairingDwellMs;
+    };
+  }, [expandedIds, snapshot, presentation]);
+
   React.useEffect(() => {
     if (typeof document === 'undefined') return;
 
@@ -123,25 +159,17 @@ export function App() {
           theme = 'dark';
         }
       }
-
       document.documentElement.dataset.theme = theme;
-      document.documentElement.dataset.transparency = snapshot?.shell.transparencyEnabled
-        ? 'true'
-        : 'false';
-      document.documentElement.dataset.reducedMotion = snapshot?.shell.reducedMotion
-        ? 'true'
-        : 'false';
-      if (snapshot?.shell.forcedColors) {
-        document.documentElement.dataset.forcedColors = 'true';
-      } else {
-        delete document.documentElement.dataset.forcedColors;
-      }
+      // v1: always opaque unless a fixture explicitly asserts transparency (none in prod).
+      const opaque = snapshot?.shell.transparencyEnabled !== true;
+      document.documentElement.dataset.opaque = opaque ? 'true' : 'false';
+      document.documentElement.style.colorScheme = theme;
     };
 
     apply();
 
-    if (!isTestMode() || typeof window.matchMedia !== 'function') {
-      return;
+    if (typeof window.matchMedia !== 'function') {
+      return undefined;
     }
 
     const mq = window.matchMedia('(prefers-color-scheme: light)');
@@ -151,8 +179,13 @@ export function App() {
   }, [snapshot?.shell]);
 
   const devices = snapshot?.devices ?? [];
-  const pairingInfo = derivePairingState(snapshot);
-  const isEmpty = devices.length === 0 && !pairingInfo;
+  const pairingInfo = presentation;
+  // During success dwell, defer newly arrived devices until coalesced post-dwell transition.
+  const visibleDevices =
+    pairingInfo?.dwellingSuccess === true
+      ? devices.filter((d) => pairingInfo.layoutDeviceIds.includes(d.id))
+      : devices;
+  const isEmpty = visibleDevices.length === 0 && !pairingInfo;
   const nowIso = snapshot?.generatedAt ?? '';
 
   const activeFixture =
@@ -161,21 +194,36 @@ export function App() {
       : 'connected-wifi';
 
   return (
-    <main className="h-screen w-full flex flex-col p-4 box-border">
+    <main
+      ref={mainRef}
+      data-testid="flyout-shell"
+      className={`h-screen w-full flex flex-col p-4 box-border ${
+        isPinned ? 'app-region-drag' : 'app-region-no-drag'
+      }`}
+    >
       <Header isPinned={isPinned} headerRef={headerRef} />
 
       <div
-        className="flex-1 overflow-y-auto pb-2"
+        ref={scrollRef}
+        data-testid="flyout-scroll"
+        className="flex-1 overflow-y-auto pb-2 app-region-no-drag flyout-scroll"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <div ref={contentWrapperRef} className="space-y-3">
           {isEmpty && <EmptyState />}
 
           {pairingInfo && (
-            <PairingCard state={pairingInfo.state} deviceName={pairingInfo.deviceName} />
+            <PairingCard
+              state={pairingInfo.cardState}
+              deviceName={pairingInfo.deviceName}
+              offerId={pairingInfo.offerId}
+              onPairStart={pairStart}
+              onPairCancel={pairCancel}
+              onPairSubmit={pairSubmit}
+            />
           )}
 
-          {devices.map((d) => (
+          {visibleDevices.map((d) => (
             <DeviceCard
               key={d.id}
               device={mapDeviceViewToDeviceInfo(d, expandedIds.has(d.id), nowIso)}

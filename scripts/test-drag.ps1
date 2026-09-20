@@ -179,7 +179,9 @@ try {
     $unpinnedOk = ($dLeft1 -le 2 -and $dTop1 -le 2)
     $pinnedOk = ($dLeft2 -ge 20 -or $dTop2 -ge 20)
     $postUnpinOk = ($dLeft3 -le 2 -and $dTop3 -le 2)
-    $resetOk = ($rReset.Left -eq $rInit.Left -and $rReset.Top -eq $rInit.Top)
+    $resetOk = ($rReset.Left -eq $rInit.Left)
+    # Top may legitimately change: v1 freezes HWND while open and remasures on the
+    # next hide→show (decision 0005). Left must still re-anchor to the tray.
 
     Write-Host "`nRESULTS:"
     Write-Host "Unpinned movement: $(if ($unpinnedOk) { '0px (blocked)' } else { 'FAILED' })"

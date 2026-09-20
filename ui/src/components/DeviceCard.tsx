@@ -67,6 +67,7 @@ export function DeviceCard({ device, onToggleExpand, onCopy, copiedId }: DeviceC
   return (
     <div
       data-testid="device-card"
+      data-device-id={device.id}
       className={`rounded-lg bg-win-card border border-win-card-border p-3 transition-colors ${!isExpanded ? 'hover:bg-win-card-hover cursor-pointer group' : ''}`}
       onClick={() => {
         if (!isExpanded && onToggleExpand) {

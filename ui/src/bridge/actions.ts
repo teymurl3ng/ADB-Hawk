@@ -9,12 +9,29 @@ export function isTestMode(): boolean {
 
 export function postAction(action: WebAction): void {
   if (isTestMode()) {
-    const win = window as unknown as { __adbActionCount?: Record<string, number> };
+    const win = window as unknown as {
+      __adbActionCount?: Record<string, number>;
+      __adbActions?: WebAction[];
+    };
     win.__adbActionCount = win.__adbActionCount ?? {};
     win.__adbActionCount[action.type] = (win.__adbActionCount[action.type] ?? 0) + 1;
+    win.__adbActions = win.__adbActions ?? [];
+    win.__adbActions.push(action);
   }
   // @ts-expect-error WebView2 injects chrome.webview natively
   window.chrome?.webview?.postMessage(action);
+}
+
+export function pairStart(offerId: string): void {
+  postAction({ type: 'pairStart', offerId });
+}
+
+export function pairSubmit(offerId: string, code: string): void {
+  postAction({ type: 'pairSubmit', offerId, code });
+}
+
+export function pairCancel(offerId: string): void {
+  postAction({ type: 'pairCancel', offerId });
 }
 
 export function sendReady(): void {
@@ -33,6 +50,18 @@ export function requestDismiss(): void {
   postAction({ type: 'requestDismiss' });
 }
 
-export function reportContentSize(heightEffectivePx: number): void {
-  postAction({ type: 'reportContentSize', heightEffectivePx });
+export function reportContentSize(
+  heightEffectivePx: number,
+  phase: 'live' | 'structural' | 'reconcile' = 'live',
+  layoutKey?: string,
+): void {
+  if (phase === 'live' && !layoutKey) {
+    postAction({ type: 'reportContentSize', heightEffectivePx });
+  } else if (phase === 'live') {
+    postAction({ type: 'reportContentSize', heightEffectivePx, layoutKey });
+  } else if (layoutKey) {
+    postAction({ type: 'reportContentSize', heightEffectivePx, phase, layoutKey });
+  } else {
+    postAction({ type: 'reportContentSize', heightEffectivePx, phase });
+  }
 }

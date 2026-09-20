@@ -21,7 +21,7 @@ public sealed class ChaosWebViewRecoveryTests {
         public void SendSnapshot(SnapshotEnvelope envelope) { }
         public void SetPinned(bool isPinned) { }
         public void HideFlyout() { }
-        public void ResizeFlyout(int clampedEffectiveHeight) { }
+        public void ResizeFlyout(int clampedEffectiveHeight, AdbView.Bridge.ContentSizePhase phase = AdbView.Bridge.ContentSizePhase.Live, string? layoutKey = null) { }
     }
 
     [Fact]

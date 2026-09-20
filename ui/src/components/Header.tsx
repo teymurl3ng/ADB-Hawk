@@ -5,6 +5,11 @@ interface HeaderProps {
   headerRef?: React.RefObject<HTMLElement | null>;
 }
 
+/**
+ * Pinned header: entire non-interactive surface is drag (WebView2 NC).
+ * Explicit drag on identity children — inheritance alone is insufficient on WebView2.
+ * Only the pin control (and its no-drag wrapper) is excluded.
+ */
 export function Header({ isPinned, headerRef }: HeaderProps) {
   const handlePinClick = () => {
     if (isPinned) {
@@ -14,13 +19,28 @@ export function Header({ isPinned, headerRef }: HeaderProps) {
     }
   };
 
+  const drag = isPinned ? 'app-region-drag' : 'app-region-no-drag';
+
   return (
     <header
       ref={headerRef}
-      className={`h-10 flex items-center justify-between mb-2 select-none ${isPinned ? 'app-region-drag' : 'app-region-no-drag'}`}
+      data-testid="flyout-header"
+      className={`h-10 flex items-center justify-between mb-2 select-none relative ${drag}`}
     >
-      <div className="flex items-center gap-2">
-        <div className="w-5 h-5 flex items-center justify-center text-win-accent">
+      {/* Full-bleed drag layer behind chrome so upper/lower empty header pixels drag. */}
+      {isPinned && (
+        <div
+          aria-hidden="true"
+          data-testid="header-drag-layer"
+          className="absolute inset-0 app-region-drag"
+        />
+      )}
+
+      <div className={`relative z-[1] flex items-center gap-2 ${drag}`}>
+        <div
+          className={`w-5 h-5 flex items-center justify-center text-win-accent ${drag}`}
+          data-testid="header-icon"
+        >
           <svg
             fill="none"
             height="18"
@@ -30,20 +50,24 @@ export function Header({ isPinned, headerRef }: HeaderProps) {
             strokeWidth="2"
             viewBox="0 0 24 24"
             width="18"
+            className={drag}
           >
             <rect height="18" rx="2" width="14" x="5" y="3"></rect>
             <path d="M12 18h.01"></path>
           </svg>
         </div>
-        <span className="text-[13.5px] font-semibold tracking-tight text-win-text-primary">
+        <span
+          data-testid="header-title"
+          className={`text-[13.5px] font-semibold tracking-tight text-win-text-primary ${drag}`}
+        >
           ADB View
         </span>
       </div>
 
-      <div className="app-region-no-drag">
+      <div className="relative z-[2] app-region-no-drag">
         <button
           onClick={handlePinClick}
-          className={`hit-area-40 w-7 h-7 rounded flex items-center justify-center transition-colors fluent-btn ${
+          className={`hit-area-40 w-7 h-7 rounded flex items-center justify-center transition-colors fluent-btn app-region-no-drag ${
             isPinned
               ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30'
               : 'text-win-glyph-text hover:text-win-text-primary hover:bg-win-btn-hover'

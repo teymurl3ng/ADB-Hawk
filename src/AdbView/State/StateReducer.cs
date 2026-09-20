@@ -451,7 +451,7 @@ internal static class StateReducer {
             return ReduceResult.Unchanged(current, deviceState);
         }
 
-        var (offers, bindings) = PairingOfferMapper.Map(mdns.Services);
+        var (offers, bindings) = PairingOfferMapper.Map(mdns.Services, current.Devices);
         var health = WithDeviceDerivedTray(current.Health, current.Devices, offers);
 
         PairingOperationView? pairing = current.Pairing;

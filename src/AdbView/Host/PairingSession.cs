@@ -7,6 +7,7 @@ using AdbView.Adb;
 using AdbView.Adb.Model;
 using AdbView.State;
 using Serilog;
+using DomainPhase = AdbView.Adb.Model.PairingPhase;
 
 /// <summary>
 /// Application adapter: bridge pair actions → PairingCoordinator → PairingProgressedEvent.
@@ -35,25 +36,37 @@ internal sealed class PairingSession : IDisposable {
 
     public void Start(string offerId) {
         if (Volatile.Read(ref _disposed) != 0) {
+            // Shutdown — safe no-op; no product UI required.
             return;
         }
 
         PairingOfferBinding? binding = _resolveOffer(offerId);
         if (binding is null) {
-            Log.Information("pairStart ignored: unknown or stale offer");
+            // USER-ACTION REJECTED: stale / unknown offer — observable Failed.
+            Log.Information("pairStart rejected: unknown or stale offer");
+            PostFailed(offerId, null);
             return;
         }
 
         if (!PairingEndpoint.TryCreate(binding.Host, binding.Port, out PairingEndpoint? endpoint)
             || endpoint is null) {
-            Log.Information("pairStart ignored: invalid offer endpoint");
+            Log.Information("pairStart rejected: invalid offer endpoint");
+            PostFailed(offerId, binding.DisplayName);
+            return;
+        }
+
+        // Idempotent: already awaiting this offer.
+        if (string.Equals(_coordinator.ActiveOfferId, offerId, StringComparison.Ordinal)
+            && _coordinator.CurrentPhase == DomainPhase.AwaitingCode) {
             return;
         }
 
         bool started = _coordinator.TryStart(offerId, endpoint)
             || _coordinator.TryRetry(offerId, endpoint);
         if (!started) {
-            Log.Information("pairStart ignored: pairing operation already active");
+            // USER-ACTION REJECTED: another operation active.
+            Log.Information("pairStart rejected: pairing operation already active");
+            PostFailed(offerId, binding.DisplayName);
         }
     }
 
@@ -72,6 +85,7 @@ internal sealed class PairingSession : IDisposable {
         }
         catch (Exception ex) when (ex is not OperationCanceledException) {
             Log.Warning(ex, "pairSubmit failed unexpectedly");
+            PostFailed(offerId, _resolveOffer(offerId)?.DisplayName);
         }
     }
 
@@ -93,6 +107,15 @@ internal sealed class PairingSession : IDisposable {
             displayName));
     }
 
+    private void PostFailed(string offerId, string? displayName) {
+        _post(new PairingProgressedEvent(
+            offerId,
+            DomainPhase.Failed,
+            "pairing request rejected",
+            PairingFailureKind.InvalidRequest,
+            displayName));
+    }
+
     public void Dispose() {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) {
             return;
@@ -100,7 +123,6 @@ internal sealed class PairingSession : IDisposable {
 
         lock (_gate) {
             _coordinator.Progressed -= OnProgressed;
-            // Cancel any in-flight pair without posting if already disposed mid-flight.
             string? active = _coordinator.ActiveOfferId;
             if (active is not null) {
                 _coordinator.Cancel(active);

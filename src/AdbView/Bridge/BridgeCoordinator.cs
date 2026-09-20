@@ -156,7 +156,24 @@ internal sealed class BridgeCoordinator {
         }
 
         int clampedHeight = Math.Clamp((int)Math.Round(action.HeightEffectivePx), 120, 560);
-        _host.ResizeFlyout(clampedHeight);
+        ContentSizePhase phase = ParseContentSizePhase(action.Phase);
+        _host.ResizeFlyout(clampedHeight, phase, action.LayoutKey);
+    }
+
+    internal static ContentSizePhase ParseContentSizePhase(string? phase) {
+        if (string.IsNullOrEmpty(phase)) {
+            return ContentSizePhase.Live;
+        }
+
+        if (string.Equals(phase, "structural", StringComparison.OrdinalIgnoreCase)) {
+            return ContentSizePhase.Structural;
+        }
+
+        if (string.Equals(phase, "reconcile", StringComparison.OrdinalIgnoreCase)) {
+            return ContentSizePhase.Reconcile;
+        }
+
+        return ContentSizePhase.Live;
     }
 
     public long NextRevision() {

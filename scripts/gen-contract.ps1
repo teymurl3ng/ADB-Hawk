@@ -173,7 +173,12 @@ export type WebAction =
   | { type: 'pin' }
   | { type: 'unpin' }
   | { type: 'requestDismiss' }
-  | { type: 'reportContentSize'; heightEffectivePx: number }
+  | {
+      type: 'reportContentSize';
+      heightEffectivePx: number;
+      phase?: 'live' | 'structural' | 'reconcile';
+      layoutKey?: string;
+    }
   | { type: 'pairStart'; offerId: string }
   | { type: 'pairSubmit'; offerId: string; code: string }
   | { type: 'pairCancel'; offerId: string };

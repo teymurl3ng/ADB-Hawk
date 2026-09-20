@@ -34,7 +34,7 @@ public sealed class NotificationIntegrationTests {
         public void SendSnapshot(SnapshotEnvelope envelope) { }
         public void SetPinned(bool isPinned) { }
         public void HideFlyout() { }
-        public void ResizeFlyout(int clampedEffectiveHeight) { }
+        public void ResizeFlyout(int clampedEffectiveHeight, AdbView.Bridge.ContentSizePhase phase = AdbView.Bridge.ContentSizePhase.Live, string? layoutKey = null) { }
     }
 
     private sealed class HermeticExecutableLocator : IAdbExecutableLocator {
@@ -429,11 +429,18 @@ public sealed class NotificationIntegrationTests {
     public async Task P_Pairing_Offer_One() {
         await using var h = CreateHarness();
         await h.ExitStartupSuppressAsync();
-        await h.PostAndDrainAsync(new MdnsServicesReceivedEvent(ImmutableArray.Create(PairingSvc()), T0));
+        await h.PostAndDrainAsync(new MdnsServicesReceivedEvent(
+            ImmutableArray.Create(PairingSvc(instance: "adb-RFCX116CYYX-JYueKC", given: null)), T0));
         Assert.Single(h.Engine.CurrentSnapshot.PairingOffers);
+        Assert.Equal(Vocabulary.Pairing.DefaultDeviceName, h.Engine.CurrentSnapshot.PairingOffers[0].DisplayName);
         await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(1.5));
         await WaitUntilAsync(() => h.Sink.Emitted.Count >= 1);
         Assert.Equal(NotificationKind.PairingAvailable, h.Sink.Emitted[0].Key.Kind);
+        Assert.DoesNotContain("adb-", h.Sink.Emitted[0].Body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(h.Engine.CurrentSnapshot.PairingOffers[0].Id, h.Sink.Emitted[0].Body, StringComparison.Ordinal);
+        Assert.Equal(
+            Vocabulary.Notifications.PairingAvailableBody(h.Engine.CurrentSnapshot.PairingOffers[0].DisplayName),
+            h.Sink.Emitted[0].Body);
     }
 
     [Fact]

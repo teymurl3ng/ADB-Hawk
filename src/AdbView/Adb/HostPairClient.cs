@@ -140,7 +140,6 @@ internal sealed class HostPairClient : IHostPairClient {
             if (text.StartsWith("Successful", StringComparison.Ordinal)) {
                 return new HostPairResult(true, PairingFailureKind.None, null);
             }
-
             return new HostPairResult(false, PairingFailureKind.MalformedResponse, SanitizeReason(text));
         }
         catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !ct.IsCancellationRequested) {

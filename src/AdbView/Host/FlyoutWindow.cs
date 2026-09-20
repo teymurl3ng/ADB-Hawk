@@ -146,28 +146,18 @@ internal sealed class FlyoutWindow : Form {
     }
 
     private unsafe void ApplyBackdrop(ThemeKind theme, bool transparencyEnabled) {
-        int backdropType = DWMSBT_TRANSIENTWINDOW;
         int useDarkMode = theme == ThemeKind.Light ? 0 : 1;
         _backdropActive = false;
 
         try {
             Log.Information(
-                "DWM applyBackdrop: theme={Theme}, useDarkMode={UseDarkMode}, transparency={Transparency}",
+                "DWM applyBackdrop: theme={Theme}, useDarkMode={UseDarkMode}, transparency={Transparency} (v1 opaque={Opaque})",
                 theme,
                 useDarkMode,
-                transparencyEnabled);
+                transparencyEnabled,
+                !transparencyEnabled);
 
-            if (!transparencyEnabled) {
-                ApplyOpaqueFallback(theme);
-                return;
-            }
-
-            var hrBackdrop = PInvoke.DwmSetWindowAttribute(
-                new HWND(Handle),
-                (Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE)38, // DWMWA_SYSTEMBACKDROP_TYPE
-                &backdropType,
-                sizeof(int));
-
+            // Immersive dark mode + rounded corners always (geometry preserved).
             var hrDark = PInvoke.DwmSetWindowAttribute(
                 new HWND(Handle),
                 (Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE)20, // DWMWA_USE_IMMERSIVE_DARK_MODE
@@ -181,6 +171,32 @@ internal sealed class FlyoutWindow : Form {
                 &corner,
                 sizeof(int));
 
+            // v1: never enable Transient Acrylic under WebView2 (decision 0004).
+            // Also the production path always passes transparencyEnabled=false.
+            if (!transparencyEnabled) {
+                int none = 1; // DWMSBT_NONE
+                PInvoke.DwmSetWindowAttribute(
+                    new HWND(Handle),
+                    (Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE)38, // DWMWA_SYSTEMBACKDROP_TYPE
+                    &none,
+                    sizeof(int));
+                var zeroMargins = new Windows.Win32.UI.Controls.MARGINS();
+                PInvoke.DwmExtendFrameIntoClientArea(new HWND(Handle), in zeroMargins);
+                ApplyOpaqueFallback(theme);
+                Log.Information(
+                    "DWM opaque v1: darkMode=0x{DarkHR:X8}, corner=0x{CornerHR:X8}",
+                    hrDark.Value,
+                    hrCorner.Value);
+                return;
+            }
+
+            int backdropType = DWMSBT_TRANSIENTWINDOW;
+            var hrBackdrop = PInvoke.DwmSetWindowAttribute(
+                new HWND(Handle),
+                (Windows.Win32.Graphics.Dwm.DWMWINDOWATTRIBUTE)38, // DWMWA_SYSTEMBACKDROP_TYPE
+                &backdropType,
+                sizeof(int));
+
             Log.Information(
                 "DWM results: backdrop=0x{BackdropHR:X8}, darkMode=0x{DarkHR:X8}, corner=0x{CornerHR:X8}",
                 hrBackdrop.Value,
@@ -192,7 +208,7 @@ internal sealed class FlyoutWindow : Form {
                 ApplyOpaqueFallback(theme);
             }
             else {
-                BackColor = Color.Black; // Transparent acrylic host surface
+                BackColor = Color.Black;
                 var margins = new Windows.Win32.UI.Controls.MARGINS {
                     cxLeftWidth = -1,
                     cxRightWidth = -1,
@@ -213,10 +229,7 @@ internal sealed class FlyoutWindow : Form {
 
     private void ApplyOpaqueFallback(ThemeKind theme) {
         _backdropActive = false;
-        // DESIGN §22 opaque tokens: intentional light/dark solid surface.
-        BackColor = theme == ThemeKind.Light
-            ? Color.FromArgb(255, 243, 244, 246)
-            : Color.FromArgb(255, 32, 35, 41);
+        BackColor = ShellMaterialPolicy.OpaqueBackColor(theme);
     }
 
     protected override void WndProc(ref Message m) {

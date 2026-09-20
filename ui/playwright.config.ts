@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: './tests/visual',
+  testDir: './tests',
   fullyParallel: true,
   retries: 0,
   workers: 1,
@@ -13,6 +13,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium-dark',
+      testMatch: /visual\/.*\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         colorScheme: 'dark',
@@ -21,9 +22,28 @@ export default defineConfig({
     },
     {
       name: 'chromium-light',
+      testMatch: /visual\/.*\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         colorScheme: 'light',
+        viewport: { width: 376, height: 600 },
+      },
+    },
+    {
+      name: 'pairing',
+      testMatch: /pairing\/.*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        colorScheme: 'dark',
+        viewport: { width: 376, height: 600 },
+      },
+    },
+    {
+      name: 'motion',
+      testMatch: /motion\/.*\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        colorScheme: 'dark',
         viewport: { width: 376, height: 600 },
       },
     },

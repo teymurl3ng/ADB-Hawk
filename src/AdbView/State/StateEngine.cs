@@ -77,7 +77,7 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
             Shell = new ShellView {
                 Pinned = isPinned,
                 Theme = ThemeKind.Dark,
-                TransparencyEnabled = true,
+                TransparencyEnabled = false, // v1 opaque (decision 0004)
                 ForcedColors = false,
                 ReducedMotion = false,
             },

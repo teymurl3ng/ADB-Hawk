@@ -70,8 +70,8 @@
 
     --motion-feedback: 83ms;
     --motion-state: 167ms;
-    --motion-structural: 250ms;
-    --motion-easing: cubic-bezier(0.1, 0.9, 0.2, 1);
+    --motion-structural: 333ms;
+    --motion-easing: cubic-bezier(0.55, 0.55, 0, 1);
 
     --win-base: #202329;
     --win-card: rgba(255, 255, 255, 0.04);
@@ -247,6 +247,30 @@
   color-scheme: dark;
 }
 
+/* v1 opaque surface — unlayered so it wins over body{transparent} in @layer/media. */
+:root[data-opaque='true'] {
+  --win-base: #202329;
+  --win-surface-flyout: #202329;
+  background-color: #202329;
+}
+
+:root[data-opaque='true'][data-theme='light'] {
+  --win-base: #f3f4f6;
+  --win-surface-flyout: #f3f4f6;
+  background-color: #f3f4f6;
+}
+
+:root[data-opaque='true'][data-theme='dark'] {
+  --win-base: #202329;
+  --win-surface-flyout: #202329;
+  background-color: #202329;
+}
+
+:root[data-opaque='true'] body,
+:root[data-opaque='true'] #root {
+  background-color: var(--win-base);
+}
+
 @media (forced-colors: active) {
   :root {
     --win-base: Canvas;
@@ -316,15 +340,68 @@
     width: 40px;
     height: 40px;
     transform: translate(-50%, -50%);
-    pointer-events: auto;
+    /* Expand hit box without becoming a separate target — host receives all events. */
+    pointer-events: none;
   }
 
   .fluent-btn {
     transition:
-      background-color 83ms ease,
-      border-color 83ms ease,
-      color 83ms ease,
-      opacity 83ms ease;
+      background-color var(--motion-feedback) var(--motion-easing),
+      border-color var(--motion-feedback) var(--motion-easing),
+      color var(--motion-feedback) var(--motion-easing),
+      opacity var(--motion-feedback) var(--motion-easing),
+      box-shadow var(--motion-feedback) var(--motion-easing);
+  }
+
+  /* Children must not steal hit-testing from the Pair host. */
+  .fluent-btn-pair > * {
+    pointer-events: none;
+  }
+
+  .fluent-btn-pair {
+    background-color: var(--win-accent);
+    color: #fff;
+    /* Pairing card stacks above device cards. */
+    position: relative;
+    z-index: 2;
+  }
+
+  /*
+   * Pointer feedback is driven by data-pair-feedback (Pointer Events), not CSS :hover alone.
+   * WebView2 + transformed siblings made :hover intermittent; attributes are deterministic.
+   * Rest / hover / pressed / focus / disabled share identical outer box (no layout deltas).
+   */
+  .fluent-btn-pair[data-pair-feedback='hover']:not(:disabled) {
+    background-color: var(--win-accent-hover);
+  }
+
+  .fluent-btn-pair[data-pair-feedback='pressed']:not(:disabled) {
+    background-color: color-mix(in srgb, var(--win-accent) 75%, #000);
+  }
+
+  /* Keyboard / CSS fallback when pointer attributes are idle. */
+  .fluent-btn-pair:hover:not(:disabled):not([data-pair-feedback='pressed']) {
+    background-color: var(--win-accent-hover);
+  }
+
+  .fluent-btn-pair:active:not(:disabled) {
+    background-color: color-mix(in srgb, var(--win-accent) 75%, #000);
+  }
+
+  .fluent-btn-pair:focus-visible {
+    outline: 2px solid var(--win-accent);
+    outline-offset: 2px;
+  }
+
+  .fluent-btn-pair:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /* Pairing card stacks above device cards. */
+  [data-testid='pairing-card'] {
+    position: relative;
+    z-index: 30;
   }
 
   .static-dot {

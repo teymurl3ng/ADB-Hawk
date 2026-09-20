@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using AdbView.App;
 using AdbView.Bridge;
+using AdbView.State;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Serilog;
@@ -46,7 +47,20 @@ internal sealed class WebViewHost : IDisposable {
         _delay = delay ?? (ts => Task.Delay(ts));
     }
 
+    internal void ApplyOpaqueBackground(ThemeKind theme) {
+        if (_webView is null) {
+            return;
+        }
+
+        _webView.DefaultBackgroundColor = ShellMaterialPolicy.OpaqueBackColor(theme);
+    }
+
     internal bool IsTrayOnly => _trayOnlyUntilClick;
+
+    internal Control? WebViewControl => _webView;
+
+    internal Rectangle? ChildBounds =>
+        _webView is null ? null : _webView.Bounds;
 
     internal int RecoveryAttemptsInWindow {
         get {
@@ -69,7 +83,8 @@ internal sealed class WebViewHost : IDisposable {
         try {
             _webView = new WebView2 {
                 Dock = DockStyle.Fill,
-                DefaultBackgroundColor = Color.Transparent
+                // v1 opaque surface — match intentional host tokens (not Transparent/Acrylic).
+                DefaultBackgroundColor = ShellMaterialPolicy.OpaqueBackColor(ThemeKind.Dark)
             };
             _parent.Controls.Add(_webView);
 

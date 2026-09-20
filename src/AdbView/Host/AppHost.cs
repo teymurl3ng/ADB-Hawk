@@ -44,6 +44,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private bool _isVisible;
     private int _currentEffectiveHeight = 500;
     private int _lastAppliedHeight;
+    private int _lastReportedContentHeight;
+    private bool _suppressLightDismiss;
+    private bool _lightDismissArmed;
+    private int _showGeneration;
+    private long _contentSizeSeq;
     public BridgeCoordinator? Coordinator => _coordinator;
     internal StateEngine? StateEngine => _stateEngine;
     internal Adb.AdbServerSupervisor? Supervisor => _supervisor;
@@ -64,9 +69,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     internal static bool ShouldConstructRealBalloonSink(bool headless, bool isFixtureMode) =>
         !headless && !isFixtureMode;
 
-    /// <summary>Normal interactive first launch requests one deferred flyout show.</summary>
+    /// <summary>Normal interactive / fixture first launch requests one deferred flyout show.</summary>
     internal static bool ShouldRequestInitialShow(bool headless, bool isFixtureMode, bool startupSilent) =>
-        !headless && !isFixtureMode && !startupSilent;
+        !headless && !startupSilent;
 
 
     public AppHost(int sessionId, string fixtureSuffix = "", bool headless = false, bool startupSilent = false)
@@ -379,8 +384,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _supervisorTask = Task.Run(() => _supervisor.RunAsync(_appLifetimeCts.Token));
         }
 
-        // Sync system theme onto the HWND before first paint (async shell event may lag).
-        bool transparency = SystemTheme.ReadTransparencyEnabled() && !SystemTheme.ReadForcedColors();
+        // v1: intentional opaque surface only (decision 0004 — Acrylic deferred).
+        bool transparency = ShellMaterialPolicy.ResolveTransparencyEnabled();
         ThemeKind theme = SystemTheme.ReadAppsTheme();
         _lastAppliedTheme = theme;
         _lastAppliedTransparency = transparency;
@@ -395,9 +400,13 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             if (t.IsFaulted) Log.Error(t.Exception, "WebView initialization failed in background.");
             else {
                 _webViewReadyForShow = true;
+                _flyoutWindow?.Invoke(new Action(() => {
+                    _webViewHost?.ApplyOpaqueBackground(_lastAppliedTheme);
+                }));
                 if (!string.IsNullOrEmpty(_fixtureSuffix)) {
-                    // Headed Native Visual Harness hook
-                    _flyoutWindow?.Invoke(new Action(ShowFlyout));
+                    // Fixture harness: wait for first content-size (same as production) so
+                    // presentation height matches the frozen visible-session invariant.
+                    _flyoutWindow?.Invoke(new Action(TryCompletePendingInitialShow));
                 }
                 else {
                     _flyoutWindow?.Invoke(new Action(TryCompletePendingInitialShow));
@@ -425,6 +434,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
     private void ShowFlyout() {
         if (_flyoutWindow == null || _trayIcon == null) return;
+
+        // Presentation height = latest measured natural content (clamped by caller / prior Apply).
+        if (_lastReportedContentHeight > 0) {
+            _currentEffectiveHeight = _lastReportedContentHeight;
+            _lastAppliedHeight = _lastReportedContentHeight;
+        }
 
         if (_webViewHost is { IsTrayOnly: true }) {
             _ = _webViewHost.TryRecoverFromTrayOnlyAsync();
@@ -456,6 +471,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         );
 
         Log.Information("ShowFlyout: physicalBounds={Bounds}, anchor={Anchor}, monitorWorkArea={WorkArea}", physicalBounds, anchor, monitor.WorkingArea);
+
+        // Programmatic show must not be eaten by activation churn / failed SetForegroundWindow.
+        _suppressLightDismiss = true;
+        _lightDismissArmed = false;
+        int showGen = ++_showGeneration;
+
         _flyoutWindow.Bounds = physicalBounds;
         _flyoutWindow.TopMost = _flyoutWindow.IsPinned;
         _flyoutWindow.Show();
@@ -466,7 +487,24 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             Windows.Win32.PInvoke.SetForegroundWindow(new Windows.Win32.Foundation.HWND(_flyoutWindow.Handle));
         }
 
-        _isVisible = true;
+        _isVisible = _flyoutWindow.Visible;
+        _suppressLightDismiss = false;
+
+        // Arm light-dismiss only after this show's message batch — not via Thread.Sleep.
+        if (_flyoutWindow.IsHandleCreated) {
+            _ = _flyoutWindow.BeginInvoke(new Action(() => {
+                if (showGen != _showGeneration) {
+                    return;
+                }
+
+                _lightDismissArmed = true;
+                Log.Information("ShowFlyout: light-dismiss armed (visible={Visible})", _flyoutWindow.Visible);
+            }));
+        }
+        else {
+            _lightDismissArmed = true;
+        }
+
         NotifyMetadataPresentation();
     }
 
@@ -523,6 +561,14 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             return;
         }
 
+        _showGeneration++; // invalidate pending light-dismiss arm
+        _lightDismissArmed = false;
+        // Adopt latest measured content height so the next show re-presents correctly.
+        if (_lastReportedContentHeight > 0) {
+            _currentEffectiveHeight = _lastReportedContentHeight;
+            _lastAppliedHeight = _lastReportedContentHeight;
+        }
+
         _flyoutWindow?.Hide();
         _isVisible = false;
         NotifyMetadataPresentation();
@@ -535,12 +581,43 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _metadataLifecycle?.SetPresentationState(_isVisible, pinned);
     }
 
-    public void ResizeFlyout(int clampedEffectiveHeight) {
-        if (TryMarshalToFlyoutUi(new Action<int>(ResizeFlyout), clampedEffectiveHeight)) {
+    public void ResizeFlyout(
+        int clampedEffectiveHeight,
+        ContentSizePhase phase = ContentSizePhase.Live,
+        string? layoutKey = null) {
+        if (TryMarshalToFlyoutUi(
+                new Action<int, ContentSizePhase, string?>(ResizeFlyout),
+                clampedEffectiveHeight,
+                phase,
+                layoutKey ?? string.Empty)) {
             return;
         }
 
-        if (clampedEffectiveHeight == _currentEffectiveHeight && _lastAppliedHeight != 0) {
+        long seq = ++_contentSizeSeq;
+        _lastReportedContentHeight = clampedEffectiveHeight;
+
+        bool visible = _isVisible && _flyoutWindow is { Visible: true };
+        Log.Information(
+            "AppHost.ResizeFlyout: seq={Seq} phase={Phase} height={Height} visible={Visible}",
+            seq,
+            phase,
+            clampedEffectiveHeight,
+            visible);
+
+        // v1 decision 0005: while visible, never apply content-driven HWND resize.
+        if (!FlyoutInteractionPolicy.ShouldApplyContentResizeToHwnd(visible)) {
+            Log.Information(
+                "AppHost.ResizeFlyout: frozen visible session — ignoring HWND apply (height={Height})",
+                clampedEffectiveHeight);
+            return;
+        }
+
+        ApplyImmediateResize(clampedEffectiveHeight, force: false);
+        TryCompletePendingInitialShow();
+    }
+
+    private void ApplyImmediateResize(int clampedEffectiveHeight, bool force) {
+        if (!force && clampedEffectiveHeight == _currentEffectiveHeight && _lastAppliedHeight != 0) {
             Log.Information("AppHost.ResizeFlyout suppressed duplicate: {Height}", clampedEffectiveHeight);
             return;
         }
@@ -548,17 +625,47 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _currentEffectiveHeight = clampedEffectiveHeight;
         _lastAppliedHeight = clampedEffectiveHeight;
 
-        Log.Information("AppHost.ResizeFlyout: applied {Height}", clampedEffectiveHeight);
-
+        // Only apply bounds when already visible for shell lifecycle re-place;
+        // interactive content reports never reach here while visible (frozen).
         if (_isVisible && _flyoutWindow != null) {
             UpdateFlyoutBounds();
         }
+    }
 
-        TryCompletePendingInitialShow();
+    private Rectangle ComputeBoundsForEffectiveHeight(int effectiveHeight) {
+        if (_flyoutWindow is null || _trayIcon is null) {
+            return Rectangle.Empty;
+        }
+
+        var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
+        int physicalWidth = (int)Math.Round(376 * dpiScale);
+
+        if (_flyoutWindow.IsPinned) {
+            var current = _flyoutWindow.Bounds;
+            int physicalHeight = (int)Math.Round(effectiveHeight * dpiScale);
+            return new Rectangle(current.X, current.Y, physicalWidth, physicalHeight);
+        }
+
+        var placement = _trayIcon.GetPlacementInfo();
+        var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
+            ? Screen.FromRectangle(placement.Rect)
+            : TrayIcon.GetTaskbarScreen();
+        var anchor = FlyoutPlacement.ResolveAnchor(
+            placement.Rect,
+            monitor.WorkingArea,
+            monitor.Bounds,
+            placement.Edge,
+            dpiScale);
+        return FlyoutPlacement.CalculatePlacement(
+            anchor,
+            placement.Edge,
+            monitor.WorkingArea,
+            dpiScale,
+            new Size(376, effectiveHeight));
     }
 
     private void TryCompletePendingInitialShow() {
-        if (!_pendingInitialShow || _initialShowCompleted || _startupSilent || _isFixtureMode || _headless) {
+        if (!_pendingInitialShow || _initialShowCompleted || _startupSilent || _headless) {
             return;
         }
 
@@ -566,21 +673,29 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             return;
         }
 
-        // Require at least one valid content-size report (not the placeholder 500) before first paint.
+        // Require at least one valid content-size report (not merely the placeholder) before first paint.
         if (_lastAppliedHeight == 0) {
             return;
         }
 
-        _pendingInitialShow = false;
-        _initialShowCompleted = true;
         Log.Information("AppHost: completing pending initial flyout show (height={Height})", _currentEffectiveHeight);
         ShowFlyout();
+
+        // Clear the request only after the flyout is actually visible.
+        if (FlyoutInteractionPolicy.ShouldClearInitialShowRequest(_flyoutWindow is { Visible: true })) {
+            _pendingInitialShow = false;
+            _initialShowCompleted = true;
+            Log.Information("AppHost: initial show completed (visible=true)");
+        }
+        else {
+            Log.Warning("AppHost: initial ShowFlyout did not yield Visible; pending show retained");
+        }
     }
 
     private void PostCurrentShellAppearance() {
         _stateEngine?.Post(new ShellAppearanceChangedEvent(
             SystemTheme.ReadAppsTheme(),
-            SystemTheme.ReadTransparencyEnabled() && !SystemTheme.ReadForcedColors(),
+            ShellMaterialPolicy.ResolveTransparencyEnabled(),
             SystemTheme.ReadForcedColors(),
             false));
     }
@@ -597,7 +712,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         var theme = snapshot.Shell.Theme;
-        bool transparency = snapshot.Shell.TransparencyEnabled && !snapshot.Shell.ForcedColors;
+        // v1 always opaque; ForcedColors still disables any residual transparency path.
+        bool transparency = snapshot.Shell.TransparencyEnabled
+            && !snapshot.Shell.ForcedColors
+            && ShellMaterialPolicy.ResolveTransparencyEnabled();
         if (theme == _lastAppliedTheme && transparency == _lastAppliedTransparency) {
             return;
         }
@@ -606,63 +724,47 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _lastAppliedTransparency = transparency;
         if (TryMarshalToFlyoutUi(new Action(() => {
             _flyoutWindow.ApplyShellAppearance(theme, transparency);
+            _webViewHost?.ApplyOpaqueBackground(theme);
         }))) {
             return;
         }
 
         _flyoutWindow.ApplyShellAppearance(theme, transparency);
+        _webViewHost?.ApplyOpaqueBackground(theme);
     }
 
     private void UpdateFlyoutBounds() {
         if (_flyoutWindow == null || _trayIcon == null) return;
 
-        var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
+        var physicalBounds = ComputeBoundsForEffectiveHeight(_currentEffectiveHeight);
 
         if (_flyoutWindow.IsPinned) {
-            int physicalWidth = (int)Math.Round(376 * dpiScale);
-            int physicalHeight = (int)Math.Round(_currentEffectiveHeight * dpiScale);
-            var currentBounds = _flyoutWindow.Bounds;
-            if (currentBounds.Width != physicalWidth || currentBounds.Height != physicalHeight) {
-                _flyoutWindow.Size = new Size(physicalWidth, physicalHeight);
+            if (_flyoutWindow.Size != physicalBounds.Size) {
+                _flyoutWindow.Size = physicalBounds.Size;
                 Log.Information("UpdateFlyoutBounds (pinned): new size {Size}", _flyoutWindow.Size);
                 _flyoutWindow.RecalcNonClientFrame();
             }
         }
-        else {
-            var placement = _trayIcon.GetPlacementInfo();
-            var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
-                ? Screen.FromRectangle(placement.Rect)
-                : TrayIcon.GetTaskbarScreen();
-
-            var anchor = FlyoutPlacement.ResolveAnchor(
-                placement.Rect,
-                monitor.WorkingArea,
-                monitor.Bounds,
-                placement.Edge,
-                dpiScale
-            );
-
-            var physicalBounds = FlyoutPlacement.CalculatePlacement(
-                anchor,
-                placement.Edge,
-                monitor.WorkingArea,
-                dpiScale,
-                new Size(376, _currentEffectiveHeight)
-            );
-
-            if (_flyoutWindow.Bounds != physicalBounds) {
-                _flyoutWindow.Bounds = physicalBounds;
-                Log.Information("UpdateFlyoutBounds: physicalBounds={Bounds}", physicalBounds);
-                _flyoutWindow.RecalcNonClientFrame();
-            }
+        else if (_flyoutWindow.Bounds != physicalBounds) {
+            _flyoutWindow.Bounds = physicalBounds;
+            Log.Information("UpdateFlyoutBounds: physicalBounds={Bounds}", physicalBounds);
+            _flyoutWindow.RecalcNonClientFrame();
         }
     }
 
     private void OnFlyoutDeactivate(object? sender, EventArgs e) {
-        Log.Information("OnFlyoutDeactivate: isPinned={IsPinned}", _flyoutWindow?.IsPinned);
-        if (_flyoutWindow != null && !_flyoutWindow.IsPinned) {
-            HideFlyout();
+        bool pinned = _flyoutWindow?.IsPinned ?? false;
+        if (!FlyoutInteractionPolicy.ShouldHonorLightDismiss(_suppressLightDismiss, _lightDismissArmed, pinned)) {
+            Log.Information(
+                "OnFlyoutDeactivate ignored: suppress={Suppress} armed={Armed} pinned={Pinned}",
+                _suppressLightDismiss,
+                _lightDismissArmed,
+                pinned);
+            return;
         }
+
+        Log.Information("OnFlyoutDeactivate: isPinned={IsPinned}", pinned);
+        HideFlyout();
     }
 
     private void OnDisplayChanged(object? sender, EventArgs e) {

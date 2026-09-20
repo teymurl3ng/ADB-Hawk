@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { reportContentSize } from './actions';
+import { measureFlyoutEffectiveHeight } from './measureContentSize';
 
 interface ContentSizeOptions {
   headerRef: React.RefObject<HTMLElement | null>;
@@ -7,8 +8,9 @@ interface ContentSizeOptions {
 }
 
 /**
- * Observes header and content DOM elements to measure effective flyout height in CSS pixels.
- * Uses requestAnimationFrame coalescing and suppresses duplicate consecutive reports.
+ * Steady-state content size observer.
+ * Host freezes HWND while the flyout is visible (decision 0005); reports still
+ * update the next-show height bookkeeping.
  */
 export function useContentSize(
   { headerRef, contentRef }: ContentSizeOptions,
@@ -16,43 +18,49 @@ export function useContentSize(
 ): void {
   const lastReportedHeightRef = useRef<number | null>(null);
   const rafIdRef = useRef<number | null>(null);
+  const timeoutIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const measureAndReport = () => {
+      const headerEl = headerRef.current;
+      const contentEl = contentRef.current;
+      if (!headerEl || !contentEl) return;
+
+      const effectiveHeight = measureFlyoutEffectiveHeight(headerEl, contentEl);
+      if (effectiveHeight === lastReportedHeightRef.current) {
+        return;
+      }
+
+      lastReportedHeightRef.current = effectiveHeight;
+      reportContentSize(effectiveHeight, 'live');
+    };
+
+    const scheduleMeasure = () => {
+      measureAndReport();
+
       if (rafIdRef.current !== null) {
         cancelAnimationFrame(rafIdRef.current);
       }
-
       rafIdRef.current = requestAnimationFrame(() => {
         rafIdRef.current = null;
-        const headerEl = headerRef.current;
-        const contentEl = contentRef.current;
-        if (!headerEl || !contentEl) return;
-
-        // Header height (h-10: 40px) + mb-2 (8px) = 48px
-        const headerHeight = headerEl.offsetHeight + 8;
-        // Unconstrained content wrapper height
-        const contentHeight = contentEl.offsetHeight;
-        // Outer chrome: main p-4 (32px) + scroll container pb-2 (8px) = 40px
-        const chromePadding = 40;
-
-        const effectiveHeight = Math.round(headerHeight + contentHeight + chromePadding);
-
-        if (effectiveHeight === lastReportedHeightRef.current) {
-          return; // Suppress duplicate/unchanged reports
-        }
-
-        lastReportedHeightRef.current = effectiveHeight;
-        reportContentSize(effectiveHeight);
+        measureAndReport();
       });
+
+      if (timeoutIdRef.current !== null) {
+        clearTimeout(timeoutIdRef.current);
+      }
+      timeoutIdRef.current = setTimeout(() => {
+        timeoutIdRef.current = null;
+        measureAndReport();
+      }, 0);
     };
 
-    measureAndReport();
+    scheduleMeasure();
 
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(() => {
-        measureAndReport();
+        scheduleMeasure();
       });
 
       if (headerRef.current) observer.observe(headerRef.current);
@@ -63,6 +71,10 @@ export function useContentSize(
       if (rafIdRef.current !== null) {
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
+      }
+      if (timeoutIdRef.current !== null) {
+        clearTimeout(timeoutIdRef.current);
+        timeoutIdRef.current = null;
       }
       if (observer) {
         observer.disconnect();

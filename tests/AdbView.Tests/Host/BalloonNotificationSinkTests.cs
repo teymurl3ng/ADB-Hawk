@@ -148,11 +148,13 @@ public sealed class BalloonNotificationSinkTests {
         int marshalCalls = 0;
         int emitThread = -1;
         int testThread = Environment.CurrentManagedThreadId;
+        using var delivered = new ManualResetEventSlim(false);
         using var sink = new BalloonNotificationSink(
             host,
             marshalToUi: action => {
                 marshalCalls++;
                 action();
+                delivered.Set();
             });
 
         await Task.Run(() => {
@@ -160,6 +162,7 @@ public sealed class BalloonNotificationSinkTests {
             sink.Emit(Intent(NotificationSeverity.Info, "W", "w"));
         }, TestContext.Current.CancellationToken);
 
+        Assert.True(delivered.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "marshal did not complete");
         Assert.Single(host.Shown);
         Assert.Equal(1, marshalCalls);
         Assert.NotEqual(testThread, emitThread);

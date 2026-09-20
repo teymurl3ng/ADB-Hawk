@@ -30,7 +30,7 @@ internal static class FixtureSnapshotProvider {
     private static ShellView CreateShell(bool isPinned) => new() {
         Pinned = isPinned,
         Theme = ThemeKind.Dark,
-        TransparencyEnabled = true,
+        TransparencyEnabled = false, // v1 opaque
         ForcedColors = false,
         ReducedMotion = false
     };

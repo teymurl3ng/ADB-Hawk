@@ -267,14 +267,39 @@ internal static partial class DeviceViewMapper {
     }
 
     /// <summary>
-    /// Hardware/display serial only — never an ADB host:port transport selector.
+    /// Hardware/display serial only — never an ADB host:port transport selector,
+    /// mDNS service instance name, or <c>_adb-tls-*.tcp</c> DNS-SD residue.
     /// </summary>
     private static string? ResolveDisplaySerial(TransportKind transport, string hardwareSerial) {
+        if (string.IsNullOrEmpty(hardwareSerial)) {
+            return null;
+        }
+
         if (EndpointSerialRegex().IsMatch(hardwareSerial)) {
             return null;
         }
 
-        return string.IsNullOrEmpty(hardwareSerial) ? null : hardwareSerial;
+        // Internal transport / discovery names must never appear as the Serial row.
+        if (LooksLikeMdnsOrDiscoveryIdentity(hardwareSerial)) {
+            return null;
+        }
+
+        return hardwareSerial;
+    }
+
+    internal static bool LooksLikeMdnsOrDiscoveryIdentity(string value) {
+        if (value.Contains("_adb-tls-", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("._tcp", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("_adb._tcp", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        // Unextracted adb-<guid/service-instance> forms must never be display Serial.
+        if (value.StartsWith("adb-", StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        return false;
     }
 
     [GeneratedRegex(@"^.+:\d+$", RegexOptions.CultureInvariant)]

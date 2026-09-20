@@ -283,33 +283,38 @@ Do not introduce:
 
 ## 8. Material
 
-### Unpinned
+### v1 production surface (authoritative)
 
-Native Windows host provides real Desktop Acrylic / appropriate Windows backdrop.
+v1 ships the **intentional opaque** dark/light Windows flyout surface.
 
-The WebView content should be transparent over the native material.
+Live Desktop Acrylic behind transparent WebView2 is **not** used in v1:
+measured diagnosis showed multi-second stale presentation, and composition
+hosting is unavailable on the frozen WinForms/WebView2 stack. Acrylic is
+deferred architecture work — not a v1 defect.
 
-### Pinned
+### Unpinned / Pinned
 
-Same application surface with:
+Same opaque application surface for both. Pinned mode adds:
 
 - active/filled pin
-- optional subtle material/opacity adjustment
 - optional subtle elevation difference
 
 Pinned mode must **not** become a different widget design.
 
-### Transparency Disabled
+### Transparency / Acrylic (deferred)
 
-Use intentional opaque theme tokens.
+When a future hosting path can keep live material under Web content without
+stale capture:
 
-No geometry changes.
+Native Windows host may provide Desktop Acrylic / appropriate Windows backdrop
+with transparent WebView content over the native material.
+
+Until then, production must use intentional opaque theme tokens.
 
 ### Important
 
-Production Acrylic is a **native-host responsibility**.
-
 Do not implement production Acrylic via CSS `backdrop-filter`.
+Do not use screenshot blur, repaint timers, or DWM jiggle hacks.
 
 ---
 
@@ -781,17 +786,22 @@ Avoid:
 
 ---
 
-## 22. Opaque Fallback
+## 22. Opaque Surface (v1)
 
-When Windows transparency is unavailable:
-
-use intentional opaque dark/light tokens.
+**v1 production always uses intentional opaque dark/light tokens.**
 
 Same components.  
 Same geometry.  
 Same hierarchy.
 
-Opaque mode is not a separate design.
+Opaque mode is not a separate design — it is the v1 material.
+
+Dark: intentional dark Windows flyout surface (`#202329`).  
+Light: intentional light Windows flyout surface (`#F3F4F6`).
+
+Forced-colors behavior is unchanged (§23).
+
+Live Acrylic remains deferred; see `docs/decisions/0004-v1-opaque-surface-acrylic-deferred.md`.
 
 ---
 
@@ -835,10 +845,25 @@ Visible motion may use:
 
 - **0 ms** — immediate truth/state update
 - **83 ms** — immediate feedback
-- **167 ms** — standard state transition
-- **250 ms** — structural transition
+- **167 ms** — standard state / opacity / chevron transition
+- **333 ms** — reserved token only (not used for interactive native resize in v1)
+
+Shared production easing (Fluent Existing Elements / Point to Point):
+
+- **`cubic-bezier(0.55, 0.55, 0, 1)`**
 
 Do not introduce arbitrary timing values for production behavior.
+
+### v1 interactive structural policy (decision 0005)
+
+While the flyout is **visible**, the native HWND height is **frozen**.
+DeviceCard expand/collapse and PairingCard phase changes do **not** animate
+or resize native flyout bounds. Reliability over animated reflow.
+
+Outer content-driven sizing is evaluated only when **presenting** the flyout
+(hide → show). Motion while open is limited to 83 ms feedback and 167 ms
+state/opacity/chevron. Layout height may change immediately in the web
+layer; overflow scrolls inside a stable scroll container.
 
 ### Examples
 
@@ -848,9 +873,8 @@ Do not introduce arbitrary timing values for production behavior.
 - flyout open: 167 ms
 - status change: 167 ms
 - device insertion/removal: 167 ms
-- pairing state change: 167 ms
-- card expansion: up to 250 ms
-- pairing structural transformation: up to 250 ms
+- pairing state change: 167 ms (web-only; no native height animation)
+- card expansion feedback: 167 ms chevron / detail opacity (layout immediate)
 
 No:
 
@@ -859,10 +883,14 @@ No:
 - overshoot
 - idle pulsing
 - glowing loops
+- FLIP coordinating native window-size changes
+- native structural height interpolation while visible
+- the retired Pass B.1 structural curve `cubic-bezier(0.1, 0.9, 0.2, 1)`
+- structural duration 250 ms
 
 ---
 
-## 25. Structural Animation Mechanics
+## 25. Structural Size Mechanics (v1)
 
 Do not rely on:
 
@@ -870,14 +898,17 @@ Do not rely on:
 - `height: 0 → auto` assumptions
 - `max-height: 999px`
 - fixed screenshot-derived height targets
+- FLIP / measured-height animation driving HWND while visible
 
 Use:
 
-- measured-height animation
-- grid `0fr → 1fr`
-- FLIP/layout animation
+- measure natural content height on show
+- `clamp(naturalHeight, minimumHeight, 560)` for presentation height
+- freeze that native height for the open session
+- instant web layout for disclosure; scroll when content exceeds viewport
+- grid `0fr` / `1fr` for collapsed/expanded detail **without** animating rows
 
-Structural animation must remain content-aware at:
+Content-aware at:
 
 - 100%
 - 125%
@@ -949,7 +980,13 @@ Scrollbar:
 - subtle
 - clearer on interaction
 - no horizontal scroll
-- no layout shift
+- no layout shift from transient structural animation (v1 has none while open)
+- do not resize the native HWND merely to remove a scrollbar
+- `scrollbar-gutter: stable` is allowed when it improves horizontal stability
+  without changing the frozen design
+
+When expanded content fits the frozen visible flyout: no scrollbar.
+When it exceeds the content viewport: internal content scrolls.
 
 ---
 

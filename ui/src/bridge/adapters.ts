@@ -52,14 +52,17 @@ export function mapPairingPhaseToCardState(phase: string): PairingCardState {
   }
 }
 
-/**
- * Derives pairing presentation state from snapshot.
- */
-export function derivePairingState(snapshot: AppSnapshot | null): {
+export interface DerivedPairingState {
   isPairing: boolean;
   state: PairingCardState;
   deviceName: string;
-} | null {
+  offerId: string;
+}
+
+/**
+ * Derives pairing presentation state from snapshot.
+ */
+export function derivePairingState(snapshot: AppSnapshot | null): DerivedPairingState | null {
   if (!snapshot) return null;
 
   if (snapshot.pairing) {
@@ -67,6 +70,7 @@ export function derivePairingState(snapshot: AppSnapshot | null): {
       isPairing: true,
       state: mapPairingPhaseToCardState(snapshot.pairing.phase),
       deviceName: snapshot.pairing.displayName,
+      offerId: snapshot.pairing.offerId,
     };
   }
 
@@ -77,6 +81,7 @@ export function derivePairingState(snapshot: AppSnapshot | null): {
         isPairing: true,
         state: 'pairing-offer',
         deviceName: offer.displayName,
+        offerId: offer.id,
       };
     }
   }

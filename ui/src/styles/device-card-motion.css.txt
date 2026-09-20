@@ -1,8 +1,9 @@
-/* DESIGN §§24–26 — structural card expansion (imported by app.css). */
+/* DESIGN §§24–25 — v1 disclosure: instant layout + 167 ms opacity/chevron only. */
+
+/* Instant final layout — NO height / grid-row animation. */
 .device-card-details-grid {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--motion-structural) var(--motion-easing);
 }
 
 .device-card-details-grid.is-expanded {
@@ -14,6 +15,7 @@
   min-height: 0;
 }
 
+/* Visual reveal only — opacity; does not drive sibling layout. */
 .device-card-details-body {
   opacity: 0;
   transition: opacity var(--motion-state) var(--motion-easing);
@@ -24,5 +26,11 @@
 }
 
 .device-card-chevron {
-  transition: color var(--motion-state) var(--motion-easing);
+  transition:
+    color var(--motion-state) var(--motion-easing),
+    opacity var(--motion-state) var(--motion-easing);
+}
+
+.flyout-scroll {
+  scrollbar-gutter: stable;
 }

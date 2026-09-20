@@ -85,6 +85,41 @@ public sealed class DeviceViewMapperSerialTests {
     }
 
     [Fact]
+    public void Mdns_Connect_Service_Instance_Must_Not_Appear_As_Display_Serial() {
+        // Real tracker residue seen in the field — not a hardware serial.
+        const string messy =
+            "adb-R8VXA02SNKH-28BYjJ (2)._adb-tls-connect._tcp";
+        var raw = Raw(messy, connectionType: 2);
+        var n = Identity.Normalize(raw);
+        Assert.Equal("R8VXA02SNKH", n.HardwareSerial);
+        Assert.Equal(messy, n.AdbSerial); // internal transport identity unchanged
+
+        var view = Map(raw);
+        Assert.Equal("R8VXA02SNKH", view.Detail.Serial);
+        Assert.DoesNotContain("_adb-tls-connect", view.Detail.Serial, StringComparison.Ordinal);
+        Assert.DoesNotContain("._tcp", view.Detail.Serial ?? "", StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Unextractable_Mdns_Service_Name_Omits_Display_Serial() {
+        const string service = "adb-unknownblob._adb-tls-connect._tcp";
+        var raw = Raw(service, connectionType: 2);
+        var view = Map(raw);
+        Assert.Null(view.Detail.Serial);
+        Assert.DoesNotContain(
+            view.Detail.CopyFields,
+            f => f.Key == "serial");
+    }
+
+    [Fact]
+    public void LooksLikeMdns_Rejects_Tls_Connect_Residue() {
+        Assert.True(DeviceViewMapper.LooksLikeMdnsOrDiscoveryIdentity(
+            "adb-R8VXA02SNKH-28BYjJ (2)._adb-tls-connect._tcp"));
+        Assert.True(DeviceViewMapper.LooksLikeMdnsOrDiscoveryIdentity("foo._adb-tls-pairing._tcp"));
+        Assert.False(DeviceViewMapper.LooksLikeMdnsOrDiscoveryIdentity("R8VXA02SNKH"));
+    }
+
+    [Fact]
     public void Usb_And_Wifi_Coexist_As_Distinct_Cards() {
         var usb = Raw("R8VXA02SNKH", connectionType: 1);
         var wifi = Raw("192.168.18.248:5555", connectionType: 2);

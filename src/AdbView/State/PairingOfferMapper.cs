@@ -12,9 +12,13 @@ using AdbView.Adb.Model;
 /// </summary>
 internal static class PairingOfferMapper {
     public static (ImmutableArray<PairingOfferView> Offers, ImmutableDictionary<string, PairingOfferBinding> Bindings)
-        Map(ImmutableArray<RawMdnsService> services) {
+        Map(ImmutableArray<RawMdnsService> services, ImmutableArray<DeviceView> devices = default) {
         if (services.IsDefaultOrEmpty) {
             return (ImmutableArray<PairingOfferView>.Empty, ImmutableDictionary<string, PairingOfferBinding>.Empty);
+        }
+
+        if (devices.IsDefault) {
+            devices = ImmutableArray<DeviceView>.Empty;
         }
 
         var offers = ImmutableArray.CreateBuilder<PairingOfferView>();
@@ -36,7 +40,7 @@ internal static class PairingOfferMapper {
                 continue;
             }
 
-            string displayName = ResolveDisplayName(service);
+            string displayName = PairingDisplayName.Resolve(service, devices);
             offers.Add(new PairingOfferView {
                 Id = id,
                 DisplayName = displayName,
@@ -56,21 +60,9 @@ internal static class PairingOfferMapper {
         return (offers.ToImmutable(), bindings.ToImmutable());
     }
 
-    internal static string ResolveDisplayName(RawMdnsService service) {
-        if (!string.IsNullOrEmpty(service.GivenName)) {
-            return service.GivenName;
-        }
-
-        if (!string.IsNullOrEmpty(service.ProductModel)) {
-            return service.ProductModel;
-        }
-
-        if (!string.IsNullOrEmpty(service.InstanceName)) {
-            return service.InstanceName;
-        }
-
-        return Vocabulary.Pairing.DefaultDeviceName;
-    }
+    /// <summary>Legacy overload for tests that only assert service-field priority without devices.</summary>
+    internal static string ResolveDisplayName(RawMdnsService service) =>
+        PairingDisplayName.Resolve(service, ImmutableArray<DeviceView>.Empty);
 
     internal static bool OffersSemanticallyEqual(
         ImmutableArray<PairingOfferView> left,

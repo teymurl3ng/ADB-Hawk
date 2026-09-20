@@ -152,8 +152,8 @@ public sealed class Phase6CIntegrationTests {
     public void G_H_I_DisplayNamePriority() {
         Assert.Equal("Given", PairingOfferMapper.ResolveDisplayName(PairingSvc(given: "Given", model: "Model")));
         Assert.Equal("Model", PairingOfferMapper.ResolveDisplayName(PairingSvc(given: null, model: "Model", instance: "inst")));
-        Assert.Equal("inst", PairingOfferMapper.ResolveDisplayName(PairingSvc(given: null, model: null, instance: "inst")));
-        Assert.Equal(Vocabulary.Pairing.DefaultDeviceName, PairingOfferMapper.ResolveDisplayName(PairingSvc(given: null, model: null, instance: "")));
+        Assert.Equal(Vocabulary.Pairing.DefaultDeviceName, PairingOfferMapper.ResolveDisplayName(PairingSvc(given: null, model: null, instance: "inst")));
+        Assert.Equal(Vocabulary.Pairing.DefaultDeviceName, PairingOfferMapper.ResolveDisplayName(PairingSvc(given: null, model: null, instance: "adb-RFCX116CYYX-JYueKC")));
     }
 
     [Fact]

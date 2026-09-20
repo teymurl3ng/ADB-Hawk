@@ -405,21 +405,21 @@ foreach ($fixture in $AllFixtures) {
     Run-Check $fixture "Native Window" "Geometry Width" "370-382px (376px nominal)" "$($winState.Rect.Width)px" ($winState.Rect.Width -ge 370 -and $winState.Rect.Width -le 382)
     Run-Check $fixture "Header Pin" "Initial Native TopMost" "False (Unpinned)" "$($winState.IsTopMost)" (-not $winState.IsTopMost)
 
-    # 1. Dark Theme Measurements
+    # 1. Dark Theme Measurements (v1 opaque intentional surface — decision 0004)
     node scripts/audit-pw.js measure-theme $fixture dark
     $darkJson = Get-Content "audit-result.json" -Raw | ConvertFrom-Json
-    Run-Check $fixture "Theme Tokens" "Dark htmlBg" "rgba(0, 0, 0, 0)" "$($darkJson.details.htmlBg)" ($darkJson.details.htmlBg -eq "rgba(0, 0, 0, 0)")
-    Run-Check $fixture "Theme Tokens" "Dark bodyBg" "rgba(0, 0, 0, 0)" "$($darkJson.details.bodyBg)" ($darkJson.details.bodyBg -eq "rgba(0, 0, 0, 0)")
+    Run-Check $fixture "Theme Tokens" "Dark htmlBg" "rgb(32, 35, 41)" "$($darkJson.details.htmlBg)" ($darkJson.details.htmlBg -eq "rgb(32, 35, 41)")
+    Run-Check $fixture "Theme Tokens" "Dark bodyBg" "rgb(32, 35, 41)" "$($darkJson.details.bodyBg)" ($darkJson.details.bodyBg -eq "rgb(32, 35, 41)")
     Run-Check $fixture "Theme Tokens" "Dark bodyColor" "rgb(255, 255, 255)" "$($darkJson.details.bodyColor)" ($darkJson.details.bodyColor -eq "rgb(255, 255, 255)")
     Run-Check $fixture "Theme Tokens" "Dark colorScheme" "dark" "$($darkJson.details.colorScheme)" ($darkJson.details.colorScheme -eq "dark")
     Run-Check $fixture "Theme Tokens" "Dark primaryTextColor" "rgb(255, 255, 255)" "$($darkJson.details.primaryTextColor)" ($darkJson.details.primaryTextColor -eq "rgb(255, 255, 255)")
     Run-Check $fixture "Theme Tokens" "Dark secondaryTextColor" "rgb(163, 163, 163)" "$($darkJson.details.secondaryTextColor)" ($darkJson.details.secondaryTextColor -eq "rgb(163, 163, 163)")
 
-    # 2. Light Theme Measurements
+    # 2. Light Theme Measurements (v1 opaque intentional surface)
     node scripts/audit-pw.js measure-theme $fixture light
     $lightJson = Get-Content "audit-result.json" -Raw | ConvertFrom-Json
-    Run-Check $fixture "Theme Tokens" "Light htmlBg" "rgba(0, 0, 0, 0)" "$($lightJson.details.htmlBg)" ($lightJson.details.htmlBg -eq "rgba(0, 0, 0, 0)")
-    Run-Check $fixture "Theme Tokens" "Light bodyBg" "rgba(0, 0, 0, 0)" "$($lightJson.details.bodyBg)" ($lightJson.details.bodyBg -eq "rgba(0, 0, 0, 0)")
+    Run-Check $fixture "Theme Tokens" "Light htmlBg" "rgb(243, 244, 246)" "$($lightJson.details.htmlBg)" ($lightJson.details.htmlBg -eq "rgb(243, 244, 246)")
+    Run-Check $fixture "Theme Tokens" "Light bodyBg" "rgb(243, 244, 246)" "$($lightJson.details.bodyBg)" ($lightJson.details.bodyBg -eq "rgb(243, 244, 246)")
     Run-Check $fixture "Theme Tokens" "Light bodyColor" "rgb(31, 35, 40)" "$($lightJson.details.bodyColor)" ($lightJson.details.bodyColor -eq "rgb(31, 35, 40)")
     Run-Check $fixture "Theme Tokens" "Light colorScheme" "light" "$($lightJson.details.colorScheme)" ($lightJson.details.colorScheme -eq "light")
     Run-Check $fixture "Theme Tokens" "Light primaryTextColor" "rgb(31, 35, 40)" "$($lightJson.details.primaryTextColor)" ($lightJson.details.primaryTextColor -eq "rgb(31, 35, 40)")
@@ -570,6 +570,8 @@ foreach ($fixture in $AllFixtures) {
         [NativeCapture]::SetForegroundWindow($hwnd) | Out-Null
         Start-Sleep -Milliseconds 150
         node scripts/audit-pw.js pin-click $fixture "false" | Out-Null
+        # Allow pin snapshot → native TopMost clear before light-dismiss probe.
+        Start-Sleep -Milliseconds 400
 
         # Unpinned DOES dismiss
         [NativeCapture]::SetForegroundWindow([NativeCapture]::GetShellWindow()) | Out-Null
