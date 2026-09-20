@@ -240,3 +240,49 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 
 **Deferred visuals (parked):** `docs/decisions/0002-park-phase9-deferred-acrylic-typography.md` → Phase 11.
 
+## Phase 10C — Package lifecycle acceptance (2026-09-20)
+
+**Closure:** **COMPLETE** (human-approved scope decision 2026-09-20).
+
+Clean-machine x64, ARM64 runtime, WebView2-missing runtime, real reboot auto-start, and SmartScreen/MOTW validation are deferred to Phase 11 / pre-public-v1 release hardening and remain **NOT EXERCISED**. This is intentional — not a claim that those tests passed.
+
+**Evidence base:** packaging fixes (Run clear, `{app}\wwwroot` InstallDelete, absolute ISCC paths); `scripts/test-install-acceptance.ps1`; host Windows 11 LTSC Eval Build 26100 x64; WebView2 Evergreen **153.0.4234.48**.
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED** — do not collapse these levels.
+
+### Accepted Phase 10C evidence
+
+| Scenario | Result | Notes |
+|---|---|---|
+| x64 host installer (per-user, no elevation) | **LIVE PASS** | `%LOCALAPPDATA%\Programs\ADBView`; Start Menu `ADB View`; no desktop shortcut |
+| x64 portable ZIP | **LIVE PASS** | extract + run; LocalAppData logs/WV profile; no uninstall/Run registration |
+| First launch (tray + flyout + opaque surface) | **LIVE PASS** | one process; WebView loads; no native caption; dark opaque |
+| no-ADB (platform-tools removed) | **LIVE PASS** | no DeviceTracker/metadata; process stable; truthful unavailable path |
+| platform-tools recovery | **LIVE PASS** | LocalAppData Android SDK discovery; supervisor recovery; A06 USB observed |
+| single-instance | **LIVE PASS** | mutex/pipe; count stays 1 across second launch / portable |
+| optional Run registration | **LIVE PASS** / **AUTOMATED PASS** | `--startup` tray-only; reinstall without task clears Run |
+| upgrade N→N+1 (stopped) | **LIVE PASS** / **AUTOMATED PASS** | same AppId; one uninstall entry; version metadata updated |
+| running-app upgrade protection | **LIVE PASS** | `AppMutex`; silent N+1 exit 1; app remains; no force-kill |
+| stale Vite wwwroot purge | **LIVE PASS** / **AUTOMATED PASS** | `[InstallDelete] {app}\wwwroot`; sentinel removed |
+| uninstall cleanup | **LIVE PASS** / **AUTOMATED PASS** | program dir, shortcut, Run, WV profile, logs removed; SDK + Evergreen preserved |
+| WebView2-present | **LIVE PASS** | runtime detected; install continues without needless bootstrap |
+| package structure / checksums / denylist | **AUTOMATED PASS** | `scripts/test-package.ps1` + SHA-256 sums |
+| ARM64 package construction | **AUTOMATED PASS** | `win-arm64` zip + setup produced; staging architecture validated — **not** runtime |
+
+### Phase 11 / pre-v1 deferred validation (NOT EXERCISED)
+
+| Scenario | Result | Notes |
+|---|---|---|
+| A. Clean x64 pristine VM | **NOT EXERCISED** — deferred Phase 11 | no SDK/repo/dev tools; preferably no .NET 10 Desktop; installer + portable + first launch + upgrade + uninstall |
+| B. ARM64 Windows runtime | **NOT EXERCISED** — deferred Phase 11 | install/launch/WebView2/tray/flyout/single-instance/uninstall — or remove ARM64 from public v1 support |
+| C. WebView2-missing bootstrap live | **NOT EXERCISED** — deferred Phase 11 | genuine Evergreen absence only |
+| D. Reboot / sign-in auto-start | **NOT EXERCISED** — deferred Phase 11 | `--startup` → tray only, no flyout |
+| E. SmartScreen / Mark-of-the-Web | **NOT EXERCISED** — deferred Phase 11 | public-download path |
+| Light OS theme headed (installed) | **NOT EXERCISED** — deferred Phase 11 | dark host proven in 10C |
+
+### Packaging defects fixed in 10C
+
+1. Orphan HKCU Run on modify without startup — `deletevalue` then task-gated write
+2. Stale Vite assets across upgrade — `[InstallDelete] {app}\wwwroot`
+3. Relative `-OutputDirectory` broke ISCC — absolutize paths in `package.ps1`
+

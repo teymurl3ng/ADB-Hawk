@@ -199,13 +199,15 @@
 
 **Research:** note on single-file self-contained publish with the WebView2 loader on clean x64/arm64 Windows 11, Evergreen runtime detection and the official bootstrapper, Inno Setup per-user install patterns and `HKCU\...\Run` handling (V-6).
 
-**Scope:** Reproducible builds, installer, portable zip, fresh-machine verification.
+**Scope:** Reproducible builds, installer, portable zip, package lifecycle acceptance on a development host; pristine clean-VM / ARM64-runtime / reboot / WebView2-missing / SmartScreen validation deferred to Phase 11 (human-approved 2026-09-20).
 
-**Files/subsystems:** `scripts/{build,package}.ps1`, `installer/AdbView.iss`, `docs/RELEASE.md`, `.github/workflows/release.yml`.
+**Files/subsystems:** `scripts/{build,package,test-package,test-install-acceptance}.ps1`, `installer/AdbView.iss`, `docs/RELEASE.md`, `.github/workflows/release.yml` (workflow lands in Wave 10D).
 
-**Tests:** Build-fails-without-`wwwroot` test; no-absolute-URL asset check; installer smoke script (silent install → binary present → `Run` value only if selected → uninstall leaves no files, no registry value, no WebView2 profile).
+**Tests:** Build-fails-without-`wwwroot` test; no-absolute-URL asset check; packaging denylist + SHA-256; silent install → inventory → optional Run → upgrade N→N+1 with wwwroot purge → uninstall; headed host install/portable/single-instance/AppMutex proofs.
 
-**Acceptance:** On a fresh Windows 11 VM with no .NET, no Node, and platform-tools absent: install without admin → launch → tray icon appears → flyout shows `ADB unavailable` with the install hint → install platform-tools → app self-heals with no restart → connect a device → pair wirelessly → reboot with "start at sign-in" enabled and the app returns → uninstall is clean. Repeated for arm64.
+**Acceptance (Phase 10C — closed):** Deterministic `win-x64` + `win-arm64` package construction; x64 host live installer + portable; first launch; no-ADB (platform-tools removed); platform-tools recovery; single-instance; upgrade N→N+1; running-app upgrade protection (`AppMutex`); stale Vite asset purge; uninstall cleanup; optional Run semantics; WebView2-present path; denylist; self-contained publish; architecture metadata; full product regression gates green.
+
+**Deferred to Phase 11 / pre-public-v1 (remain NOT EXERCISED — not PASS):** pristine Windows 11 x64 VM without developer tooling; Windows 11 ARM64 runtime execution; genuinely WebView2-free bootstrap live test; real reboot/sign-in auto-start; SmartScreen / Mark-of-the-Web public-download behavior. If ARM64 runtime cannot be validated before public v1, either validate it or explicitly remove ARM64 from public v1 support.
 
 **Out of scope:** Code signing purchase, Store submission, auto-update, MSIX.
 
@@ -215,13 +217,13 @@
 
 **Research:** final refresh of all `research/` notes with the versions actually shipped (Windows build, WebView2 runtime, platform-tools, device OS builds) so the release is reproducible in a year.
 
-**Scope:** Real-device matrix, docs, performance verification, log review, tagging.
+**Scope:** Real-device matrix, docs, performance verification, log review, tagging; plus Phase 10 deferred release validation (clean x64 VM, ARM64 runtime, WebView2-missing bootstrap, reboot auto-start, SmartScreen/MOTW).
 
 **Files/subsystems:** `docs/{DEVICE-TEST-MATRIX,TROUBLESHOOTING,RELEASE}.md`, `README.md`, `CHANGELOG.md`.
 
-**Tests:** Full `ENGINEERING.md §16.6` matrix signed off on real hardware (≥ 1 device on Android ≤ 16, ≥ 1 on Android 17), all at 100 % and 200 % scaling with a mixed-DPI setup; the DPI/display matrix from `DESIGN.md §35`; performance budget verified (idle CPU ≈ 0 % over 10 minutes, zero hidden-window device traffic, flyout visible < 120 ms, state change visible < 250 ms, working set < 120 MB).
+**Tests:** Full `ENGINEERING.md §16.6` matrix signed off on real hardware (≥ 1 device on Android ≤ 16, ≥ 1 on Android 17), all at 100 % and 200 % scaling with a mixed-DPI setup; the DPI/display matrix from `DESIGN.md §35`; performance budget verified (idle CPU ≈ 0 % over 10 minutes, zero hidden-window device traffic, flyout visible < 120 ms, state change visible < 250 ms, working set < 120 MB); Phase 10 deferred packaging/runtime rows exercised or explicitly scoped out of public v1.
 
-**Acceptance:** `DESIGN.md §38` acceptance criteria demonstrably satisfied; matrix signed; no unexplained visual diffs; a 24-hour pinned-mode run with no drift, no leak, and no spurious notification; v1.0.0 tagged with installer and zip artifacts plus SHA-256 hashes.
+**Acceptance:** `DESIGN.md §38` acceptance criteria demonstrably satisfied; matrix signed; no unexplained visual diffs; a 24-hour pinned-mode run with no drift, no leak, and no spurious notification; Phase 10 deferred validation closed or public support narrowed; v1.0.0 tagged with installer and zip artifacts plus SHA-256 hashes.
 
 **Out of scope:** Everything the product boundary excludes, and every idea parked during Phases 0–10 (each already recorded in `docs/decisions/` for a future version).
 

@@ -65,6 +65,10 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "startup"; Description: "Start ADB View when I sign in"; GroupDescription: "Additional options:"; Flags: unchecked
 
+[InstallDelete]
+; Vite hashes change between builds — purge prior frontend so obsolete hashed assets do not accumulate.
+Type: filesandordirs; Name: "{app}\wwwroot"
+
 [Files]
 Source: "{#MySourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Bootstrapper is used only during install; not left as a permanent app file.
@@ -75,6 +79,9 @@ Source: "{#MyWebView2Bootstrapper}"; DestDir: "{tmp}"; Flags: deleteafterinstall
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 
 [Registry]
+; Clear any prior Run value first so a modify/reinstall with startup unchecked does not leave an orphan.
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
+    ValueName: "ADB View"; Flags: deletevalue
 ; Optional auto-start only when the startup task is selected (installer owns Run; app never writes it).
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
     ValueType: string; ValueName: "ADB View"; \

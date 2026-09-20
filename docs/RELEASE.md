@@ -113,6 +113,8 @@ Integrity only — not a substitute for Authenticode signing.
 | Start Menu | `ADB View` → `AdbView.exe` (**no** `--startup`) |
 | Desktop shortcut | none |
 | Optional task | “Start ADB View when I sign in” (**unchecked**) → `HKCU\...\Run` with `--startup` |
+| Startup modify | Reinstall/upgrade with startup unchecked clears any prior `HKCU\...\Run` value (no orphan) |
+| Frontend upgrade | `[InstallDelete]` purges `{app}\wwwroot` so obsolete Vite-hashed assets do not accumulate |
 | Running app | `AppMutex=Local\AdbView.SingleInstance`; `CloseApplications=no` (prompt/wait, no silent force-kill) |
 | Uninstall removes | app files, Start Menu, uninstall entry, optional Run value, `%LOCALAPPDATA%\ADBView\WebView2`, `%LOCALAPPDATA%\ADBView\logs` |
 
@@ -128,15 +130,21 @@ Integrity only — not a substitute for Authenticode signing.
 
 Phase 10 may produce **unsigned** EXE/installer artifacts. SmartScreen may warn on new or unsigned binaries. Installer technology does not create reputation. Code signing is a Phase 11 / business decision before public v1.
 
-## Phase 10C still required
+## Phase 10C status
 
-This document and `scripts/package.ps1` prove **build** of release artifacts. They do **not** replace Phase 10C:
+Phase 10C package-lifecycle acceptance is **COMPLETE** on the development host (installer, portable, no-ADB, recovery, upgrade, AppMutex, wwwroot purge, uninstall, WebView2-present, denylist, dual-RID package construction).
 
-- fresh VM / Sandbox install
-- upgrade N→N+1
-- uninstall cleanliness
-- arm64 runtime acceptance
-- reboot + optional start-at-sign-in
+## Phase 11 / pre-v1 deferred validation
+
+Remain **NOT EXERCISED** (not PASS) until release hardening:
+
+| ID | Item |
+|---|---|
+| A | Pristine Windows 11 x64 VM (no SDK/repo/dev tools; preferably no .NET 10 Desktop) — installer, portable, first launch, upgrade, uninstall |
+| B | Windows 11 ARM64 **runtime** — install/launch/WebView2/tray/flyout/single-instance/uninstall (or remove ARM64 from public v1 support) |
+| C | Genuinely WebView2-free machine — bootstrapper detect/install/continue-or-fail |
+| D | Real reboot/sign-in auto-start with `--startup` (tray only, no flyout) |
+| E | SmartScreen / Mark-of-the-Web on a real downloaded artifact |
 
 ## Version source
 

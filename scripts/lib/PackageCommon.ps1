@@ -326,4 +326,14 @@ function Assert-InnoScriptContract {
     if ($registryCode -notmatch 'Tasks: startup') {
         throw "HKCU Run entry must be gated on the startup task."
     }
+    # Modify/reinstall with startup unchecked must clear a prior Run value (not leave an orphan).
+    if ($registryCode -notmatch 'Flags:\s*deletevalue') {
+        throw "installer/AdbView.iss must deletevalue the HKCU Run entry before optionally rewriting it."
+    }
+
+    # Upgrade must purge prior hashed frontend so obsolete Vite assets do not accumulate.
+    $installDelete = [regex]::Match($text, '(?ms)^\[InstallDelete\].*?(?=^\[|\z)').Value
+    if ($installDelete -notmatch '\{app\}\\wwwroot') {
+        throw "installer/AdbView.iss must InstallDelete {app}\wwwroot before copying the new frontend."
+    }
 }

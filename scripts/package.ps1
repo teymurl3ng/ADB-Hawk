@@ -79,6 +79,10 @@ Write-Host "package: ISCC=$iscc"
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $repo 'artifacts\release'
 }
+elseif (-not [System.IO.Path]::IsPathRooted($OutputDirectory)) {
+    $OutputDirectory = Join-Path $repo $OutputDirectory
+}
+$OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $releaseRoot = Join-Path $OutputDirectory $version
 if (Test-Path -LiteralPath $releaseRoot) {
     Remove-Item -LiteralPath $releaseRoot -Recurse -Force
@@ -161,14 +165,19 @@ foreach ($rid in $rids) {
     $setupPath = Join-Path $releaseRoot "$setupBase.exe"
 
     $iss = Join-Path $repo 'installer\AdbView.iss'
+    # ISCC resolves relative /D paths against the .iss directory — always pass absolute paths.
+    $packageDirAbs = (Resolve-Path -LiteralPath $packageDir).Path
+    $releaseRootAbs = (Resolve-Path -LiteralPath $releaseRoot).Path
+    $bootstrapperAbs = (Resolve-Path -LiteralPath $bootstrapper).Path
+    $setupIconAbs = (Resolve-Path -LiteralPath $setupIcon).Path
     $isccArgs = @(
         "/DMyAppVersion=$version",
         "/DMyAppRid=$rid",
-        "/DMySourceDir=$packageDir",
-        "/DMyOutputDir=$releaseRoot",
+        "/DMySourceDir=$packageDirAbs",
+        "/DMyOutputDir=$releaseRootAbs",
         "/DMyOutputBaseFilename=$setupBase",
-        "/DMyWebView2Bootstrapper=$bootstrapper",
-        "/DMySetupIcon=$setupIcon",
+        "/DMyWebView2Bootstrapper=$bootstrapperAbs",
+        "/DMySetupIcon=$setupIconAbs",
         "/DMyArchitecturesAllowed=$archAllowed",
         "/DMyArchitecturesInstallIn64BitMode=$archInstall",
         $iss
