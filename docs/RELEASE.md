@@ -181,9 +181,9 @@ CI proves the **same packaging command and policy** (file set, version, RID, App
 ## Phase 10C / 10D status
 
 - **10C COMPLETE** — host package-lifecycle acceptance (installer, portable, no-ADB, recovery, upgrade, AppMutex, wwwroot purge, uninstall, WebView2-present, denylist, dual-RID construction).
-- **10D COMPLETE** when `.github/workflows/release.yml` runs green on the phase-complete commit and uploads `ADBView-<version>-packages`.
+- **10D COMPLETE** — `.github/workflows/release.yml` green on `d6a81e2` (Actions run `35524942016`); artifact `ADBView-0.1.0-packages` inventory + SHA-256 verified.
 
-Public release is **not** automatic from this workflow.
+Public release is **not** automatic from this workflow. Tag `phase-10-complete` → `d6a81e2`.
 
 ## Phase 11 / pre-v1 deferred validation
 
