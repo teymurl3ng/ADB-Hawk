@@ -1445,7 +1445,7 @@ Only items that genuinely require implementation or device testing. Each must be
 | **V-5** | Tray balloon presentation quality on current Windows 11 (banner appearance, app naming, Action Center behaviour, Do-Not-Disturb) | 8 | Swap `INotificationSink` for Windows App SDK `AppNotificationManager` (isolated change; adds one dependency and a §15 entry) |
 | **V-6** | Single-file self-contained publish + WebView2 loader + Segoe UI Variable presence on clean Windows 11 SKUs (x64 and arm64) | 10 | `IncludeNativeLibrariesForSelfExtract=true`; non-single-file publish; Segoe UI fallback chain already in the token set |
 | **V-7** | Battery via `dumpsys battery` across OEMs (Samsung/Xiaomi/Pixel) and in Doze; exact-model/Android-version property availability | 5, 7 | Omit battery (design already supports absence); `cmd battery get level` as an alternative probe |
-| **V-8** | `grid-template-rows: 0fr→1fr`, `@starting-style`, `transition-behavior: allow-discrete` in the shipped WebView2 runtime at 125–200 % scaling | 2 | Measured-height FLIP animation (still no hard-coded heights) |
+| **V-8** | Instant disclosure layout + frozen visible HWND (decision 0005) at 125–200 % scaling without blank frames or outer-window churn | 2 / pre-10 | Content-driven height on show only; inner scroll for overflow; no FLIP/native structural animator |
 | **V-9** | Minimal protobuf reader vs `--proto-text` output for the same real-device state, including multi-device and IPv6 records | 4–6 | Use text variants as the primary parse path |
 | **V-10** | Wi-Fi 2.0 auto-connect interaction: whether a paired device connects before `host:pair` returns, and whether offers withdraw promptly | 6 | Dual-resolution rule already designed; tune the 60 s quiet timeout |
 
