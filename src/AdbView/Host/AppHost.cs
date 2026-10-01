@@ -30,6 +30,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly PostPairConnectCoordinator? _postPairConnect;
     private FlyoutRevealAnimator? _presenter;
     private bool _animationsEnabled = true;
+    private bool _lastAnimationsEnabledLogged;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly NotificationCoordinator? _notificationCoordinator;
     private readonly INotificationSink? _notificationSink;
@@ -1117,8 +1118,14 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         // Decision 0013: OS reduced-motion turns every presentation animation into the 0012
-        // instant steps.
+        // instant steps. Logged so "is it animating?" is a one-grep answer.
         _animationsEnabled = !snapshot.Shell.ReducedMotion;
+        if (_animationsEnabled != _lastAnimationsEnabledLogged) {
+            _lastAnimationsEnabledLogged = _animationsEnabled;
+            Log.Information(
+                "Shell animations {State} (OS client-area animation preference).",
+                _animationsEnabled ? "ENABLED" : "DISABLED (OS reduced motion)");
+        }
 
         var theme = snapshot.Shell.Theme;
         // v1 always opaque; ForcedColors still disables any residual transparency path.

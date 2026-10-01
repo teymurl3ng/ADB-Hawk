@@ -71,8 +71,13 @@ internal static class SystemTheme {
         bool enabled = true;
 #pragma warning disable CA1031 // R-08: probe failure is logged; the OS default (on) is kept.
         try {
-            // Off (false) is a real, user-chosen state — only a probe failure keeps the default.
-            return SystemParametersInfoW(SpiGetClientAreaAnimation, 0, ref enabled, 0) && enabled;
+            // Off (false) is a real, user-chosen state. A FAILED probe must not be mistaken
+            // for it — return the untouched default so an API error can never silently
+            // disable 0013 animations (2026-10-02 forensics: this exact wrong fallback
+            // masked them).
+            return SystemParametersInfoW(SpiGetClientAreaAnimation, 0, ref enabled, 0)
+                ? enabled
+                : true;
         }
         catch (Exception ex) {
             Log.Warning(ex, "SystemTheme: client-area animation probe failed; defaulting on");
