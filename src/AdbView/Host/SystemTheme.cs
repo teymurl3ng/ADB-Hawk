@@ -56,4 +56,28 @@ internal static class SystemTheme {
         }
 #pragma warning restore CA1031
     }
+
+    private const uint SpiGetClientAreaAnimation = 0x1042;
+
+    /// <summary>Hand-written P/Invoke (deliberate CsWin32 deviation, same precedent as
+    /// GetExtendedUdpTable — the generator OOMs under this machine's memory pressure).</summary>
+    [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError = false)]
+    [System.Runtime.InteropServices.DefaultDllImportSearchPaths(System.Runtime.InteropServices.DllImportSearchPath.System32)]
+    private static extern bool SystemParametersInfoW(uint uiAction, uint uiParam, ref bool pvParam, uint fWinIni);
+
+    /// <summary>OS "show animations in Windows" (client-area animation) preference — decision
+    /// 0013: when off, all flyout presentation animation reduces to instant steps.</summary>
+    public static bool ReadClientAreaAnimation() {
+        bool enabled = true;
+#pragma warning disable CA1031 // R-08: probe failure is logged; the OS default (on) is kept.
+        try {
+            // Off (false) is a real, user-chosen state — only a probe failure keeps the default.
+            return SystemParametersInfoW(SpiGetClientAreaAnimation, 0, ref enabled, 0) && enabled;
+        }
+        catch (Exception ex) {
+            Log.Warning(ex, "SystemTheme: client-area animation probe failed; defaulting on");
+            return true;
+        }
+#pragma warning restore CA1031
+    }
 }

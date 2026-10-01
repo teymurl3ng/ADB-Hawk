@@ -369,3 +369,15 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Stale port (no advertisement) collapses via host-only match on the current advertisement | **AUTOMATED PASS** | `StaleTransportCollapsesViaCurrentAdvertisementOnly` — the live-defect shape |
 | Two distinct phones (distinct IPs) remain two cards | **AUTOMATED PASS** | Over-merge guard |
 | Live: real stale+fresh transport pair collapses to one card after update | **NOT EXERCISED** | Live session; requires app restart to pick up |
+
+## Flyout presentation animation (2026-10-02, decision 0013)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Animator: easing frames monotone to target, retarget composes completions (light-dismiss arming never lost), cancel stops, complete-snaps fires once | **AUTOMATED PASS** | `FlyoutRevealAnimatorTests` (fake tick source + fake clock) |
+| Easing = Fluent Point-to-Point endpoints/monotonicity | **AUTOMATED PASS** | `EasingTests` |
+| Live: growth animates when devices connect / card expands; open slides out; close slides into tray on light-dismiss/Esc/toggle | **NOT EXERCISED** | Owner feel-validation; rollback = revert to 0012 instant steps |
+| Reduced motion (OS client-area animation off) reduces all animation to instant | **NOT EXERCISED** | `SystemTheme.ReadClientAreaAnimation` wired through ShellAppearance |
+| WM_DPICHANGED mid-animation | **NOT EXERCISED** | Cancels animation, adopts OS bounds |

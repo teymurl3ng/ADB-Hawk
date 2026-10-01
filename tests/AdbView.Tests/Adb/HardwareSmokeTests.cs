@@ -59,21 +59,19 @@ public sealed class HardwareSmokeTests {
 
         var identity = new DeviceIdentity();
         var normalized = identity.NormalizeList(list.Devices);
-        Assert.Contains(normalized, d =>
-            d.HardwareSerial.Contains("R8VXA02SNKH", StringComparison.Ordinal)
-            || (d.Model is not null && d.Model.Contains("A065", StringComparison.OrdinalIgnoreCase)));
 
-        var samsung = normalized.First(d =>
-            d.HardwareSerial.Contains("R8VXA02SNKH", StringComparison.Ordinal)
-            || (d.Model is not null && d.Model.Contains("A065", StringComparison.OrdinalIgnoreCase)));
+        // Device-agnostic (2026-10-02): the smoke observes whatever real hardware is attached —
+        // the pipeline invariants are what matter, not a specific test phone.
+        var observed = normalized.First(d => d.SemanticState == DeviceSemanticState.Connected);
+        Assert.False(string.IsNullOrWhiteSpace(observed.HardwareSerial));
 
         await using var engine = new StateEngine(StateEngine.CreateDefaultSnapshot(revision: 1));
         engine.Post(new DeviceListReceivedEvent(list.Devices, list.At));
         await engine.DrainAsync();
 
         var snap = engine.CurrentSnapshot;
-        Assert.Contains(snap.Devices, d => d.Id == samsung.Id);
-        var view = snap.Devices.First(d => d.Id == samsung.Id);
+        Assert.Contains(snap.Devices, d => d.Id == observed.Id);
+        var view = snap.Devices.First(d => d.Id == observed.Id);
 
         Assert.False(string.IsNullOrWhiteSpace(view.DisplayName));
         Assert.Equal(DeviceStateKind.Connected, view.State);

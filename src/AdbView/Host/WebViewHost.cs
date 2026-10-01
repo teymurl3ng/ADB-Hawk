@@ -62,6 +62,33 @@ internal sealed class WebViewHost : IDisposable {
     internal Rectangle? ChildBounds =>
         _webView is null ? null : _webView.Bounds;
 
+    private bool _childBoundsPinned;
+
+    /// <summary>
+    /// Decision 0013 (mode B): during a presentation animation the child is pinned to its FINAL
+    /// bounds exactly once — the animated HWND clips/reveals it, so Chromium performs no
+    /// per-frame work (the measured 0003/0005 jank). Dock is restored by
+    /// <see cref="UnpinChildBounds"/>.
+    /// </summary>
+    internal void PinChildBounds(Rectangle finalClientBounds) {
+        if (_webView is null || _childBoundsPinned) {
+            return;
+        }
+
+        _webView.Dock = DockStyle.None;
+        _webView.Bounds = finalClientBounds;
+        _childBoundsPinned = true;
+    }
+
+    internal void UnpinChildBounds() {
+        if (_webView is null || !_childBoundsPinned) {
+            return;
+        }
+
+        _webView.Dock = DockStyle.Fill;
+        _childBoundsPinned = false;
+    }
+
     internal int RecoveryAttemptsInWindow {
         get {
             PruneRecoveryWindow(_clock());

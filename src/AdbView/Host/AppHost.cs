@@ -28,6 +28,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly PairingSession? _pairingSession;
     private readonly QrPairingSession? _qrPairingSession;
     private readonly PostPairConnectCoordinator? _postPairConnect;
+    private FlyoutRevealAnimator? _presenter;
+    private bool _animationsEnabled = true;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly NotificationCoordinator? _notificationCoordinator;
     private readonly INotificationSink? _notificationSink;
@@ -251,6 +253,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 post: evt => _stateEngine.Post(evt),
                 startOffer: offerId => _pairingSession.Start(offerId),
                 submitCode: (offerId, code) => _pairingSession.Submit(offerId, code));
+
+            // Decision 0013: graceful presentation (mode-B growth + open/close slides).
+            _presenter = new FlyoutRevealAnimator(
+                new FormsTimerTickSource(),
+                bounds => {
+                    if (_flyoutWindow is { IsDisposed: false } window) {
+                        window.Bounds = bounds;
+                    }
+                });
 
             // Decision 0009: one active connect toward the paired device while waiting.
             _postPairConnect = new PostPairConnectCoordinator(new Adb.HostConnectClient());
@@ -573,7 +584,18 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _lightDismissArmed = false;
         int showGen = ++_showGeneration;
 
-        _flyoutWindow.Bounds = physicalBounds;
+        // Decision 0013: cancel any close animation (its terminal Hide would eat this show),
+        // then present. Animated open: slide out of the tray edge over 167 ms.
+        _closeAnimating = false;
+        _presenter?.Cancel();
+        bool reducedMotion = !_animationsEnabled;
+        if (!reducedMotion) {
+            _flyoutWindow.Bounds = SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea, intoTray: true);
+        }
+        else {
+            _flyoutWindow.Bounds = physicalBounds;
+        }
+
         _flyoutWindow.TopMost = _flyoutWindow.IsPinned;
         _flyoutWindow.Show();
         _flyoutWindow.RecalcNonClientFrame();
@@ -584,21 +606,41 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         _isVisible = _flyoutWindow.Visible;
-        _suppressLightDismiss = false;
 
-        // Arm light-dismiss only after this show's message batch — not via Thread.Sleep.
-        if (_flyoutWindow.IsHandleCreated) {
-            _ = _flyoutWindow.BeginInvoke(new Action(() => {
-                if (showGen != _showGeneration) {
-                    return;
-                }
+        if (reducedMotion) {
+            _suppressLightDismiss = false;
+        }
 
-                _lightDismissArmed = true;
-                Log.Information("ShowFlyout: light-dismiss armed (visible={Visible})", _flyoutWindow.Visible);
-            }));
+        if (!reducedMotion) {
+            _presenter?.AnimateBounds(
+                _flyoutWindow.Bounds,
+                physicalBounds,
+                FlyoutRevealAnimator.OpenDuration,
+                completed: () => {
+                    if (showGen != _showGeneration) {
+                        return; // a hide superseded this open mid-flight
+                    }
+
+                    _suppressLightDismiss = false;
+                    ArmLightDismiss(showGen);
+                    Log.Information("ShowFlyout: open reveal completed.");
+                });
         }
         else {
-            _lightDismissArmed = true;
+            // Arm light-dismiss only after this show's message batch — not via Thread.Sleep.
+            if (_flyoutWindow.IsHandleCreated) {
+                _ = _flyoutWindow.BeginInvoke(new Action(() => {
+                    if (showGen != _showGeneration) {
+                        return;
+                    }
+
+                    _lightDismissArmed = true;
+                    Log.Information("ShowFlyout: light-dismiss armed (visible={Visible})", _flyoutWindow.Visible);
+                }));
+            }
+            else {
+                _lightDismissArmed = true;
+            }
         }
 
         NotifyMetadataPresentation();
@@ -625,6 +667,50 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         _ = RunDiscoveryCheckAsync();
+    }
+
+    /// <summary>Arms light-dismiss unless the show generation was superseded (decision 0013).</summary>
+    private void ArmLightDismiss(int showGen) {
+        if (_flyoutWindow is not { IsHandleCreated: true }) {
+            _lightDismissArmed = true;
+            return;
+        }
+
+        _ = _flyoutWindow.BeginInvoke(new Action(() => {
+            if (showGen != _showGeneration) {
+                return;
+            }
+
+            _lightDismissArmed = true;
+            Log.Information("ShowFlyout: light-dismiss armed (visible={Visible})", _flyoutWindow.Visible);
+        }));
+    }
+
+    /// <summary>
+    /// Decision 0013: the off-screen slide origin/target — the final bounds pushed along the
+    /// tray-normal axis. intoTray=true: fully behind the taskbar (close target). intoTray=false:
+    /// one gap-width toward the tray from the final spot (open origin).
+    /// </summary>
+    private static Rectangle SlideTarget(Rectangle finalBounds, FlyoutPlacement.TaskbarEdge edge, Rectangle workArea, bool intoTray) {
+        const int openOffset = 24; // effective px; small nudge the window slides over
+        var moved = finalBounds;
+        int gap = intoTray ? 0 : openOffset;
+        switch (edge) {
+            case FlyoutPlacement.TaskbarEdge.Bottom:
+                moved.Y = intoTray ? workArea.Bottom : finalBounds.Bottom + openOffset;
+                break;
+            case FlyoutPlacement.TaskbarEdge.Top:
+                moved.Y = intoTray ? workArea.Top - moved.Height : finalBounds.Top - openOffset;
+                break;
+            case FlyoutPlacement.TaskbarEdge.Left:
+                moved.X = intoTray ? workArea.Left - moved.Width : finalBounds.Left - openOffset;
+                break;
+            case FlyoutPlacement.TaskbarEdge.Right:
+                moved.X = intoTray ? workArea.Right : finalBounds.Right + openOffset;
+                break;
+        }
+
+        return moved;
     }
 
     private async Task RunDiscoveryCheckAsync() {
@@ -754,9 +840,41 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _lastAppliedHeight = _lastReportedContentHeight;
         }
 
-        _flyoutWindow?.Hide();
         _isVisible = false;
         NotifyMetadataPresentation();
+
+        // Decision 0013: graceful close — slide into the tray edge over 83 ms, then hide.
+        // _showGeneration was bumped above, so any Show during the slide cancels the terminal
+        // Hide (the close animation's generation check fails) and the flyout stays open.
+        var window = _flyoutWindow;
+        if (window is not null && window.Visible && _animationsEnabled && _trayIcon is not null) {
+            var placement = _trayIcon.GetPlacementInfo();
+            var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
+                ? Screen.FromRectangle(placement.Rect)
+                : TrayIcon.GetTaskbarScreen();
+            int closeGen = _showGeneration;
+            _closeAnimating = true;
+
+            _presenter?.Cancel();
+            _presenter?.AnimateBounds(
+                window.Bounds,
+                SlideTarget(window.Bounds, placement.Edge, monitor.WorkingArea, intoTray: true),
+                FlyoutRevealAnimator.CloseDuration,
+                completed: () => {
+                    _closeAnimating = false;
+                    if (closeGen != _showGeneration) {
+                        return; // a show superseded this close mid-slide
+                    }
+
+                    window.Hide();
+                    Log.Information("HideFlyout: close slide completed.");
+                });
+        }
+        else {
+            _closeAnimating = false;
+            _presenter?.Cancel();
+            window?.Hide();
+        }
     }
 
     private void NotifyMetadataPresentation() {
@@ -789,14 +907,24 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             clampedEffectiveHeight,
             visible);
 
-        // Decision 0012 (amending 0005): the HWND height follows the reported content height in
-        // instant steps — visible or hidden. Equal heights are suppressed inside
-        // ApplyImmediateResize, so settled content produces at most one native resize.
+        // Decision 0013 (amending 0012): while visible the height change is an animated mode-B
+        // retarget (child pinned to final size once; window frame glides). Hidden keeps the
+        // instant path (priming / next-show), except during a close slide where applying would
+        // fight the animation — the height is recorded for the next show instead.
+        if (visible) {
+            AnimateVisibleResize(clampedEffectiveHeight);
+            return;
+        }
+
+        if (_closeAnimating) {
+            return;
+        }
+
         bool applied = ApplyImmediateResize(clampedEffectiveHeight, force: false);
 
         // The initial-show gate only concerns the hidden priming path; while visible the step
         // above already applied and there is nothing to complete.
-        if (!visible && applied) {
+        if (applied) {
             if (_pendingInitialShow && !_initialShowCompleted) {
                 _hiddenContentSizeReportsForInitialShow++;
                 if (!FlyoutInteractionPolicy.ShouldCompleteInitialShow(_hiddenContentSizeReportsForInitialShow)) {
@@ -834,6 +962,51 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _currentEffectiveHeight);
     }
 
+    private bool _closeAnimating;
+
+    /// <summary>Decision 0013: animated mode-B growth/shrink while visible. Bookkeeping adopts
+    /// the new height immediately (0 ms truth for state); only the window's presentation
+    /// animates, with the WebView child pinned to the final size once (no per-frame Chromium
+    /// work — the measured 0003/0005 jank).</summary>
+    private void AnimateVisibleResize(int newHeight) {
+        var window = _flyoutWindow;
+        if (window is null) {
+            return;
+        }
+
+        if (newHeight == _currentEffectiveHeight && _lastAppliedHeight != 0) {
+            return;
+        }
+
+        if (!_animationsEnabled || _presenter is null) {
+            ApplyImmediateResize(newHeight, force: false);
+            return;
+        }
+
+        _currentEffectiveHeight = newHeight;
+        _lastAppliedHeight = newHeight;
+
+        var target = ComputeBoundsForEffectiveHeight(newHeight);
+        if (window.Bounds == target) {
+            return;
+        }
+
+        var dpiScale = window.DeviceDpi / 96.0;
+        var finalChildBounds = new Rectangle(
+            Point.Empty,
+            new Size((int)Math.Round(376 * dpiScale), (int)Math.Round(newHeight * dpiScale)));
+        _webViewHost?.PinChildBounds(finalChildBounds);
+
+        _presenter.AnimateBounds(
+            window.Bounds,
+            target,
+            FlyoutRevealAnimator.GrowthDuration,
+            completed: () => {
+                _webViewHost?.UnpinChildBounds();
+                window.RecalcNonClientFrame();
+            });
+    }
+
     private bool ApplyImmediateResize(int clampedEffectiveHeight, bool force) {
         if (!force && clampedEffectiveHeight == _currentEffectiveHeight && _lastAppliedHeight != 0) {
             Log.Information("AppHost.ResizeFlyout suppressed duplicate: {Height}", clampedEffectiveHeight);
@@ -843,8 +1016,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _currentEffectiveHeight = clampedEffectiveHeight;
         _lastAppliedHeight = clampedEffectiveHeight;
 
-        // Decision 0012: applies hidden (priming / next-show) and visible (instant step).
-        // UpdateFlyoutBounds re-places: pinned keeps X/Y; unpinned re-anchors to the tray.
+        // Hidden path (priming / next-show); the visible path animates via AnimateVisibleResize.
         if (_flyoutWindow != null) {
             UpdateFlyoutBounds();
         }
@@ -930,7 +1102,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             ResolveEffectiveTheme(),
             ShellMaterialPolicy.ResolveTransparencyEnabled(),
             SystemTheme.ReadForcedColors(),
-            false));
+            SystemTheme.ReadClientAreaAnimation()));
     }
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e) {
@@ -943,6 +1115,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         if (_flyoutWindow is null) {
             return;
         }
+
+        // Decision 0013: OS reduced-motion turns every presentation animation into the 0012
+        // instant steps.
+        _animationsEnabled = !snapshot.Shell.ReducedMotion;
 
         var theme = snapshot.Shell.Theme;
         // v1 always opaque; ForcedColors still disables any residual transparency path.
