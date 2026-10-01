@@ -18,7 +18,7 @@ Write-Host 'MOTION: build...'
 dotnet build (Join-Path $repo 'ADBView.sln') -c Release -v q
 Assert-Ok 'build'
 
-Write-Host 'MOTION: frozen-visible-bounds + serial semantics...'
+Write-Host 'MOTION: live-sizing step policy + serial semantics...'
 dotnet test (Join-Path $repo 'tests\AdbView.Tests\AdbView.Tests.csproj') `
     -c Release --no-build `
     --filter 'FullyQualifiedName~FrozenVisibleBoundsTests|FullyQualifiedName~DeviceViewMapperSerialTests|FullyQualifiedName~DeviceIdentityTests' `

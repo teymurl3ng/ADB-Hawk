@@ -9,8 +9,8 @@ interface ContentSizeOptions {
 
 /**
  * Steady-state content size observer.
- * Host freezes HWND while the flyout is visible (decision 0005); reports still
- * update the next-show height bookkeeping.
+ * Host applies the reported height as an instant native step whenever it differs
+ * from the applied height, visible or hidden (decision 0012, amending 0005).
  */
 export function useContentSize(
   { headerRef, contentRef }: ContentSizeOptions,

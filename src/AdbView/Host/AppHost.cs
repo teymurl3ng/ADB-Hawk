@@ -603,6 +603,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         NotifyMetadataPresentation();
         MaybeStartDiscoveryCheck();
+
+        // Decision 0012 cleanup: a manual show satisfies the pending initial-show request —
+        // without this, a tray toggle before the first report leaves the flag dangling and the
+        // window auto re-opens later at a different height (audit RACE 5).
+        if (FlyoutInteractionPolicy.ShouldClearPendingInitialShowOnManualShow(_pendingInitialShow, _initialShowCompleted)) {
+            _pendingInitialShow = false;
+            _initialShowCompleted = true;
+            Log.Information("AppHost: pending initial show satisfied by manual show.");
+        }
     }
 
     /// <summary>Decision 0008: measure when the flyout opens while the health card is visible.</summary>
@@ -780,29 +789,27 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             clampedEffectiveHeight,
             visible);
 
-        // v1 decision 0005: while visible, never apply content-driven HWND resize.
-        // Still record height for the next-show path (already stored above).
-        if (!FlyoutInteractionPolicy.ShouldApplyContentResizeToHwnd(visible)) {
-            Log.Information(
-                "AppHost.ResizeFlyout: frozen visible session — ignoring HWND apply (height={Height})",
-                clampedEffectiveHeight);
-            return;
-        }
+        // Decision 0012 (amending 0005): the HWND height follows the reported content height in
+        // instant steps — visible or hidden. Equal heights are suppressed inside
+        // ApplyImmediateResize, so settled content produces at most one native resize.
+        bool applied = ApplyImmediateResize(clampedEffectiveHeight, force: false);
 
-        ApplyImmediateResize(clampedEffectiveHeight, force: false);
-
-        if (_pendingInitialShow && !_initialShowCompleted) {
-            _hiddenContentSizeReportsForInitialShow++;
-            if (!FlyoutInteractionPolicy.ShouldCompleteInitialShow(_hiddenContentSizeReportsForInitialShow)) {
-                Log.Information(
-                    "AppHost: initial show waiting for settled content-size (report={Report}, height={Height})",
-                    _hiddenContentSizeReportsForInitialShow,
-                    clampedEffectiveHeight);
-                return;
+        // The initial-show gate only concerns the hidden priming path; while visible the step
+        // above already applied and there is nothing to complete.
+        if (!visible && applied) {
+            if (_pendingInitialShow && !_initialShowCompleted) {
+                _hiddenContentSizeReportsForInitialShow++;
+                if (!FlyoutInteractionPolicy.ShouldCompleteInitialShow(_hiddenContentSizeReportsForInitialShow)) {
+                    Log.Information(
+                        "AppHost: initial show waiting for settled content-size (report={Report}, height={Height})",
+                        _hiddenContentSizeReportsForInitialShow,
+                        clampedEffectiveHeight);
+                    return;
+                }
             }
-        }
 
-        TryCompletePendingInitialShow();
+            TryCompletePendingInitialShow();
+        }
     }
 
     private void PrimeHiddenLayoutViewport() {
@@ -827,20 +834,22 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _currentEffectiveHeight);
     }
 
-    private void ApplyImmediateResize(int clampedEffectiveHeight, bool force) {
+    private bool ApplyImmediateResize(int clampedEffectiveHeight, bool force) {
         if (!force && clampedEffectiveHeight == _currentEffectiveHeight && _lastAppliedHeight != 0) {
             Log.Information("AppHost.ResizeFlyout suppressed duplicate: {Height}", clampedEffectiveHeight);
-            return;
+            return false;
         }
 
         _currentEffectiveHeight = clampedEffectiveHeight;
         _lastAppliedHeight = clampedEffectiveHeight;
 
-        // Caller only reaches here when the flyout is hidden (frozen while visible).
-        // Must update HWND so WebView2 reflows at presentation width before the next measure.
+        // Decision 0012: applies hidden (priming / next-show) and visible (instant step).
+        // UpdateFlyoutBounds re-places: pinned keeps X/Y; unpinned re-anchors to the tray.
         if (_flyoutWindow != null) {
             UpdateFlyoutBounds();
         }
+
+        return true;
     }
 
     private Rectangle ComputeBoundsForEffectiveHeight(int effectiveHeight) {

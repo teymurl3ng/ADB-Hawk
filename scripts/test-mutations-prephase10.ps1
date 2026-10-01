@@ -73,14 +73,14 @@ if ($LASTEXITCODE -ne 0) { throw 'build failed' }
 $pol = Join-Path $repo 'src\AdbView\Host\FlyoutInteractionPolicy.cs'
 $polOrig = Get-Content -Raw $pol
 $polMut = $polOrig.Replace(
-    'public static bool ShouldApplyContentResizeToHwnd(bool flyoutVisible) =>' + "`r`n" + '        !flyoutVisible;',
-    'public static bool ShouldApplyContentResizeToHwnd(bool flyoutVisible) =>' + "`r`n" + '        true; // MUTATION M1')
+    'public static bool ShouldApplyContentResize(int appliedHeight, int reportedHeight) =>' + "`r`n" + '        appliedHeight != reportedHeight;',
+    'public static bool ShouldApplyContentResize(int appliedHeight, int reportedHeight) =>' + "`r`n" + '        true; // MUTATION M1')
 if ($polMut -eq $polOrig) {
     $polMut = $polOrig.Replace(
-        'public static bool ShouldApplyContentResizeToHwnd(bool flyoutVisible) =>' + "`n" + '        !flyoutVisible;',
-        'public static bool ShouldApplyContentResizeToHwnd(bool flyoutVisible) =>' + "`n" + '        true; // MUTATION M1')
+        'public static bool ShouldApplyContentResize(int appliedHeight, int reportedHeight) =>' + "`n" + '        appliedHeight != reportedHeight;',
+        'public static bool ShouldApplyContentResize(int appliedHeight, int reportedHeight) =>' + "`n" + '        true; // MUTATION M1')
 }
-Invoke-MutationStep -Name 'M1: disclosure may resize HWND while visible' -Path $pol -Original $polOrig -Mutated $polMut `
+Invoke-MutationStep -Name 'M1: equal-height suppression disabled (always apply)' -Path $pol -Original $polOrig -Mutated $polMut `
     -BeforeFail {
         $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         & dotnet build (Join-Path $repo 'tests\AdbView.Tests\AdbView.Tests.csproj') -c Release -v q | Out-Null
@@ -97,8 +97,8 @@ Invoke-MutationStep -Name 'M1: disclosure may resize HWND while visible' -Path $
 # M2 — same freeze broken for pairing (same policy; assert still fails when always-apply)
 # Re-run with inverted comment-only is weak; instead mutate ShouldApply to ignore "pairing" by always true again after M1 revert.
 # Use a second distinct mutation: invert the boolean.
-$polMut2 = $polOrig.Replace('!flyoutVisible', 'flyoutVisible /* MUTATION M2 */')
-Invoke-MutationStep -Name 'M2: pairing/content resize while visible' -Path $pol -Original $polOrig -Mutated $polMut2 `
+$polMut2 = $polOrig.Replace('appliedHeight != reportedHeight', 'false /* MUTATION M2 */')
+Invoke-MutationStep -Name 'M2: content growth never applies (freeze resurrected)' -Path $pol -Original $polOrig -Mutated $polMut2 `
     -BeforeFail {
         $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         & dotnet build (Join-Path $repo 'tests\AdbView.Tests\AdbView.Tests.csproj') -c Release -v q | Out-Null

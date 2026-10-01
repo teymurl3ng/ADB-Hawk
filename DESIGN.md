@@ -185,7 +185,7 @@ There is no:
 
 Content-driven.
 
-The surface should become shorter when little information is present and grow only as required.
+The surface should become shorter when little information is present and grow only as required — immediately, while visible (decision 0012).
 
 Recommended maximum is approximately **560 effective pixels**, after which the relevant content region scrolls.
 
@@ -907,16 +907,19 @@ Shared production easing (Fluent Existing Elements / Point to Point):
 
 Do not introduce arbitrary timing values for production behavior.
 
-### v1 interactive structural policy (decision 0005)
+### v1 interactive structural policy (decision 0005, amended by 0012)
 
-While the flyout is **visible**, the native HWND height is **frozen**.
-DeviceCard expand/collapse and PairingCard phase changes do **not** animate
-or resize native flyout bounds. Reliability over animated reflow.
+While the flyout is **visible**, the native HWND height follows the reported
+content height in **instant steps** (decision 0012): one native resize per
+settled content change, never animated. 0005's animation ban is retained
+verbatim: no per-frame resizes, no FLIP, no cross-layer height interpolation.
+Reliability through steps, not freezes.
 
-Outer content-driven sizing is evaluated only when **presenting** the flyout
-(hide → show). Motion while open is limited to 83 ms feedback and 167 ms
-state/opacity/chevron. Layout height may change immediately in the web
-layer; overflow scrolls inside a stable scroll container.
+The window presents at its best-known height and converges to content truth
+within one or two reports; growth (devices arriving, card expansion) applies
+immediately. Overflow beyond the 560 epx ceiling scrolls inside a stable scroll
+container. Motion while open is limited to 83 ms feedback and 167 ms
+state/opacity/chevron; layout height changes in the web layer remain immediate.
 
 ### Examples
 
@@ -955,10 +958,10 @@ Do not rely on:
 
 Use:
 
-- measure natural content height on show
-- `clamp(naturalHeight, minimumHeight, 560)` for presentation height
-- freeze that native height for the open session
-- instant web layout for disclosure; scroll when content exceeds viewport
+- measure natural content height continuously (events and ResizeObserver)
+- `clamp(naturalHeight, minimumHeight, 560)` for the presented height
+- apply the clamped height as an instant step whenever it differs — visible or hidden (decision 0012); never animate
+- instant web layout for disclosure; scroll when content exceeds the 560 epx ceiling
 - grid `0fr` / `1fr` for collapsed/expanded detail **without** animating rows
 
 Content-aware at:
@@ -1033,13 +1036,13 @@ Scrollbar:
 - subtle
 - clearer on interaction
 - no horizontal scroll
-- no layout shift from transient structural animation (v1 has none while open)
-- do not resize the native HWND merely to remove a scrollbar
-- `scrollbar-gutter: stable` is allowed when it improves horizontal stability
-  without changing the frozen design
+- no layout shift from transient structural animation (none exists; height changes are instant steps, decision 0012)
+- the native HWND follows content height in instant steps (decision 0012); the scrollbar
+  gutter stays width-stable so scrollbar state never drives a resize
+- `scrollbar-gutter: stable` is required for that stability
 
-When expanded content fits the frozen visible flyout: no scrollbar.
-When it exceeds the content viewport: internal content scrolls.
+When content fits the visible flyout: no scrollbar.
+When it exceeds the 560 epx ceiling: internal content scrolls.
 
 ---
 
