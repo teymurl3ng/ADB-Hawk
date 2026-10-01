@@ -124,3 +124,26 @@ internal sealed class CapturingDiagnostics {
         }
     }
 }
+
+/// <summary>Injectable connect client for post-pair coordinator tests without sockets.</summary>
+internal sealed class FakeHostConnectClient : IHostConnectClient {
+    public int CallCount { get; private set; }
+    public List<string> SeenHosts { get; } = new();
+    public List<int> SeenPorts { get; } = new();
+    private readonly Func<string, int, Task<HostConnectResult>> _handler;
+
+    public FakeHostConnectClient(HostConnectResult result)
+        : this((_, _) => Task.FromResult(result)) {
+    }
+
+    public FakeHostConnectClient(Func<string, int, Task<HostConnectResult>> handler) {
+        _handler = handler;
+    }
+
+    public async Task<HostConnectResult> ConnectAsync(string host, int port, CancellationToken ct = default) {
+        CallCount++;
+        SeenHosts.Add(host);
+        SeenPorts.Add(port);
+        return await _handler(host, port).ConfigureAwait(false);
+    }
+}

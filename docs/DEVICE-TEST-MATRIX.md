@@ -336,3 +336,15 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Shared 5353 bind → passive announcements; bind failure → active-only mode | **NOT EXERCISED** | Headed run on the affected host pending; active-only path is the firewall-safe default |
 | **Acceptance: browser sees ADB services while `adb mdns services` is empty** | **NOT EXERCISED** | The Step 3 acceptance on this host — next live session with the phone advertising |
 | Windows Firewall first-listen prompt for UDP 5353 | **NOT EXERCISED** | One-time; declining = active-only (no rule needed) |
+
+## Phase 12.4 — Post-pair active connect (2026-10-01, decision 0009)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| `host:connect` framing: OKAY + hex-length + body on success AND failure; body-prefix classification (`connected to` / `already connected`) | **AUTOMATED PASS** | `HostConnectClientTests` (AOSP `connect_service` always `SendProtocolString` — no FAIL branch) |
+| Unknown host service → Unsupported (wait continues, no retry) | **AUTOMATED PASS** | `UnknownHostServiceClassifiesUnsupported` |
+| Coordinator: fires once when the paired device's Connect row matches the pairing host; continuous row = no retry; vanished→re-presented row = one re-attempt; phase-gated; fallback rows used when adb source empty | **AUTOMATED PASS** | `PostPairConnectCoordinatorTests` |
+| No state fabrication: connect success never creates a DeviceView; tracker arrival / 60 s quiet clear unchanged | **AUTOMATED PASS** | Reducer untouched; coordinator posts nothing into State |
+| Real pair → active connect → `connected to` logged → tracker arrival < 60 s | **NOT EXERCISED** | Next live pairing on the affected host; supersedes the "ADB auto-connect after pair (no manual connect)" gap |

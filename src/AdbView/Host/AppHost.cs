@@ -26,6 +26,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly MdnsTrackerLifecycle? _mdnsTrackerLifecycle;
     private readonly MdnsFallbackLifecycle? _mdnsFallbackLifecycle;
     private readonly PairingSession? _pairingSession;
+    private readonly PostPairConnectCoordinator? _postPairConnect;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly NotificationCoordinator? _notificationCoordinator;
     private readonly INotificationSink? _notificationSink;
@@ -244,6 +245,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 },
                 coordinator: pairingCoordinator);
 
+            // Decision 0009: one active connect toward the paired device while waiting.
+            _postPairConnect = new PostPairConnectCoordinator(new Adb.HostConnectClient());
+
             _metadataLifecycle = new DeviceMetadataLifecycle(
                 postMetadata: (gen, evt) => _stateEngine.PostMetadata(gen, evt),
                 probe: metadataProbe);
@@ -423,6 +427,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 _lastSeenDiscoveryCard = true;
                 _ = _repairCoordinator.RebuildCatalogAsync(_appLifetimeCts.Token);
             }
+        }
+
+        if (_stateEngine is not null) {
+            _postPairConnect?.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
         }
         ApplyNativeShellFromSnapshot(snapshot);
         _notificationCoordinator?.AcceptSnapshot(snapshot);
