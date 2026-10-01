@@ -60,6 +60,21 @@ internal sealed class PostPairConnectCoordinator {
                 ? deviceState.LatestMdnsServices
                 : deviceState.LatestFallbackServices;
 
+        // Decision 0011 guard: if the tracker already shows a Connected Wi-Fi device for this
+        // host (any port), the phone is already reachable — a second transport is the exact
+        // mechanism that produced the double-card defect.
+        foreach (DeviceView device in snapshot.Devices) {
+            if (device.Transport == TransportKind.WiFi
+                && device.State == DeviceStateKind.Connected
+                && !string.IsNullOrEmpty(device.Detail.Address)
+                && AddressHostEquals(device.Detail.Address, host)) {
+                Log.Information(
+                    "Post-pair connect skipped: {Host} already tracked over Wi-Fi.",
+                    host);
+                return;
+            }
+        }
+
         string? candidate = null;
         int candidatePort = 0;
         var presentEndpoints = new HashSet<string>(StringComparer.Ordinal);
@@ -157,5 +172,19 @@ internal sealed class PostPairConnectCoordinator {
             _armedHost = null;
             _attemptedEndpoints.Clear();
         }
+    }
+
+    /// <summary>Device detail addresses are "host:port" (or "[ipv6]:port"); compare hosts only.</summary>
+    private static bool AddressHostEquals(string address, string host) {
+        if (address.StartsWith('[')) {
+            int close = address.IndexOf(']', StringComparison.Ordinal);
+            if (close > 1) {
+                return string.Equals(address[1..close], host, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        int colon = address.LastIndexOf(':');
+        string candidate = colon > 0 ? address[..colon] : address;
+        return string.Equals(candidate, host, StringComparison.OrdinalIgnoreCase);
     }
 }

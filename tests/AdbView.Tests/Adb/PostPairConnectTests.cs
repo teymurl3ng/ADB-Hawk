@@ -255,4 +255,76 @@ public sealed class PostPairConnectCoordinatorTests {
 
         Assert.Equal(1, harness.Client.CallCount);
     }
+
+    [Fact]
+    public void SkipsConnectWhenPhoneAlreadyTrackedOverWifiOnAnyPort() {
+        // Decision 0011 guard: the tracker already shows the phone over Wi-Fi (different port) —
+        // a second transport is exactly what produced the double-card defect.
+        var harness = new Harness();
+        var snapshot = WaitingSnapshot() with {
+            Devices = ImmutableArray.Create(new DeviceView {
+                Id = "wifi:192.168.18.248:39001",
+                DisplayName = "Teymur's S24",
+                State = DeviceStateKind.Connected,
+                Severity = SeverityKind.Positive,
+                StateLabel = "Connected",
+                StatusLine = "Connected · Wi-Fi",
+                Guidance = null,
+                Transport = TransportKind.WiFi,
+                TransportLabel = "Wi-Fi",
+                BatteryPercent = 29,
+                MetaTemplate = "Connected {age}",
+                StateSince = T0,
+                ConnectedSince = T0,
+                Detail = new DeviceDetailView {
+                    Serial = null,
+                    ExactModel = null,
+                    AndroidVersion = null,
+                    Address = "192.168.18.248:39001",
+                    CopyFields = ImmutableArray<CopyFieldView>.Empty,
+                },
+            }),
+        };
+
+        harness.Coordinator.OnSnapshotPublished(
+            snapshot,
+            StateWith("192.168.18.248", ConnectRow("192.168.18.248", 41953)));
+
+        Assert.Equal(0, harness.Client.CallCount);
+    }
+
+    [Fact]
+    public void GuardDoesNotFireForOtherHostsOrNonWifiDevices() {
+        var harness = new Harness();
+        var snapshot = WaitingSnapshot() with {
+            Devices = ImmutableArray.Create(new DeviceView {
+                Id = "wifi:192.168.18.9:41953",
+                DisplayName = "Other Phone",
+                State = DeviceStateKind.Connected,
+                Severity = SeverityKind.Positive,
+                StateLabel = "Connected",
+                StatusLine = "Connected · Wi-Fi",
+                Guidance = null,
+                Transport = TransportKind.WiFi,
+                TransportLabel = "Wi-Fi",
+                BatteryPercent = 50,
+                MetaTemplate = "Connected {age}",
+                StateSince = T0,
+                ConnectedSince = T0,
+                Detail = new DeviceDetailView {
+                    Serial = null,
+                    ExactModel = null,
+                    AndroidVersion = null,
+                    Address = "192.168.18.9:41953",
+                    CopyFields = ImmutableArray<CopyFieldView>.Empty,
+                },
+            }),
+        };
+
+        harness.Coordinator.OnSnapshotPublished(
+            snapshot,
+            StateWith("192.168.18.248", ConnectRow("192.168.18.248", 41953)));
+
+        Assert.Equal(1, harness.Client.CallCount);
+    }
 }

@@ -348,3 +348,15 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Coordinator: fires once when the paired device's Connect row matches the pairing host; continuous row = no retry; vanished→re-presented row = one re-attempt; phase-gated; fallback rows used when adb source empty | **AUTOMATED PASS** | `PostPairConnectCoordinatorTests` |
 | No state fabrication: connect success never creates a DeviceView; tracker arrival / 60 s quiet clear unchanged | **AUTOMATED PASS** | Reducer untouched; coordinator posts nothing into State |
 | Real pair → active connect → `connected to` logged → tracker arrival < 60 s | **NOT EXERCISED** | Next live pairing on the affected host; supersedes the "ADB auto-connect after pair (no manual connect)" gap |
+
+## Phase 12 — Double-transport collapse (2026-10-01, decision 0011)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Two adb transports (`ip:portA`+`ip:portB`), fallback rows carry the connect serial → ONE card `wifi:<serial>` | **AUTOMATED PASS** | `DoubleTransportIdentityTests` (broken-browse variant + adb-source variant) |
+| No discovery rows → two cards remain (honest per-port degradation, pre-0011 behavior) | **AUTOMATED PASS** | `WithoutAnyDiscoveryRowsTwoTransportsRemainTwoCards` |
+| USB + Wi-Fi same serial → still two cards (pinned §6.7) | **AUTOMATED PASS** | `UsbAndWifiSameSerialRemainTwoCards` |
+| Post-pair connect skipped when the phone is already tracked over Wi-Fi (any port) | **AUTOMATED PASS** | `PostPairConnectCoordinatorTests` guard cases (other host / non-Wi-Fi unaffected) |
+| Live: real stale+fresh transport pair collapses to one card after update | **NOT EXERCISED** | Next live session: `adb devices -l` shows the two transports; UI shows one; stale entry dies without UI change |

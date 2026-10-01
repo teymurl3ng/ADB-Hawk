@@ -166,12 +166,20 @@ internal static class StateReducer {
             deviceState.NextMetadataGeneration,
             deviceState.LatestMdnsServices);
 
+        // Decision 0011: identity enrichment (rule 2c hardware-serial resolution) consumes the
+        // effective discovery set — adb authoritative, fallback fills the gap. Feeding only the
+        // ADB source left Wi-Fi devices per-port identified on browse-broken hosts, rendering
+        // one phone's two transports as two cards.
+        var identityServices = EffectiveServices(
+            deviceState.LatestMdnsServices,
+            deviceState.LatestFallbackServices);
+
         var mapped = DeviceViewMapper.MapList(
             list.Devices,
             current.Devices,
             list.At,
             SharedIdentity,
-            deviceState.LatestMdnsServices,
+            identityServices,
             preserveMetadata: id =>
                 deviceState.MetadataSessions.TryGetValue(id, out var oldSession)
                 && sessions.TryGetValue(id, out var newSession)
