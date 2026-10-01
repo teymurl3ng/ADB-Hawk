@@ -24,6 +24,7 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
     private CancellationTokenSource? _pairingWaitCts;
     private CancellationTokenSource? _wirelessRestoringCts;
     private CancellationTokenSource? _wirelessUnavailableCts;
+    private CancellationTokenSource? _pairingQrCts;
     private int _disposed;
     private int _pendingCount;
 
@@ -191,6 +192,7 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         ApplyTimerCommand(ref _pairingWaitCts, result.PairingWait, StateReducer.PairingWaitTimeout, gen => new PairingWaitExpiredEvent(gen));
         ApplyTimerCommand(ref _wirelessRestoringCts, result.WirelessRestoring, StateReducer.WirelessRestoringDelay, gen => new WirelessDiscoveryRestoringExpiredEvent(gen));
         ApplyTimerCommand(ref _wirelessUnavailableCts, result.WirelessUnavailable, StateReducer.WirelessUnavailableDelay, gen => new WirelessDiscoveryUnavailableExpiredEvent(gen));
+        ApplyTimerCommand(ref _pairingQrCts, result.PairingQr, StateReducer.QrSessionTimeout, gen => new PairingQrClearedEvent(gen));
 
         if (!ReferenceEquals(result.Snapshot, current) && result.Snapshot != current) {
             Volatile.Write(ref _currentSnapshot, result.Snapshot);
@@ -335,6 +337,8 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         _wirelessRestoringCts = null;
         await CancelTimerAsync(_wirelessUnavailableCts).ConfigureAwait(false);
         _wirelessUnavailableCts = null;
+        await CancelTimerAsync(_pairingQrCts).ConfigureAwait(false);
+        _pairingQrCts = null;
 
         _channel.Writer.TryComplete();
         try {
@@ -362,6 +366,7 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
         CancelTimer(ref _pairingWaitCts);
         CancelTimer(ref _wirelessRestoringCts);
         CancelTimer(ref _wirelessUnavailableCts);
+        CancelTimer(ref _pairingQrCts);
         _channel.Writer.TryComplete();
         try {
             if (!_processingTask.Wait(TimeSpan.FromSeconds(2))) {

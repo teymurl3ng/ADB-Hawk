@@ -79,6 +79,7 @@ export interface AppSnapshot {
   devices: DeviceView[];
   pairingOffers: PairingOfferView[];
   pairing: PairingOperationView | null;
+  pairingQr: PairingQrView | null;
   warnings: SubsystemWarningView[];
   discoveryHealth: DiscoveryHealthView | null;
   deviceCountLabel: string | null;
@@ -159,6 +160,12 @@ export interface SubsystemWarningView {
   detail: string;
 }
 
+export interface PairingQrView {
+  svgDataUri: string;
+  instructions: string[];
+  cancelLabel: string;
+}
+
 export interface DiscoveryHealthView {
   title: string;
   detail: string;
@@ -202,7 +209,9 @@ export type WebAction =
   | { type: 'pairSubmit'; offerId: string; code: string }
   | { type: 'pairCancel'; offerId: string }
   | { type: 'discoveryRecheck' }
-  | { type: 'discoveryRepair'; id: string };
+  | { type: 'discoveryRepair'; id: string }
+  | { type: 'pairQrStart' }
+  | { type: 'pairQrCancel' };
 "@
 
 # Normalize LF

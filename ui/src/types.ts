@@ -17,6 +17,7 @@ export type FixtureName =
   | 'pairing-success'
   | 'pairing-failure'
   | 'discovery-health'
+  | 'pairing-qr'
   | 'multi-device';
 
 export type DeviceState =

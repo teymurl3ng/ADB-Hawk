@@ -21,6 +21,7 @@
     "devices": [],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -76,6 +77,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -136,6 +138,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -196,6 +199,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -256,6 +260,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -316,6 +321,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -376,6 +382,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -436,6 +443,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -496,6 +504,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -556,6 +565,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -761,6 +771,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": "6 devices"
@@ -795,6 +806,7 @@
       }
     ],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -831,6 +843,7 @@
       "canRetry": false,
       "codeLength": 6
     },
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -867,6 +880,7 @@
       "canRetry": false,
       "codeLength": 6
     },
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -903,6 +917,7 @@
       "canRetry": false,
       "codeLength": 6
     },
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -939,6 +954,7 @@
       "canRetry": true,
       "codeLength": 6
     },
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": null,
     "deviceCountLabel": null
@@ -999,6 +1015,7 @@
     ],
     "pairingOffers": [],
     "pairing": null,
+    "pairingQr": null,
     "warnings": [],
     "discoveryHealth": {
       "title": "Wireless discovery isn\u0027t working",
@@ -1028,6 +1045,40 @@
       ],
       "resultLine": null
     },
+    "deviceCountLabel": null
+  },
+  "pairing-qr": {
+    "protocol": 1,
+    "revision": 1,
+    "generatedAt": "2026-09-17T12:00:00.000Z",
+    "health": {
+      "kind": "healthy",
+      "title": null,
+      "detail": null,
+      "hint": null,
+      "tray": "idle",
+      "trayTooltip": "ADB View: No devices connected"
+    },
+    "shell": {
+      "pinned": false,
+      "theme": "dark",
+      "transparencyEnabled": false,
+      "forcedColors": false,
+      "reducedMotion": false
+    },
+    "devices": [],
+    "pairingOffers": [],
+    "pairing": null,
+    "pairingQr": {
+      "svgDataUri": "data:image/svg\u002Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMjAiIGhlaWdodD0iMjIwIj48cmVjdCB3aWR0aD0iMjIwIiBoZWlnaHQ9IjIyMCIgZmlsbD0iI2ZmZmZmZiIvPjwvc3ZnPg==",
+      "instructions": [
+        "On the phone, open Developer options \u2192 Wireless debugging.",
+        "Tap Pair device with QR code and point the camera at this code."
+      ],
+      "cancelLabel": "Cancel"
+    },
+    "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   }
 }

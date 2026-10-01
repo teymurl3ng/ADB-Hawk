@@ -80,6 +80,11 @@ internal static class Vocabulary {
         public static string CodeEntryTitle(string displayName) => "Pairing with " + displayName;
         public static string ProgressTitle(string displayName) => "Pairing with " + displayName + "…";
         public static string SuccessTitle(string displayName) => "Paired with " + displayName;
+
+        // QR pairing (decision 0010).
+        public const string QrInstructionPhone = "On the phone, open Developer options → Wireless debugging.";
+        public const string QrInstructionScan = "Tap Pair device with QR code and point the camera at this code.";
+        public const string QrCancelLabel = "Cancel";
     }
 
     internal static class Wireless {

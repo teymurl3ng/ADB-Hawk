@@ -30,6 +30,8 @@ internal sealed record DeviceEngineState {
         ServerMdnsEnabled = null,
         LatestDiscoveryDiagnosis = null,
         DiscoveryCheckRunning = false,
+        ActiveQrSessionGeneration = 0,
+        NextQrSessionGeneration = 0,
     };
 
     public DateTimeOffset? LatestAppliedListAt { get; init; }
@@ -80,6 +82,12 @@ internal sealed record DeviceEngineState {
     /// <summary>True between DiscoveryCheckStartedEvent and its diagnosis; disables Check again.</summary>
     public bool DiscoveryCheckRunning { get; init; }
 
+    /// <summary>Non-zero while a QR pairing session is active (decision 0010).</summary>
+    public long ActiveQrSessionGeneration { get; init; }
+
+    /// <summary>Monotonic allocator for QR session generations.</summary>
+    public long NextQrSessionGeneration { get; init; }
+
     /// <summary>Backend-owned repair offers for the visible card (decision 0008 amendment).</summary>
     public ImmutableArray<DiscoveryRepairDescriptor> RepairCatalog { get; init; } =
         ImmutableArray<DiscoveryRepairDescriptor>.Empty;
@@ -124,9 +132,10 @@ internal readonly record struct ReduceResult(
     GraceCommand Grace,
     GraceCommand PairingWait,
     GraceCommand WirelessRestoring,
-    GraceCommand WirelessUnavailable) {
+    GraceCommand WirelessUnavailable,
+    GraceCommand PairingQr) {
     public static ReduceResult Unchanged(AppSnapshot snapshot, DeviceEngineState deviceState) =>
-        new(snapshot, deviceState, GraceCommand.None, GraceCommand.None, GraceCommand.None, GraceCommand.None);
+        new(snapshot, deviceState, GraceCommand.None, GraceCommand.None, GraceCommand.None, GraceCommand.None, GraceCommand.None);
 
     public static ReduceResult With(
         AppSnapshot snapshot,
@@ -134,12 +143,14 @@ internal readonly record struct ReduceResult(
         GraceCommand? grace = null,
         GraceCommand? pairingWait = null,
         GraceCommand? wirelessRestoring = null,
-        GraceCommand? wirelessUnavailable = null) =>
+        GraceCommand? wirelessUnavailable = null,
+        GraceCommand? pairingQr = null) =>
         new(
             snapshot,
             deviceState,
             grace ?? GraceCommand.None,
             pairingWait ?? GraceCommand.None,
             wirelessRestoring ?? GraceCommand.None,
-            wirelessUnavailable ?? GraceCommand.None);
+            wirelessUnavailable ?? GraceCommand.None,
+            pairingQr ?? GraceCommand.None);
 }

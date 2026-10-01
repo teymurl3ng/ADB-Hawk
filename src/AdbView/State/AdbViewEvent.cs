@@ -65,9 +65,20 @@ internal sealed record PairingProgressedEvent(
     string? DisplayName) : AdbViewEvent;
 
 /// <summary>
-/// Quiet clear of PairedWaitingForDevice after 60 s (ENGINEERING.md §6.8 / §11 row 13).
+/// Quiet clear of PairedWaitingForDevice after 60 s (ENGINEERING §6.8 / §11 row 13).
 /// </summary>
 internal sealed record PairingWaitExpiredEvent(long Generation) : AdbViewEvent;
+
+// ---------- QR pairing (decision 0010) ----------
+
+/// <summary>QR session started; the card displays the backend-rendered code.</summary>
+internal sealed record PairingQrStartedEvent(PairingQrView View) : AdbViewEvent;
+
+/// <summary>
+/// QR session cleared: user cancel (generation = active) or the sanctioned 2-minute expiry
+/// (timer generation must match, like every other grace command). Quiet either way.
+/// </summary>
+internal sealed record PairingQrClearedEvent(long Generation) : AdbViewEvent;
 
 /// <summary>
 /// ENGINEERING.md §6.10 metadata event. Generation is NOT on this public shape —

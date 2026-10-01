@@ -30,6 +30,7 @@ function createEnvelope(revision: number, pinned: boolean = false) {
       devices: [],
       pairingOffers: [],
       pairing: null,
+      pairingQr: null,
       warnings: [],
       deviceCountLabel: null,
     },

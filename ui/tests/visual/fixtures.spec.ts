@@ -10,6 +10,7 @@ const fixtures = [
   'pairing-success',
   'pairing-failure',
   'discovery-health',
+  'pairing-qr',
 ];
 
 for (const fixture of fixtures) {

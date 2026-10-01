@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { EmptyState } from './components/EmptyState';
 import { DeviceCard } from './components/DeviceCard';
 import { PairingCard } from './components/PairingCard';
+import { PairingQrCard } from './components/PairingQrCard';
 import { DiscoveryHealthCard } from './components/DiscoveryHealthCard';
 import { useSnapshot } from './bridge/useSnapshot';
 import { useContentSize } from './bridge/useContentSize';
@@ -14,6 +15,8 @@ import {
   pairSubmit,
   discoveryRecheck,
   discoveryRepair,
+  pairQrStart,
+  pairQrCancel,
 } from './bridge/actions';
 import { mapDeviceViewToDeviceInfo } from './bridge/adapters';
 import {
@@ -43,6 +46,7 @@ const FIXTURES: FixtureName[] = [
   'pairing-success',
   'pairing-failure',
   'discovery-health',
+  'pairing-qr',
 ];
 
 export function App() {
@@ -190,12 +194,15 @@ export function App() {
 
   const devices = snapshot?.devices ?? [];
   const pairingInfo = presentation;
+  const qrActive = snapshot?.pairingQr != null;
+  // Decision 0010: the QR entry is visible whenever no pairing operation is active.
+  const showQrEntry = !pairingInfo && !qrActive;
   // During success dwell, defer newly arrived devices until coalesced post-dwell transition.
   const visibleDevices =
     pairingInfo?.dwellingSuccess === true
       ? devices.filter((d) => pairingInfo.layoutDeviceIds.includes(d.id))
       : devices;
-  const isEmpty = visibleDevices.length === 0 && !pairingInfo;
+  const isEmpty = visibleDevices.length === 0 && !pairingInfo && !qrActive;
   const nowIso = snapshot?.generatedAt ?? '';
 
   const activeFixture =
@@ -221,6 +228,38 @@ export function App() {
       >
         <div ref={contentWrapperRef} className="space-y-3">
           {isEmpty && <EmptyState />}
+
+          {/* Decision 0010: idle entry — quiet, always visible when no pairing is active
+              (inside the empty state as well). */}
+          {showQrEntry && (
+            <button
+              type="button"
+              data-testid="pairing-qr-entry"
+              onClick={pairQrStart}
+              className="w-full rounded-lg bg-win-card border border-win-card-border p-2.5 flex items-center justify-center gap-1.5 text-[12.5px] font-medium text-win-text-secondary hover:text-win-text-primary fluent-btn app-region-no-drag"
+            >
+              <svg
+                fill="none"
+                height="13"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                viewBox="0 0 24 24"
+                width="13"
+              >
+                <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path>
+                <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path>
+                <circle cx="12" cy="12" r="2"></circle>
+                <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path>
+                <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"></path>
+              </svg>
+              Pair a device over Wi-Fi
+            </button>
+          )}
+
+          {/* Decision 0010: active QR session. */}
+          {snapshot?.pairingQr && <PairingQrCard qr={snapshot.pairingQr} onCancel={pairQrCancel} />}
 
           {pairingInfo && (
             <PairingCard

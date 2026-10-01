@@ -213,6 +213,7 @@ public sealed class BoundaryTests {
             ["Serilog"] = "4.4.0",
             ["Serilog.Sinks.File"] = "7.0.0",
             ["Microsoft.Windows.CsWin32"] = "0.3.333",
+            ["QRCoder"] = "1.8.0",
             ["xunit.v3.mtp-v2"] = "4.0.0",
         };
 

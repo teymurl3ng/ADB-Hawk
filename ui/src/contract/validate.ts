@@ -10,6 +10,7 @@ import type {
   PairingPhase,
   SubsystemKind,
   DiscoveryHealthView,
+  PairingQrView,
 } from './snapshot';
 
 const VALID_GLOBAL_HEALTH = new Set<string>(['healthy', 'adbUnavailable', 'adbRestoring']);
@@ -383,6 +384,36 @@ export function parseSnapshot(raw: unknown): AppSnapshot | null {
     return null;
   }
 
+  // QR pairing session (decision 0010). Tolerates absence for forward compatibility.
+  let pairingQr: PairingQrView | null = null;
+  if (s.pairingQr !== undefined && s.pairingQr !== null) {
+    const pq = s.pairingQr;
+    if (
+      !isObject(pq) ||
+      typeof pq.svgDataUri !== 'string' ||
+      typeof pq.cancelLabel !== 'string' ||
+      !Array.isArray(pq.instructions)
+    ) {
+      console.warn('parseSnapshot: pairingQr is invalid');
+      return null;
+    }
+
+    for (let i = 0; i < pq.instructions.length; i++) {
+      if (typeof pq.instructions[i] !== 'string') {
+        console.warn(`parseSnapshot: pairingQr.instructions[${i}] must be a string`);
+        return null;
+      }
+    }
+
+    pairingQr = {
+      svgDataUri: pq.svgDataUri as string,
+      instructions: (pq.instructions as Array<Record<string, unknown>>).map(
+        (line) => line as unknown as string,
+      ),
+      cancelLabel: pq.cancelLabel as string,
+    };
+  }
+
   // Discovery health (decision 0008 + amendment). Tolerates absence for forward compatibility.
   let discoveryHealth: DiscoveryHealthView | null = null;
   if (s.discoveryHealth !== undefined && s.discoveryHealth !== null) {
@@ -514,6 +545,7 @@ export function parseSnapshot(raw: unknown): AppSnapshot | null {
           codeLength: (s.pairing as Record<string, unknown>).codeLength as number,
         }
       : null,
+    pairingQr,
     warnings: (s.warnings as Array<Record<string, unknown>>).map((w) => ({
       subsystem: w.subsystem as SubsystemKind,
       severity: w.severity as SeverityKind,

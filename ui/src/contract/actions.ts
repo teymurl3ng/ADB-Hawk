@@ -15,4 +15,6 @@ export type WebAction =
   | { type: 'pairSubmit'; offerId: string; code: string }
   | { type: 'pairCancel'; offerId: string }
   | { type: 'discoveryRecheck' }
-  | { type: 'discoveryRepair'; id: string };
+  | { type: 'discoveryRepair'; id: string }
+  | { type: 'pairQrStart' }
+  | { type: 'pairQrCancel' };

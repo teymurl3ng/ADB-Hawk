@@ -38,6 +38,14 @@ export function discoveryRecheck(): void {
   postAction({ type: 'discoveryRecheck' });
 }
 
+export function pairQrStart(): void {
+  postAction({ type: 'pairQrStart' });
+}
+
+export function pairQrCancel(): void {
+  postAction({ type: 'pairQrCancel' });
+}
+
 export function discoveryRepair(id: string): void {
   postAction({ type: 'discoveryRepair', id });
 }

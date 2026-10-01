@@ -14,6 +14,7 @@ internal sealed record AppSnapshot {
     public required ImmutableArray<DeviceView> Devices { get; init; }      // display order = stable
     public required ImmutableArray<PairingOfferView> PairingOffers { get; init; }
     public PairingOperationView? Pairing { get; init; }                    // at most one at a time
+    public PairingQrView? PairingQr { get; init; }                         // decision 0010; null when no session
     public required ImmutableArray<SubsystemWarningView> Warnings { get; init; }
     public DiscoveryHealthView? DiscoveryHealth { get; init; }             // decision 0008; null when hidden
     public required string? DeviceCountLabel { get; init; }   // "3 devices" or null (<2 devices)
@@ -104,6 +105,15 @@ internal sealed record PairingOfferView {
 }
 
 internal enum PairingPhase { AwaitingCode, Pairing, PairedWaitingForDevice, Failed }
+
+// ---------- QR pairing (decision 0010) ----------
+// The SVG visually encodes a single-use credential; it is display-only and never logged (R-13).
+
+internal sealed record PairingQrView {
+    public required string SvgDataUri { get; init; }   // "data:image/svg+xml;base64,…"
+    public required ImmutableArray<string> Instructions { get; init; }
+    public required string CancelLabel { get; init; }
+}
 
 internal sealed record PairingOperationView {
     public required string OfferId { get; init; }

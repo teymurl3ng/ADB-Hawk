@@ -11,14 +11,14 @@ using Xunit;
 
 public sealed class FixtureSnapshotProviderTests {
     [Fact]
-    public void CanonicalFixtureNamesContainsAllSeventeen() {
-        Assert.Equal(17, FixtureSnapshotProvider.CanonicalFixtureNames.Length);
+    public void CanonicalFixtureNamesContainsAllEighteen() {
+        Assert.Equal(18, FixtureSnapshotProvider.CanonicalFixtureNames.Length);
         var expected = new[] {
             "empty", "connected-usb", "connected-wifi", "expanded",
             "unauthorized", "offline", "recovery", "bootloader",
             "sideload", "unknown", "multi-device", "pairing-offer",
             "pairing-code", "pairing-progress", "pairing-success", "pairing-failure",
-            "discovery-health"
+            "discovery-health", "pairing-qr"
         };
         foreach (var name in expected) {
             Assert.Contains(name, FixtureSnapshotProvider.CanonicalFixtureNames);
@@ -43,6 +43,7 @@ public sealed class FixtureSnapshotProviderTests {
     [InlineData("pairing-success")]
     [InlineData("pairing-failure")]
     [InlineData("discovery-health")]
+    [InlineData("pairing-qr")]
     public void AllCanonicalFixturesAreValidAndRoundtripSerializable(string fixtureName) {
         var snapshot = FixtureSnapshotProvider.GetSnapshot(fixtureName, isPinned: false, revision: 1);
         Assert.NotNull(snapshot);

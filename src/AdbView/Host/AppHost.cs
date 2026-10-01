@@ -26,6 +26,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly MdnsTrackerLifecycle? _mdnsTrackerLifecycle;
     private readonly MdnsFallbackLifecycle? _mdnsFallbackLifecycle;
     private readonly PairingSession? _pairingSession;
+    private readonly QrPairingSession? _qrPairingSession;
     private readonly PostPairConnectCoordinator? _postPairConnect;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly NotificationCoordinator? _notificationCoordinator;
@@ -245,6 +246,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 },
                 coordinator: pairingCoordinator);
 
+            // Decision 0010: QR pairing session hands off into the same pairing flow.
+            _qrPairingSession = new QrPairingSession(
+                post: evt => _stateEngine.Post(evt),
+                startOffer: offerId => _pairingSession.Start(offerId),
+                submitCode: (offerId, code) => _pairingSession.Submit(offerId, code));
+
             // Decision 0009: one active connect toward the paired device while waiting.
             _postPairConnect = new PostPairConnectCoordinator(new Adb.HostConnectClient());
 
@@ -266,7 +273,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             onPairSubmit: (offerId, code) => _pairingSession?.Submit(offerId, code),
             onPairCancel: offerId => _pairingSession?.Cancel(offerId),
             onDiscoveryRecheck: () => _ = RunDiscoveryCheckAsync(),
-            onDiscoveryRepair: repairId => _ = RunDiscoveryRepairAsync(repairId));
+            onDiscoveryRepair: repairId => _ = RunDiscoveryRepairAsync(repairId),
+            onPairQrStart: () => _qrPairingSession?.Start(),
+            onPairQrCancel: () => _qrPairingSession?.Cancel());
 
         if (_networkDiagnosticsSource is not null && _stateEngine is not null) {
             // Decision 0008 amendment: repair actions only exist where diagnostics exist.
@@ -431,6 +440,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         if (_stateEngine is not null) {
             _postPairConnect?.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
+            _qrPairingSession?.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
         }
         ApplyNativeShellFromSnapshot(snapshot);
         _notificationCoordinator?.AcceptSnapshot(snapshot);

@@ -1042,6 +1042,7 @@ Failure / detection / response matrix. Every response is *owned* — no global "
 | 25 | Process | Unhandled exception | `AppDomain.UnhandledException`, `Application.ThreadException` | Log with full context, attempt clean tray removal, exit non-zero | — | Icon disappears (no zombie) |
 | 26 | State | Reducer backlog grows unexpectedly | Producer storm or reducer bug | Do not drop events; continue draining and emit a rate-limited backlog warning once a diagnostic pending-count threshold is exceeded | — | No loss of semantic events; investigate producer/reducer cause |
 | 27 | Discovery (fallback browser, decision 0008 follow-through) | Soft-state staleness: announcements stop or instances withdraw while the server is Up | mDNS TTL expiry / TTL-0 goodbyes (no pure event mechanism covers missed packets — R-05 sanction per `research/2026-10-01-dnssd-fallback-browser.md`) | Browser loop sweeps expired entries and re-issues query bursts at ≈80 % of the smallest outstanding TTL (floor 60 s); goodbye packets evict immediately; the ADB server stream stays authoritative and the fallback fills only its empty gap | single loop slice 200 ms; requery floor 60 s | Offers survive a broken server browse; stale instances disappear |
+| 28 | Pairing (QR, decision 0010) | Unscanned QR session lingers with a live single-use credential | 2-minute session window (design authority) | StateEngine timer command quietly clears the card; a new session regenerates secret + instance name | 2 min | No stale scannable credentials; quiet surface return |
 
 Chaos tests (Phase 9) automate rows 1, 3, 5, 8, 11, 16, 17, 19, 24, 26 against the fake ADB server and a real Explorer restart.
 
@@ -1248,6 +1249,7 @@ ADBView/
 | Package | Version | Class | Why |
 |---|---|---|---|
 | `Microsoft.Web.WebView2` | 1.0.4191.47 | **required** | The UI host |
+| `QRCoder` | 1.8.0 (pinned) | **required** | QR-code pairing (decision 0010): pure C#, no transitive dependencies, MIT; payload rendering only — `research/2026-10-01-qr-pairing.md` |
 | `Serilog` | 4.x (pinned) | **required** | Structured logging |
 | `Serilog.Sinks.File` | 7.x (pinned) | **required** | Rolling local file sink |
 | `Microsoft.Extensions.ObjectPool`-style helpers | — | **avoid** | Not needed |

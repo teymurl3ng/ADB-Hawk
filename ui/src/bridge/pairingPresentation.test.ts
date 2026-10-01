@@ -47,6 +47,7 @@ function baseSnapshot(over: Partial<AppSnapshot> = {}): AppSnapshot {
     devices: [],
     pairingOffers: [],
     pairing: null,
+    pairingQr: null,
     warnings: [],
     discoveryHealth: null,
     shell: {

@@ -32,6 +32,7 @@ export interface AppSnapshot {
   devices: DeviceView[];
   pairingOffers: PairingOfferView[];
   pairing: PairingOperationView | null;
+  pairingQr: PairingQrView | null;
   warnings: SubsystemWarningView[];
   discoveryHealth: DiscoveryHealthView | null;
   deviceCountLabel: string | null;
@@ -110,6 +111,12 @@ export interface SubsystemWarningView {
   severity: SeverityKind;
   title: string;
   detail: string;
+}
+
+export interface PairingQrView {
+  svgDataUri: string;
+  instructions: string[];
+  cancelLabel: string;
 }
 
 export interface DiscoveryHealthView {

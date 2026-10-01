@@ -13,6 +13,7 @@ internal static class StateReducer {
     public static readonly TimeSpan WirelessRestoringDelay = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan WirelessUnavailableDelay = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan PairingWaitTimeout = TimeSpan.FromSeconds(60);
+    public static readonly TimeSpan QrSessionTimeout = TimeSpan.FromMinutes(2); // decision 0010
 
     private static readonly DeviceIdentity SharedIdentity = new();
 
@@ -68,6 +69,10 @@ internal static class StateReducer {
                 ReduceDiscoveryRepairStarted(current, deviceState, repairStart),
             DiscoveryRepairFinishedEvent repairDone =>
                 ReduceDiscoveryRepairFinished(current, deviceState, repairDone),
+            PairingQrStartedEvent qrStart =>
+                ReducePairingQrStarted(current, deviceState, qrStart, now),
+            PairingQrClearedEvent qrClear =>
+                ReducePairingQrCleared(current, deviceState, qrClear, now),
             _ => ReduceResult.Unchanged(current, deviceState),
         };
 
@@ -534,6 +539,63 @@ internal static class StateReducer {
     }
 
     internal enum MdnsSourceKind { Adb, Fallback }
+
+    // ---------- QR pairing (decision 0010) ----------
+
+    private static ReduceResult ReducePairingQrStarted(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        PairingQrStartedEvent evt,
+        DateTimeOffset now) {
+        if (deviceState.ActiveQrSessionGeneration != 0) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        long generation = deviceState.NextQrSessionGeneration;
+        if (generation <= 0) {
+            generation = 1;
+        }
+
+        var nextState = deviceState with {
+            ActiveQrSessionGeneration = generation,
+            NextQrSessionGeneration = checked(generation + 1),
+        };
+        var next = current with {
+            Revision = NextRevision(current.Revision),
+            GeneratedAt = now,
+            PairingQr = evt.View,
+        };
+        return ReduceResult.With(next, nextState, pairingQr: GraceCommand.Schedule(generation));
+    }
+
+    private static ReduceResult ReducePairingQrCleared(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        PairingQrClearedEvent evt,
+        DateTimeOffset now) {
+        long active = deviceState.ActiveQrSessionGeneration;
+        if (active == 0) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        // Generation 0 = user-initiated cancel / pairing handoff: clear the active session.
+        // A timer expiry carries its generation and is ignored when stale.
+        if (evt.Generation != 0 && evt.Generation != active) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        var nextState = deviceState with { ActiveQrSessionGeneration = 0 };
+        if (current.PairingQr is null) {
+            return ReduceResult.With(current, nextState, pairingQr: GraceCommand.Cancel);
+        }
+
+        var next = current with {
+            Revision = NextRevision(current.Revision),
+            GeneratedAt = now,
+            PairingQr = null,
+        };
+        return ReduceResult.With(next, nextState, pairingQr: GraceCommand.Cancel);
+    }
 
     /// <summary>
     /// Shared offer-source path: maps the effective service set into offers/bindings, applies

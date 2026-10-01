@@ -25,7 +25,8 @@ internal static class FixtureSnapshotProvider {
         "pairing-progress",
         "pairing-success",
         "pairing-failure",
-        "discovery-health"
+        "discovery-health",
+        "pairing-qr"
     ];
 
     private static ShellView CreateShell(bool isPinned) => new() {
@@ -107,6 +108,7 @@ internal static class FixtureSnapshotProvider {
             "PAIRING-SUCCESS" => CreatePairingSuccessSnapshot(isPinned, revision),
             "PAIRING-FAILURE" => CreatePairingFailureSnapshot(isPinned, revision),
             "DISCOVERY-HEALTH" => CreateDiscoveryHealthSnapshot(isPinned, revision),
+            "PAIRING-QR" => CreatePairingQrSnapshot(isPinned, revision),
             _ => CreateEmptySnapshot(isPinned, revision)
         };
     }
@@ -750,6 +752,36 @@ internal static class FixtureSnapshotProvider {
             CanCancel = false,
             CanRetry = false,
             CodeLength = 6
+        },
+        Warnings = ImmutableArray<SubsystemWarningView>.Empty,
+        DeviceCountLabel = null
+    };
+
+    // Decision 0010: active QR session. The data URI is a placeholder rendering; the live
+    // card displays real QRCoder output from the backend.
+    private static AppSnapshot CreatePairingQrSnapshot(bool isPinned, long revision) => new() {
+        Protocol = BridgeProtocol.Version,
+        Revision = revision,
+        GeneratedAt = T0,
+        Health = new HealthView {
+            Kind = GlobalHealthKind.Healthy,
+            Title = null,
+            Detail = null,
+            Hint = null,
+            Tray = TrayStatusKind.Idle,
+            TrayTooltip = "ADB View: No devices connected"
+        },
+        Shell = CreateShell(isPinned),
+        Devices = ImmutableArray<DeviceView>.Empty,
+        PairingOffers = ImmutableArray<PairingOfferView>.Empty,
+        Pairing = null,
+        PairingQr = new PairingQrView {
+            SvgDataUri = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMjAiIGhlaWdodD0iMjIwIj48cmVjdCB3aWR0aD0iMjIwIiBoZWlnaHQ9IjIyMCIgZmlsbD0iI2ZmZmZmZiIvPjwvc3ZnPg==",
+            Instructions = ImmutableArray.Create(
+                Vocabulary.Pairing.QrInstructionPhone,
+                Vocabulary.Pairing.QrInstructionScan
+            ),
+            CancelLabel = Vocabulary.Pairing.QrCancelLabel
         },
         Warnings = ImmutableArray<SubsystemWarningView>.Empty,
         DeviceCountLabel = null

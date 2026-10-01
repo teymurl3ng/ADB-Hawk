@@ -664,4 +664,113 @@ public sealed class DiscoveryHealthReducerTests {
         Assert.True(result.DeviceState.WirelessFailed);
         Assert.NotEmpty(result.Snapshot.Warnings);
     }
+
+    // ---------- QR pairing session (decision 0010) ----------
+
+    private static PairingQrView QrView() => new() {
+        SvgDataUri = "data:image/svg+xml;base64,PHN2Zy8+",
+        Instructions = ImmutableArray.Create("line one", "line two"),
+        CancelLabel = "Cancel",
+    };
+
+    [Fact]
+    public void QrStartShowsViewAndArmsTimer() {
+        var current = SnapshotWith();
+
+        var result = StateReducer.ReduceWithDeviceState(
+            current,
+            DeviceEngineState.Empty,
+            new PairingQrStartedEvent(QrView()),
+            T0);
+
+        Assert.NotNull(result.Snapshot.PairingQr);
+        Assert.Equal(1, result.DeviceState.ActiveQrSessionGeneration);
+        Assert.Equal(2, result.DeviceState.NextQrSessionGeneration);
+        Assert.Equal(GraceCommandKind.Schedule, result.PairingQr.Kind);
+        Assert.Equal(1, result.PairingQr.Generation);
+    }
+
+    [Fact]
+    public void SecondQrStartWhileActiveIsIgnored() {
+        var current = SnapshotWith();
+        var started = StateReducer.ReduceWithDeviceState(
+            current, DeviceEngineState.Empty, new PairingQrStartedEvent(QrView()), T0);
+
+        var again = StateReducer.ReduceWithDeviceState(
+            started.Snapshot,
+            started.DeviceState,
+            new PairingQrStartedEvent(QrView()),
+            T0);
+
+        Assert.Same(started.Snapshot, again.Snapshot);
+    }
+
+    [Fact]
+    public void TimerExpiryClearsQrWhenGenerationMatches() {
+        var current = SnapshotWith();
+        var started = StateReducer.ReduceWithDeviceState(
+            current, DeviceEngineState.Empty, new PairingQrStartedEvent(QrView()), T0);
+
+        var result = StateReducer.ReduceWithDeviceState(
+            started.Snapshot,
+            started.DeviceState,
+            new PairingQrClearedEvent(started.DeviceState.ActiveQrSessionGeneration),
+            T0);
+
+        Assert.Null(result.Snapshot.PairingQr);
+        Assert.Equal(0, result.DeviceState.ActiveQrSessionGeneration);
+        Assert.Equal(GraceCommandKind.Cancel, result.PairingQr.Kind);
+    }
+
+    [Fact]
+    public void StaleExpiryGenerationIsIgnored() {
+        var current = SnapshotWith();
+        var started = StateReducer.ReduceWithDeviceState(
+            current, DeviceEngineState.Empty, new PairingQrStartedEvent(QrView()), T0);
+
+        var result = StateReducer.ReduceWithDeviceState(
+            started.Snapshot,
+            started.DeviceState,
+            new PairingQrClearedEvent(started.DeviceState.ActiveQrSessionGeneration + 5),
+            T0);
+
+        Assert.NotNull(result.Snapshot.PairingQr);
+        Assert.Equal(started.DeviceState.ActiveQrSessionGeneration, result.DeviceState.ActiveQrSessionGeneration);
+    }
+
+    [Fact]
+    public void UserCancelGenerationZeroClearsActiveSession() {
+        var current = SnapshotWith();
+        var started = StateReducer.ReduceWithDeviceState(
+            current, DeviceEngineState.Empty, new PairingQrStartedEvent(QrView()), T0);
+
+        var result = StateReducer.ReduceWithDeviceState(
+            started.Snapshot,
+            started.DeviceState,
+            new PairingQrClearedEvent(0),
+            T0);
+
+        Assert.Null(result.Snapshot.PairingQr);
+        Assert.Equal(0, result.DeviceState.ActiveQrSessionGeneration);
+    }
+
+    [Fact]
+    public void NextSessionGetsANewGeneration() {
+        var current = SnapshotWith();
+        var first = StateReducer.ReduceWithDeviceState(
+            current, DeviceEngineState.Empty, new PairingQrStartedEvent(QrView()), T0);
+        var cleared = StateReducer.ReduceWithDeviceState(
+            first.Snapshot,
+            first.DeviceState,
+            new PairingQrClearedEvent(0),
+            T0);
+
+        var second = StateReducer.ReduceWithDeviceState(
+            cleared.Snapshot,
+            cleared.DeviceState,
+            new PairingQrStartedEvent(QrView()),
+            T0);
+
+        Assert.Equal(2, second.DeviceState.ActiveQrSessionGeneration);
+    }
 }

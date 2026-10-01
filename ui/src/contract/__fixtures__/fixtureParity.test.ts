@@ -4,10 +4,10 @@ import { mapDeviceViewToDeviceInfo, derivePairingState } from '../../bridge/adap
 import { formatAge } from '../../bridge/age';
 import canonicalSnapshots from './canonicalSnapshots.json';
 
-describe('Fixture Parity Suite (17 Canonical Fixtures)', () => {
+describe('Fixture Parity Suite (18 Canonical Fixtures)', () => {
   const fixtures = canonicalSnapshots as Record<string, unknown>;
 
-  it('contains all 17 canonical fixtures', () => {
+  it('contains all 18 canonical fixtures', () => {
     const expected = [
       'empty',
       'connected-usb',
@@ -26,11 +26,12 @@ describe('Fixture Parity Suite (17 Canonical Fixtures)', () => {
       'pairing-success',
       'pairing-failure',
       'discovery-health',
+      'pairing-qr',
     ];
     for (const name of expected) {
       expect(fixtures[name]).toBeDefined();
     }
-    expect(Object.keys(fixtures).length).toBe(17);
+    expect(Object.keys(fixtures).length).toBe(18);
   });
 
   it('empty fixture: 0 devices, null pairing, empty state', () => {
@@ -314,6 +315,25 @@ describe('Fixture Parity Suite (17 Canonical Fixtures)', () => {
     });
     expect(parsed!.devices).toHaveLength(1);
     expect(parsed!.warnings).toHaveLength(0);
+  });
+
+  it('pairing-qr: active QR session with instructions and Cancel', () => {
+    const parsed = parseSnapshot({
+      type: 'snapshot',
+      protocol: 1,
+      snapshot: fixtures['pairing-qr'],
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed!.pairingQr).toEqual({
+      svgDataUri: expect.stringMatching(/^data:image\/svg\+xml;base64,/),
+      instructions: [
+        'On the phone, open Developer options → Wireless debugging.',
+        'Tap Pair device with QR code and point the camera at this code.',
+      ],
+      cancelLabel: 'Cancel',
+    });
+    expect(parsed!.pairing).toBeNull();
+    expect(parsed!.devices).toHaveLength(0);
   });
 
   it('age formatting helper reproduces expected strings', () => {

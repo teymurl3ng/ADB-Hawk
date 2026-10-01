@@ -13,6 +13,8 @@ using System.Text.Json.Serialization;
 [JsonDerivedType(typeof(PairCancelAction), "pairCancel")]
 [JsonDerivedType(typeof(DiscoveryRecheckAction), "discoveryRecheck")]
 [JsonDerivedType(typeof(DiscoveryRepairAction), "discoveryRepair")]
+[JsonDerivedType(typeof(PairQrStartAction), "pairQrStart")]
+[JsonDerivedType(typeof(PairQrCancelAction), "pairQrCancel")]
 internal abstract record WebAction;
 
 internal sealed record ReadyAction : WebAction {
@@ -60,3 +62,9 @@ internal sealed record DiscoveryRecheckAction : WebAction;
 internal sealed record DiscoveryRepairAction : WebAction {
     public required string Id { get; init; }
 }
+
+/// <summary>Starts a QR pairing session (decision 0010).</summary>
+internal sealed record PairQrStartAction : WebAction;
+
+/// <summary>Cancels the active QR pairing session (decision 0010).</summary>
+internal sealed record PairQrCancelAction : WebAction;

@@ -241,7 +241,7 @@
 - **12.2** Repair actions behind approval buttons (Restart ADB with verify-and-report; UAC allow-list for admin-only repairs; one balloon per broken episode) — amends decision 0008.
 - **12.3** First-party DNS-SD fallback browser merged with the ADB server stream (research → scope → implement; acceptance: browser sees services while `adb mdns services` is empty on the affected host).
 - **12.4** Post-pair active connect (decision 0009; replaces the ≤60 s wait on adb auto-connect).
-- **Parked:** QR pairing (decision 0010, on request).
+- **12.5** QR-code pairing (decision 0010): backend-rendered QR, six-digit secret, auto-pair on requested instance name, 2-minute self-clear, always-when-idle entry.
 
 **Tests:** reducer truth table, diagnostics seams, DNS codec fixtures, FakeAdbServer scenarios, Vitest + visual fixture, live matrix rows (probe measures announcements while `adb mdns services` is empty).
 

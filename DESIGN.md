@@ -641,6 +641,24 @@ Retry is available immediately.
 
 Error styling remains restrained.
 
+### QR Pairing (decision 0010)
+
+An alternative pairing entry that removes code transcription entirely. The desktop displays a
+QR code; the phone's camera starts the pairing (Android 11+ Wireless debugging → Pair device
+with QR code).
+
+- Entry: a quiet `Pair a device over Wi-Fi` action, visible whenever no pairing operation is
+  active — in the empty state and below the device list otherwise. Same cool informational
+  treatment as the pairing offer.
+- Active session (`PairingQrCard`): the QR code (backend-rendered image), the instruction lines
+  naming the exact phone screen, and `Cancel`. Placement follows the pairing surface: after
+  pairing offers, before device cards.
+- Once the phone scans, the standard pairing cards take over (progress → success → device
+  arrival). An unscanned session quietly clears after 2 minutes; Cancel clears quietly; no
+  failure card is produced by the QR layer itself.
+- The rendered code contains a single-use credential: never logged, never exposed beyond the
+  displayed image.
+
 ---
 
 ## 16. Multi-Device Rules
@@ -1368,6 +1386,7 @@ DeviceCard
 ExpandedDeviceCard
 PairingOffer
 PairingCode
+PairingQrCard (decision 0010)
 EmptyState
 DiscoveryHealthCard (decision 0008)
 SubsystemWarning
