@@ -30,8 +30,16 @@ internal sealed record DeviceTrackerFailedEvent(string Reason) : AdbViewEvent;
 /// </summary>
 internal sealed record DeviceTrackerGraceExpiredEvent(long Generation) : AdbViewEvent;
 
-/// <summary>Complete authoritative mDNS service list (ENGINEERING.md §6.10).</summary>
+/// <summary>Complete authoritative mDNS service list from the ADB server (ENGINEERING.md §6.10).</summary>
 internal sealed record MdnsServicesReceivedEvent(
+    ImmutableArray<RawMdnsService> Services,
+    DateTimeOffset At) : AdbViewEvent;
+
+/// <summary>
+/// Complete soft-state service list from the first-party fallback browser (decision 0008
+/// follow-through). Never satisfies the broken-discovery trigger — that audits the ADB source.
+/// </summary>
+internal sealed record MdnsFallbackReceivedEvent(
     ImmutableArray<RawMdnsService> Services,
     DateTimeOffset At) : AdbViewEvent;
 
@@ -69,4 +77,65 @@ internal sealed record MetadataReceivedEvent(
     string DeviceId,
     int? Battery,
     string? Model,
-    string? AndroidVersion) : AdbViewEvent;
+    string? AndroidVersion,
+    string? MarketingName = null,
+    string? DeviceName = null,
+    string? Brand = null,
+    string? Manufacturer = null) : AdbViewEvent;
+
+// ---------- discovery health (decision 0008) ----------
+
+/// <summary>A measurement run started; Check again stays disabled until the result lands.</summary>
+internal sealed record DiscoveryCheckStartedEvent : AdbViewEvent;
+
+/// <summary>Structured result of one measurement run (probe outcome + environment evidence).</summary>
+internal sealed record DiscoveryDiagnosisReceivedEvent(DiscoveryDiagnosis Diagnosis) : AdbViewEvent;
+
+internal enum DiscoveryProbeOutcome {
+    /// <summary>The probe sent queries and collected responses (count may still be zero).</summary>
+    Measured,
+    /// <summary>The probe could not run or observe the network (blocked, no usable interface, error).</summary>
+    Unavailable,
+}
+
+/// <summary>
+/// One-shot diagnosis payload. Process/adapter names are user-displayable labels chosen by the
+/// Host layer; they must never contain pairing secrets or raw transport identifiers (R-13/R-15).
+/// </summary>
+internal sealed record DiscoveryDiagnosis(
+    DiscoveryProbeOutcome ProbeOutcome,
+    int AnnouncementCount,
+    ImmutableArray<string> PortHolders,
+    ImmutableArray<string> VirtualAdapters);
+
+// ---------- discovery repairs (decision 0008 amendment) ----------
+
+/// <summary>Closed action set (decision 0008 amendment). No other repair exists.</summary>
+internal enum DiscoveryRepairActionKind {
+    RestartAdb,
+    StopService,
+    StartService,
+    DisableAdapter,
+    EnableAdapter,
+}
+
+internal enum DiscoveryRepairOutcome {
+    /// <summary>The action ran; a re-measure reports whether discovery recovered.</summary>
+    Completed,
+    /// <summary>The user declined the elevation prompt; nothing changed.</summary>
+    Declined,
+    /// <summary>The action could not be performed.</summary>
+    Failed,
+}
+
+/// <summary>Backend-owned repair offer. Ids are opaque to the frontend.</summary>
+internal sealed record DiscoveryRepairDescriptor(
+    string Id,
+    DiscoveryRepairActionKind Kind,
+    string? Target);
+
+internal sealed record DiscoveryRepairCatalogEvent(ImmutableArray<DiscoveryRepairDescriptor> Repairs) : AdbViewEvent;
+
+internal sealed record DiscoveryRepairStartedEvent(string RepairId) : AdbViewEvent;
+
+internal sealed record DiscoveryRepairFinishedEvent(string RepairId, DiscoveryRepairOutcome Outcome) : AdbViewEvent;

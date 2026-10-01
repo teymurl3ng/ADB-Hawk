@@ -186,4 +186,24 @@ describe('PairingCard Pair button path', () => {
       expect(card.getBoundingClientRect().height).toBe(h0);
     }
   });
+
+  it('renders backend-selected failure detail when provided (decision 0007)', () => {
+    render(
+      <PairingCard
+        state="pairing-failure"
+        deviceName="Galaxy S24"
+        offerId="offer-live-1"
+        detail="The pairing offer changed. Tap Pair and enter the new code."
+      />,
+    );
+    expect(
+      screen.getByText('The pairing offer changed. Tap Pair and enter the new code.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Check the code and try again.')).toBeNull();
+  });
+
+  it('keeps the frozen failure line when no detail is provided', () => {
+    render(<PairingCard state="pairing-failure" deviceName="Galaxy S24" offerId="offer-live-1" />);
+    expect(screen.getByText('Check the code and try again.')).toBeTruthy();
+  });
 });

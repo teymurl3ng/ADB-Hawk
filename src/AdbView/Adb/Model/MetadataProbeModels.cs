@@ -5,6 +5,10 @@ internal enum MetadataCommand {
     Battery,
     ExactModel,
     AndroidVersion,
+    MarketingName,
+    DeviceName,
+    Brand,
+    Manufacturer,
 }
 
 /// <summary>Per-field outcome for an isolated metadata probe (no UI/state types).</summary>
@@ -29,7 +33,7 @@ internal sealed record MetadataProbeTarget(
     string AdbSerial,
     long Generation);
 
-/// <summary>Isolated domain result for one three-field (or subset) probe.</summary>
+/// <summary>Isolated domain result for one metadata probe (battery + naming + version).</summary>
 internal sealed record MetadataProbeResult(
     string DeviceId,
     long Generation,
@@ -38,7 +42,15 @@ internal sealed record MetadataProbeResult(
     string? AndroidVersion,
     MetadataFieldStatus BatteryStatus,
     MetadataFieldStatus ExactModelStatus,
-    MetadataFieldStatus AndroidVersionStatus);
+    MetadataFieldStatus AndroidVersionStatus,
+    string? MarketingName = null,
+    string? DeviceName = null,
+    string? Brand = null,
+    string? Manufacturer = null,
+    MetadataFieldStatus MarketingNameStatus = MetadataFieldStatus.Unavailable,
+    MetadataFieldStatus DeviceNameStatus = MetadataFieldStatus.Unavailable,
+    MetadataFieldStatus BrandStatus = MetadataFieldStatus.Unavailable,
+    MetadataFieldStatus ManufacturerStatus = MetadataFieldStatus.Unavailable);
 
 /// <summary>Single-command outcome before aggregation.</summary>
 internal sealed record MetadataCommandResult(

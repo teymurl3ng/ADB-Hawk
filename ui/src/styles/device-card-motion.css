@@ -32,5 +32,6 @@
 }
 
 .flyout-scroll {
-  scrollbar-gutter: stable;
+  /* Classic scrollbars reserve on one edge by default; both-edges keeps gutters symmetric. */
+  scrollbar-gutter: stable both-edges;
 }

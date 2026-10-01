@@ -296,6 +296,10 @@ internal sealed class DeviceMetadataLifecycle : IAsyncDisposable, IDisposable {
                 RecordRequest(adbSerial, MetadataDeviceShellClient.ServiceName(MetadataCommand.Battery));
                 RecordRequest(adbSerial, MetadataDeviceShellClient.ServiceName(MetadataCommand.ExactModel));
                 RecordRequest(adbSerial, MetadataDeviceShellClient.ServiceName(MetadataCommand.AndroidVersion));
+                RecordRequest(adbSerial, MetadataDeviceShellClient.ServiceName(MetadataCommand.MarketingName));
+                RecordRequest(adbSerial, MetadataDeviceShellClient.ServiceName(MetadataCommand.DeviceName));
+                RecordRequest(adbSerial, MetadataDeviceShellClient.ServiceName(MetadataCommand.Brand));
+                RecordRequest(adbSerial, MetadataDeviceShellClient.ServiceName(MetadataCommand.Manufacturer));
                 MetadataProbeResult result = await _probe.ProbeAsync(target, ct).ConfigureAwait(false);
                 if (ct.IsCancellationRequested) {
                     return;
@@ -307,7 +311,11 @@ internal sealed class DeviceMetadataLifecycle : IAsyncDisposable, IDisposable {
                         deviceId,
                         result.BatteryStatus == MetadataFieldStatus.Ok ? result.BatteryPercent : null,
                         result.ExactModelStatus == MetadataFieldStatus.Ok ? result.ExactModel : null,
-                        result.AndroidVersionStatus == MetadataFieldStatus.Ok ? result.AndroidVersion : null));
+                        result.AndroidVersionStatus == MetadataFieldStatus.Ok ? result.AndroidVersion : null,
+                        result.MarketingNameStatus == MetadataFieldStatus.Ok ? result.MarketingName : null,
+                        result.DeviceNameStatus == MetadataFieldStatus.Ok ? result.DeviceName : null,
+                        result.BrandStatus == MetadataFieldStatus.Ok ? result.Brand : null,
+                        result.ManufacturerStatus == MetadataFieldStatus.Ok ? result.Manufacturer : null));
             }
             else {
                 RecordRequest(adbSerial, MetadataDeviceShellClient.ServiceName(MetadataCommand.Battery));

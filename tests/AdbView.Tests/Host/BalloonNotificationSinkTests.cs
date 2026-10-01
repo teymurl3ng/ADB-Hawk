@@ -65,7 +65,16 @@ internal sealed class FakeTrayBalloonHost : ITrayBalloonHost {
 }
 
 public sealed class BalloonNotificationSinkTests {
-    private static readonly string[] ExitOnlyMenu = ["Exit"];
+    private static readonly string[] ExpectedTrayMenu = [
+        "Open ADB View",
+        "",
+        "Start with Windows",
+        "Notifications",
+        "Theme",
+        "",
+        "Exit",
+    ];
+
     private static readonly string[] ShowFlyoutOnly = ["show-flyout"];
 
     private static NotificationIntent Intent(
@@ -250,9 +259,9 @@ public sealed class BalloonNotificationSinkTests {
     }
 
     [Fact]
-    public void O_P_TrayIcon_Menu_Exit_Only() {
+    public void O_P_TrayIcon_Menu_Has_Open_Settings_And_Exit() {
         using var tray = new TrayIcon();
-        Assert.Equal(ExitOnlyMenu, tray.ContextMenuItemTexts);
+        Assert.Equal(ExpectedTrayMenu, tray.ContextMenuItemTexts);
 
         int toggles = 0;
         tray.OnToggleRequested += (_, _) => toggles++;
@@ -327,13 +336,21 @@ public sealed class BalloonNotificationSinkTests {
 }
 
 public sealed class TrayIconBalloonBehaviorTests {
-    private static readonly string[] ExitOnlyMenu = ["Exit"];
+    private static readonly string[] ExpectedTrayMenu = [
+        "Open ADB View",
+        "",
+        "Start with Windows",
+        "Notifications",
+        "Theme",
+        "",
+        "Exit",
+    ];
 
     [Fact]
     public void HandleTaskbarCreated_Does_Not_Throw_And_Leaves_Menu_Intact() {
         using var tray = new TrayIcon();
         tray.HandleTaskbarCreated();
-        Assert.Equal(ExitOnlyMenu, tray.ContextMenuItemTexts);
+        Assert.Equal(ExpectedTrayMenu, tray.ContextMenuItemTexts);
     }
 
     [Fact]

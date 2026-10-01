@@ -37,7 +37,7 @@ Single .NET 10 process (net10.0-windows, WinForms message loop, no WinForms UI c
 7. **Native window, native drag, v1 opaque surface.** The flyout keeps `WS_CAPTION` while collapsing its non-client area via `WM_NCCALCSIZE`, plus `WM_NCACTIVATE(TRUE)` for pinned focus behavior. **v1 does not use live Desktop Acrylic** (`DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_TRANSIENTWINDOW`) under WebView2: measured diagnosis showed multi-second stale presentation with a transparent WebView child, and composition hosting is unavailable on the frozen WinForms stack (`docs/decisions/0004-…`). v1 always paints the intentional opaque dark/light surfaces (`DESIGN.md` §22), with matching WebView2 `DefaultBackgroundColor` and frontend `data-opaque`. Rounded corners (`DWMWCP_ROUNDSMALL`) remain. No CSS `backdrop-filter` in production. Live Acrylic is deferred architecture work.
 8. **Notifications are derived, debounced, and vocabulary-shared.** A pure function over (previous snapshot, next snapshot, notifier state, clock) produces notification intents; a policy layer applies startup suppression, flap debounce, and per-device/kind cooldowns. v1 delivers them through the tray icon's own shell balloon channel — zero added dependency, and the tooltip remains a second channel that survives WebView failure.
 9. **Self-healing by explicit supervision, never by blanket timers.** Each of the three long-lived streams (device tracker, mDNS tracker, server probe) has its own owner, its own failure detection, and its own jittered exponential backoff. A dead mDNS tracker degrades exactly one local warning card; it never turns the app red.
-10. **v1 ships no updater, no telemetry, no settings screen, and no persisted state.** Pin resets to unpinned each launch (deterministic without storage). Start-with-Windows is an installer checkbox writing `HKCU\...\Run`; the app contains no code for it.
+10. **v1 ships no updater, no telemetry, and no settings screen.** Pin resets to unpinned each launch (deterministic without storage). A minimal typed preference store under `HKCU\Software\ADBView` holds NotificationsEnabled and Theme only. Start-with-Windows is the shared `HKCU\...\Run` value `ADB View` (installer checkbox and tray toggle; quoted path + `--startup`).
 
 **Deliberately excluded** (each was considered and rejected; see §15): AdvancedSharpAdbClient, Google.Protobuf, Windows App SDK, a DI container, Redux/Zustand, a router, an animation library, an icon package, a tray-icon library, a mocking library, a second process, an IPC service, SQLite/history, auto-update, telemetry, CSS acrylic.
 
@@ -128,7 +128,7 @@ Every entry: choice · status as of 2026-09-16 · alternatives · reason · risk
 
 | | |
 |---|---|
-| **Choice** | Startup: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` written by the installer, never by the app. Single instance: named mutex `Local\AdbView.SingleInstance` for ownership + named pipe `AdbView.Control.<sessionId>` for "toggle the existing instance". Power/session: `SystemEvents.PowerModeChanged` / `SessionSwitch` / `DisplaySettingsChanged`. |
+| **Choice** | Startup: `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value name `ADB View`, command `"<exe>" --startup` — written by the installer optional task **and** by the tray **Start with Windows** toggle (`StartupRegistration`). Single instance: named mutex `Local\AdbView.SingleInstance` for ownership + named pipe `AdbView.Control.<sessionId>` for "toggle the existing instance". Power/session: `SystemEvents.PowerModeChanged` / `SessionSwitch` / `DisplaySettingsChanged`. Theme: `SystemTheme` + optional `ThemePreference` (System/Light/Dark) → effective `ThemeKind` in the shell snapshot. |
 | **Alternatives** | Task Scheduler startup (admin, opaque); MSIX `StartupTask` (requires packaging identity); `WM_COPYDATA` broadcast for single instance (`HWND_BROADCAST` noise, fragile); `Mutex`-only (second launch does nothing visible — bad UX). |
 | **Reason** | Each is the mechanism Windows already owns, with no persisted app state and no admin rights. |
 | **Risk** | Low. Pipe path is per-session so Fast User Switching cannot cross-talk. |
@@ -220,7 +220,7 @@ Every entry: choice · status as of 2026-09-16 · alternatives · reason · risk
   │  DeviceTracker  ── host:track-devices-proto-binary ──►  stream of device lists             │
   │  MdnsTracker    ── streaming mDNS service tracking  ──►  stream of service lists            │
   │  PairingCoordinator ── host:pair:<code>:<host>:<port> (fallback: adb.exe pair, code stdin) │
-  │  MetadataProbe  ── host:transport:<serial> + shell:… ──►  battery / android version        │
+  │  MetadataProbe  ── host:transport:<serial> + shell:… ──►  battery / naming / android version │
   └───────────┬────────────────────────────────────────────────────────────────────────────────┘
               │ TCP 127.0.0.1:5037 (length-prefixed, bounded reads)
               ▼
@@ -564,7 +564,7 @@ Hard limits: payload length cap 1 MiB, connect timeout 2 s, one-shot request tim
 | Device tracking | `host:track-devices-proto-binary` | **streaming** | `host:track-devices-l` (text) when the proto service is unavailable |
 | Wireless discovery | streaming mDNS service tracking (`host:track-mdns-services`, proto) | **streaming** | child process `adb.exe mdns track-services --proto-text` with stdout streaming; last resort `host:mdns:services` refreshed on flyout-open only |
 | Pairing | `host:pair:<code>:<host>:<port>` | one-shot, long | `adb.exe pair <host>:<port>` with the code written to **stdin** |
-| Metadata | `host:transport:<serial>` then `shell:dumpsys battery` / `shell:getprop ro.build.version.release` / `ro.product.model` | one-shot, on policy | none (field omitted) |
+| Metadata | `host:transport:<serial>` then fixed `shell:` probes: `dumpsys battery`, `getprop ro.product.model`, `getprop ro.build.version.release`, `getprop ro.product.marketname`, `settings get global device_name`, `getprop ro.product.brand`, `getprop ro.product.manufacturer` | one-shot, on policy | field omitted; DisplayName falls back |
 
 **Capability probe (startup and after every server restart):** attempt the proto services once; record support in `AdbCapabilities { ProtoDeviceTracking, ProtoMdnsTracking, ServerStatus, AdbVersion }`; log the result once per server generation. Degraded modes are logged at Warning, never surfaced as a product error unless they cost a design-required capability (no mDNS at all → `WirelessDiscovery` warning card).
 
@@ -632,9 +632,14 @@ With **ADB Wi-Fi 2.0** (Android 17 + adb 37) the mDNS records carry `product_mod
    c. proto serial matches ^(?<host>.+):(?<port>\d+)$ → look up an mDNS connect service with the
       same address and take its `serial` field; if none, keep "host:port" as the identity
 3. Id = ("usb:" | "wifi:" | "unk:") + hardwareSerial
-4. DisplayName = mdns.given_name ?? proto.model ?? proto.product ?? hardwareSerial
+4. Early DisplayName (before shell naming metadata) =
+   usable mdns.given_name ?? proto.model ?? proto.product ?? "Android device"
+   (never hardwareSerial / host:port / adb-* transport identity)
+5. Refined DisplayName (after Connected metadata) =
+   marketname → settings device_name → model → conservative brand+model → "Android device"
+   ExactModel remains `ro.product.model` (technical). Transport identity never becomes DisplayName.
 ```
-Rule 2b/2c are the only serial-shape heuristics in the codebase; they live in `Adb/DeviceIdentity.cs`, are covered by fixture tests, and are annotated with why they exist (ADB does not expose the hardware serial for wireless transports in older records).
+Rule 2b/2c are the only serial-shape heuristics in the codebase; they live in `Adb/DeviceIdentity.cs`, are covered by fixture tests, and are annotated with why they exist (ADB does not expose the hardware serial for wireless transports in older records). DisplayName refinement lives in `State/DeviceDisplayName.cs` and is applied once per device generation with model/version cache — not on the battery tick.
 
 A device that moves USB → Wi-Fi is a *different* `Id` (different transport), which is correct: the design shows one card per transport, and connection age genuinely restarts.
 
@@ -662,18 +667,18 @@ A device that moves USB → Wi-Fi is a *different* `Id` (different transport), w
           (cleared quietly; offer list continues to reflect mDNS)
 ```
 
-Rules: at most one operation at a time; the code never leaves memory; the pairing socket has a 30 s timeout; `Failed` persists until retry, cancel, or offer withdrawal (`DESIGN.md §15` requires immediate retry); **success never fabricates a device** (`DESIGN.md §15`, brief §"Pairing operation").
+Rules: at most one operation at a time; the code never leaves memory; the pairing socket has a 30 s timeout; `Failed` persists until retry, cancel, or offer withdrawal (`DESIGN.md §15` requires immediate retry); **success never fabricates a device** (`DESIGN.md §15`, brief §"Pairing operation"). Offer withdrawal — the active offer's binding absent from a complete mDNS list — clears the snapshot operation **and** releases the coordinator (`PairingSession.CancelIfOfferWithdrawn` on snapshot publish), so a later `pairStart` for any offer is accepted rather than rejected against a dead offer.
 
 ### 6.9 Metadata collection
 
 | Trigger | What | Guard |
 |---|---|---|
-| Device enters `Connected` | battery, exact model, Android version | once per device generation |
+| Device enters `Connected` | battery, exact model, Android version, marketing name, device name, brand, manufacturer | once per device generation |
 | Flyout opens (or pinned window becomes visible) | battery for visible devices, if older than 30 s | coalesced |
 | Pinned and visible | battery every 120 s | stops immediately when hidden |
-| Never | while hidden and unpinned; while device is not `Connected`; more than one in-flight request per device | — |
+| Never | while hidden and unpinned; while device is not `Connected`; more than one in-flight request per device; polling `device_name` for renames | — |
 
-Each probe: `host:transport:<serial>` → `shell:dumpsys battery` (parse `level:`), 5 s timeout, single retry after 2 s, then give up until the next trigger. Failure ⇒ `batteryPercent = null` ⇒ the card simply omits battery (no error text, per design restraint). `getprop` values are cached for the lifetime of the device generation.
+Each full probe: `host:transport:<serial>` → fixed compile-time `shell:…` strings (see §6.2), 5 s timeout, single retry after 2 s, then give up until the next trigger. Failure ⇒ `batteryPercent = null` ⇒ the card simply omits battery (no error text, per design restraint). Naming/`getprop` values and brand/manufacturer are cached for the lifetime of the device generation; battery-only refreshes do not re-fetch them. `DisplayName` is refined when naming metadata arrives; `ExactModel` stays the technical `ro.product.model`.
 
 ### 6.10 Event reduction from ADB
 
@@ -685,7 +690,8 @@ record DeviceListReceived(ImmutableArray<RawDevice> Devices, DateTimeOffset At);
 record DeviceTrackerFailed(string Reason);
 record MdnsServicesReceived(ImmutableArray<RawMdnsService> Services, DateTimeOffset At);
 record MdnsTrackerFailed(string Reason);
-record MetadataReceived(string DeviceId, int? Battery, string? Model, string? AndroidVersion);
+record MetadataReceived(string DeviceId, int? Battery, string? Model, string? AndroidVersion,
+    string? MarketingName, string? DeviceName, string? Brand, string? Manufacturer);
 record PairingProgressed(string OfferId, PairingPhase Phase, string? FailureReason);
 ```
 
@@ -1035,6 +1041,7 @@ Failure / detection / response matrix. Every response is *owned* — no global "
 | 24 | Process | Second launch | Mutex held | Toggle existing flyout, exit 0 | — | Flyout appears |
 | 25 | Process | Unhandled exception | `AppDomain.UnhandledException`, `Application.ThreadException` | Log with full context, attempt clean tray removal, exit non-zero | — | Icon disappears (no zombie) |
 | 26 | State | Reducer backlog grows unexpectedly | Producer storm or reducer bug | Do not drop events; continue draining and emit a rate-limited backlog warning once a diagnostic pending-count threshold is exceeded | — | No loss of semantic events; investigate producer/reducer cause |
+| 27 | Discovery (fallback browser, decision 0008 follow-through) | Soft-state staleness: announcements stop or instances withdraw while the server is Up | mDNS TTL expiry / TTL-0 goodbyes (no pure event mechanism covers missed packets — R-05 sanction per `research/2026-10-01-dnssd-fallback-browser.md`) | Browser loop sweeps expired entries and re-issues query bursts at ≈80 % of the smallest outstanding TTL (floor 60 s); goodbye packets evict immediately; the ADB server stream stays authoritative and the fallback fills only its empty gap | single loop slice 200 ms; requery floor 60 s | Offers survive a broken server browse; stale instances disappear |
 
 Chaos tests (Phase 9) automate rows 1, 3, 5, 8, 11, 16, 17, 19, 24, 26 against the fake ADB server and a real Explorer restart.
 
@@ -1047,7 +1054,7 @@ Chaos tests (Phase 9) automate rows 1, 3, 5, 8, 11, 16, 17, 19, 24, 26 against t
 - `adb.exe` is resolved to an **absolute path** from `ANDROID_SDK_ROOT` / `ANDROID_HOME` / `PATH` / known SDK locations. The current working directory is never searched, eliminating the classic `adb.exe`-in-CWD hijack.
 - Every spawn uses `ProcessStartInfo` with `UseShellExecute = false`, an explicit argument list (never a concatenated command line), and no shell. Argument escaping is therefore not a code path that can be got wrong.
 - The only spawn with user-influenced data is the pairing *fallback*, where the six-digit code is written to **stdin** — never argv, so it cannot appear in another user's process listing.
-- Device interaction goes through the host protocol socket, not `adb.exe shell`. The only shell strings sent are three compile-time constants (`dumpsys battery`, `getprop ro.build.version.release`, `getprop ro.product.model`); no snapshot or user value is ever interpolated into a device command.
+- Device interaction goes through the host protocol socket, not `adb.exe shell`. The only shell strings sent are seven compile-time constants (`dumpsys battery`, `getprop ro.product.model`, `getprop ro.build.version.release`, `getprop ro.product.marketname`, `settings get global device_name`, `getprop ro.product.brand`, `getprop ro.product.manufacturer`); no snapshot or user value is ever interpolated into a device command.
 - The server is never killed, never reconfigured, and never has its environment overridden.
 - The loopback ADB port is treated as an *untrusted* input source: length-prefixed reads are bounded (1 MiB), the protobuf reader skips unknown fields without allocation surprises, and no value from ADB is ever executed, evaluated, or used as a path.
 
@@ -1167,6 +1174,10 @@ ADBView/
 │   │   ├── WindowBackdrop.cs        # DWM attributes, NCCALCSIZE/NCACTIVATE handling
 │   │   ├── WebViewHost.cs           # creation, hardening, recovery, transport
 │   │   ├── SystemTheme.cs           # theme, transparency, contrast, reduced motion
+│   │   ├── ThemePreference.cs       # System / Light / Dark (tray)
+│   │   ├── EffectiveTheme.cs        # preference + OS → ThemeKind
+│   │   ├── UserPreferences.cs       # HKCU\Software\ADBView
+│   │   ├── StartupRegistration.cs   # HKCU Run "ADB View" + --startup
 │   │   ├── PowerAndSession.cs
 │   │   └── Interop/                 # thin wrappers over CsWin32 output
 │   ├── Bridge/
@@ -1344,7 +1355,7 @@ A Release build **fails** if `wwwroot/index.html` is missing, so a native-only b
 
 ### 17.3 Packaging
 
-- **Installer:** `installer/AdbView.iss` (Inno Setup 6) — per-user install to `%LOCALAPPDATA%\Programs\ADBView`, no admin prompt, Start Menu shortcut, optional "Start ADB View when I sign in" checkbox writing `HKCU\...\Run`, WebView2 Evergreen runtime detection with the official bootstrapper offered if absent, clean uninstall that removes the `Run` value, the WebView2 profile, and logs.
+- **Installer:** `installer/AdbView.iss` (Inno Setup 6) — per-user install to `%LOCALAPPDATA%\Programs\ADBView`, no admin prompt, Start Menu shortcut, optional "Start ADB View when I sign in" checkbox writing `HKCU\...\Run` value `ADB View` (same registration the tray can toggle), WebView2 Evergreen runtime detection with the official bootstrapper offered if absent, clean uninstall that removes the `Run` value, the WebView2 profile, and logs.
 - **Portable:** versioned zip of the publish output for users who refuse installers.
 - **Versioning:** `Directory.Build.props` holds `<Version>`; SemVer; tag `vX.Y.Z` drives the release workflow. Version is visible in the installer, file properties, and every log header.
 

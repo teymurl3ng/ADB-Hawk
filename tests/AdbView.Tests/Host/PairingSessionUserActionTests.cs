@@ -95,4 +95,103 @@ public sealed class PairingSessionUserActionTests {
             && p.Phase == DomainPhase.Failed);
         Assert.Equal(DomainPhase.AwaitingCode, coordinator.CurrentPhase);
     }
+
+    [Fact]
+    public void Start_DifferentOffer_While_Awaiting_Emits_Failed_ForNewOffer() {
+        var bindingA = new PairingOfferBinding("o1", "192.168.1.2", 37101, null, "Phone A");
+        var bindingB = new PairingOfferBinding("o2", "192.168.1.3", 37102, null, "Phone B");
+        var events = new List<AdbViewEvent>();
+        using var session = new PairingSession(
+            events.Add,
+            id => id == "o1" ? bindingA : id == "o2" ? bindingB : null);
+        session.Start("o1");
+        events.Clear();
+
+        session.Start("o2");
+
+        Assert.Contains(events, e => e is PairingProgressedEvent p
+            && p.OfferId == "o2"
+            && p.Phase == DomainPhase.Failed);
+        Assert.Equal(DomainPhase.AwaitingCode, session.Coordinator.CurrentPhase);
+        Assert.Equal("o1", session.Coordinator.ActiveOfferId);
+    }
+
+    [Fact]
+    public void CancelIfOfferWithdrawn_NoActiveOperation_IsNoOp() {
+        var events = new List<AdbViewEvent>();
+        using var session = new PairingSession(events.Add, _ => null);
+        session.CancelIfOfferWithdrawn();
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public void CancelIfOfferWithdrawn_OfferStillPresent_DoesNotCancel() {
+        var binding = new PairingOfferBinding("o1", "192.168.1.2", 37101, null, "Phone");
+        var events = new List<AdbViewEvent>();
+        using var session = new PairingSession(events.Add, id => id == "o1" ? binding : null);
+        session.Start("o1");
+        events.Clear();
+
+        session.CancelIfOfferWithdrawn();
+
+        Assert.Equal(DomainPhase.AwaitingCode, session.Coordinator.CurrentPhase);
+        Assert.Equal("o1", session.Coordinator.ActiveOfferId);
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public void CancelIfOfferWithdrawn_ActiveOfferGone_CancelsAndFreesCoordinator() {
+        var bindingA = new PairingOfferBinding("o1", "192.168.1.2", 37101, null, "Phone A");
+        var bindingB = new PairingOfferBinding("o2", "192.168.1.3", 37102, null, "Phone B");
+        var events = new List<AdbViewEvent>();
+        var bindings = new Dictionary<string, PairingOfferBinding> { ["o1"] = bindingA };
+        using var session = new PairingSession(events.Add, id => bindings.GetValueOrDefault(id));
+        session.Start("o1");
+        events.Clear();
+
+        bindings.Remove("o1");
+        session.CancelIfOfferWithdrawn();
+
+        Assert.Contains(events, e => e is PairingProgressedEvent p
+            && p.OfferId == "o1"
+            && p.Phase == DomainPhase.Cleared);
+        Assert.Equal(DomainPhase.Cleared, session.Coordinator.CurrentPhase);
+        Assert.Null(session.Coordinator.ActiveOfferId);
+
+        // The coordinator is free again: a pairStart for a fresh offer is accepted.
+        bindings["o2"] = bindingB;
+        session.Start("o2");
+        Assert.Equal(DomainPhase.AwaitingCode, session.Coordinator.CurrentPhase);
+        Assert.Equal("o2", session.Coordinator.ActiveOfferId);
+        Assert.DoesNotContain(events, e => e is PairingProgressedEvent p
+            && p.OfferId == "o2"
+            && p.Phase == DomainPhase.Failed);
+    }
+
+    [Fact]
+    public async Task CancelIfOfferWithdrawn_DuringInFlightPair_ReleasesAndDropsLateSuccess() {
+        var fake = new FakePairClient();
+        var coordinator = new PairingCoordinator(pairClient: fake);
+        var binding = new PairingOfferBinding("o1", "192.168.1.2", 37101, null, "Phone");
+        var events = new List<AdbViewEvent>();
+        var bindings = new Dictionary<string, PairingOfferBinding> { ["o1"] = binding };
+        using var session = new PairingSession(events.Add, id => bindings.GetValueOrDefault(id), coordinator);
+        session.Start("o1");
+        events.Clear();
+
+        var submit = coordinator.SubmitAsync("o1", "123456");
+        await Task.Delay(30);
+        Assert.Equal(DomainPhase.Pairing, coordinator.CurrentPhase);
+
+        bindings.Remove("o1");
+        session.CancelIfOfferWithdrawn();
+        Assert.Equal(DomainPhase.Cleared, coordinator.CurrentPhase);
+
+        // Late success must not resurrect the cleared operation.
+        fake.Gate.SetResult(new HostPairResult(true, PairingFailureKind.None, null));
+        await submit;
+        Assert.Equal(DomainPhase.Cleared, coordinator.CurrentPhase);
+        Assert.DoesNotContain(events, e => e is PairingProgressedEvent p
+            && p.Phase == DomainPhase.PairedWaitingForDevice);
+    }
 }

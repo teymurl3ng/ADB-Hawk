@@ -16,6 +16,8 @@ internal sealed class BridgeCoordinator {
     private readonly Action<string>? _onPairStart;
     private readonly Action<string, string>? _onPairSubmit;
     private readonly Action<string>? _onPairCancel;
+    private readonly Action? _onDiscoveryRecheck;
+    private readonly Action<string>? _onDiscoveryRepair;
 
     public AppSnapshot CurrentSnapshot => _currentSnapshot;
     public long Revision => _revision;
@@ -28,7 +30,9 @@ internal sealed class BridgeCoordinator {
         Action<bool>? onSetPinned = null,
         Action<string>? onPairStart = null,
         Action<string, string>? onPairSubmit = null,
-        Action<string>? onPairCancel = null) {
+        Action<string>? onPairCancel = null,
+        Action? onDiscoveryRecheck = null,
+        Action<string>? onDiscoveryRepair = null) {
         _host = host ?? throw new ArgumentNullException(nameof(host));
         _currentSnapshot = initialSnapshot ?? StateEngine.CreateDefaultSnapshot(isPinned, 1);
         _revision = _currentSnapshot.Revision;
@@ -36,6 +40,8 @@ internal sealed class BridgeCoordinator {
         _onPairStart = onPairStart;
         _onPairSubmit = onPairSubmit;
         _onPairCancel = onPairCancel;
+        _onDiscoveryRecheck = onDiscoveryRecheck;
+        _onDiscoveryRepair = onDiscoveryRepair;
     }
 
     public void UpdateSnapshot(AppSnapshot snapshot) {
@@ -106,6 +112,14 @@ internal sealed class BridgeCoordinator {
             case PairCancelAction pairCancel:
                 Log.Information("BridgeCoordinator: pairCancel dispatch");
                 _onPairCancel?.Invoke(pairCancel.OfferId);
+                break;
+            case DiscoveryRecheckAction:
+                Log.Information("BridgeCoordinator: discoveryRecheck dispatch");
+                _onDiscoveryRecheck?.Invoke();
+                break;
+            case DiscoveryRepairAction repair:
+                Log.Information("BridgeCoordinator: discoveryRepair dispatch");
+                _onDiscoveryRepair?.Invoke(repair.Id);
                 break;
             default:
                 Log.Warning("bridge.action.rejected: unhandled action type {Type}", action.GetType().Name);

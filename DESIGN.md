@@ -627,7 +627,15 @@ This state remains visible until the authoritative backend state replaces it.
 
 `Pairing failed`
 
-`Check the code and try again.`
+The supporting line is selected from this fixed set by the failure cause
+(decision 0007); wording never includes technical detail:
+
+- Code wrong or refused: `Check the code and try again.`
+- Phone did not respond in time: `The phone did not respond in time. Try again.`
+- Too many attempts: `Too many attempts. Wait a moment and try again.`
+- Offer changed or withdrawn: `The pairing offer changed. Tap Pair and enter the new code.`
+
+Any other failure uses the wrong-code line. The same line is the notification body.
 
 Retry is available immediately.
 
@@ -719,6 +727,33 @@ Local subsystem surface only.
 ### Restoring Wireless Discovery
 
 Temporary local informational surface.
+
+### Discovery Health (decision 0008)
+
+Local informational surface for a measured discovery failure, rendered as the
+`DiscoveryHealthCard`, placed after pairing cards and before subsystem warnings.
+
+Appears only when all of the following hold (event-driven, no timers):
+
+- at least one connected device reports the Wi-Fi transport,
+- wireless discovery currently reports zero services,
+- the ADB server is healthy and wireless discovery is enabled.
+
+A healthy but quiet network shows nothing. The card clears as soon as any
+service returns or the Wi-Fi device disappears.
+
+Content:
+
+- Title: `Wireless discovery isn't working`
+- Body: `{device} is connected over Wi-Fi, but ADB isn't receiving device
+  announcements on this network.`
+- Evidence lines generated from structured diagnosis, only when a finding
+  exists; wording is human, never technical (no protocols, ports, or driver
+  names).
+- `Check again` re-runs the measurement; disabled while it runs.
+
+The visual treatment reuses the local-warning card language. Notifications are
+out of scope for this surface until a later decision.
 
 ---
 
@@ -1133,13 +1168,31 @@ Notifications use the same terminology as the flyout.
 
 ## 33. Right-Click Tray Menu
 
-For v1:
+For v1 the tray context menu is:
+
+**Open ADB View** (primary; shows/activates the flyout; does not toggle closed)
+
+---
+
+**Start with Windows** (check — registers/unregisters the product `HKCU` Run entry)
+
+**Notifications** (check — enables/disables ADB View balloons; default on)
+
+**Theme** ▸ **System** / **Light** / **Dark** (exactly one checked; default System)
+
+---
 
 **Exit**
 
-No duplicated application controls.
+These options live only in the native tray menu. There is no settings screen,
+no preferences flyout, and no WebView settings page.
 
-Primary interaction is left-click → flyout.
+Checks refresh from authoritative state each time the menu opens. Theme and
+notification changes apply immediately. Start with Windows uses the same
+per-user Run registration as the installer (`--startup`). Windows Startup Apps
+may independently suppress execution; ADB View only owns its Run registration.
+
+Primary interaction remains left-click → flyout toggle.
 
 ---
 
@@ -1316,6 +1369,7 @@ ExpandedDeviceCard
 PairingOffer
 PairingCode
 EmptyState
+DiscoveryHealthCard (decision 0008)
 SubsystemWarning
 ```
 

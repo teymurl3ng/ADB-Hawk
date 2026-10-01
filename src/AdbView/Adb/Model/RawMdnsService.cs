@@ -47,6 +47,8 @@ internal enum RawMdnsFormat {
     ProtoBinary = 0,
     ProtoText = 1,
     ServicesList = 2,
+    /// <summary>First-party DNS-SD fallback browser rows (decision 0008 follow-through).</summary>
+    Fallback = 3,
 }
 
 /// <summary>Complete mDNS service-list snapshot (ENGINEERING.md §6.10 naming).</summary>

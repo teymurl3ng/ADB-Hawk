@@ -38,6 +38,10 @@ internal sealed class MetadataProbe : IMetadataProbe {
         var battery = await ProbeCommandAsync(target, MetadataCommand.Battery, ct).ConfigureAwait(false);
         var model = await ProbeCommandAsync(target, MetadataCommand.ExactModel, ct).ConfigureAwait(false);
         var version = await ProbeCommandAsync(target, MetadataCommand.AndroidVersion, ct).ConfigureAwait(false);
+        var marketing = await ProbeCommandAsync(target, MetadataCommand.MarketingName, ct).ConfigureAwait(false);
+        var deviceName = await ProbeCommandAsync(target, MetadataCommand.DeviceName, ct).ConfigureAwait(false);
+        var brand = await ProbeCommandAsync(target, MetadataCommand.Brand, ct).ConfigureAwait(false);
+        var manufacturer = await ProbeCommandAsync(target, MetadataCommand.Manufacturer, ct).ConfigureAwait(false);
 
         return new MetadataProbeResult(
             target.DeviceId,
@@ -47,7 +51,15 @@ internal sealed class MetadataProbe : IMetadataProbe {
             version.TextValue,
             battery.Status,
             model.Status,
-            version.Status);
+            version.Status,
+            marketing.TextValue,
+            deviceName.TextValue,
+            brand.TextValue,
+            manufacturer.TextValue,
+            marketing.Status,
+            deviceName.Status,
+            brand.Status,
+            manufacturer.Status);
     }
 
     public async Task<MetadataCommandResult> ProbeCommandAsync(
@@ -104,6 +116,10 @@ internal sealed class MetadataProbe : IMetadataProbe {
             MetadataCommand.Battery => MapBattery(raw.Body.Span),
             MetadataCommand.ExactModel => MapGetprop(command, raw.Body.Span),
             MetadataCommand.AndroidVersion => MapGetprop(command, raw.Body.Span),
+            MetadataCommand.MarketingName => MapGetprop(command, raw.Body.Span),
+            MetadataCommand.DeviceName => MapGetprop(command, raw.Body.Span),
+            MetadataCommand.Brand => MapGetprop(command, raw.Body.Span),
+            MetadataCommand.Manufacturer => MapGetprop(command, raw.Body.Span),
             _ => new MetadataCommandResult(command, MetadataFieldStatus.Malformed, null, null),
         };
     }

@@ -9,6 +9,7 @@ import type {
   DeviceStateKind,
   PairingPhase,
   SubsystemKind,
+  DiscoveryHealthView,
 } from './snapshot';
 
 const VALID_GLOBAL_HEALTH = new Set<string>(['healthy', 'adbUnavailable', 'adbRestoring']);
@@ -382,6 +383,68 @@ export function parseSnapshot(raw: unknown): AppSnapshot | null {
     return null;
   }
 
+  // Discovery health (decision 0008 + amendment). Tolerates absence for forward compatibility.
+  let discoveryHealth: DiscoveryHealthView | null = null;
+  if (s.discoveryHealth !== undefined && s.discoveryHealth !== null) {
+    const dh = s.discoveryHealth;
+    if (
+      !isObject(dh) ||
+      typeof dh.title !== 'string' ||
+      typeof dh.detail !== 'string' ||
+      typeof dh.actionLabel !== 'string' ||
+      typeof dh.canCheckAgain !== 'boolean' ||
+      !Array.isArray(dh.evidence) ||
+      !Array.isArray(dh.repairs) ||
+      (dh.resultLine !== null && typeof dh.resultLine !== 'string')
+    ) {
+      console.warn('parseSnapshot: discoveryHealth is invalid');
+      return null;
+    }
+
+    for (let i = 0; i < dh.evidence.length; i++) {
+      if (typeof dh.evidence[i] !== 'string') {
+        console.warn(`parseSnapshot: discoveryHealth.evidence[${i}] must be a string`);
+        return null;
+      }
+    }
+
+    const repairs: DiscoveryHealthView['repairs'] = [];
+    for (let i = 0; i < dh.repairs.length; i++) {
+      const r = dh.repairs[i];
+      if (
+        !isObject(r) ||
+        typeof r.id !== 'string' ||
+        typeof r.label !== 'string' ||
+        typeof r.isAdmin !== 'boolean' ||
+        typeof r.isRunning !== 'boolean' ||
+        typeof r.runningLabel !== 'string'
+      ) {
+        console.warn(`parseSnapshot: discoveryHealth.repairs[${i}] is invalid`);
+        return null;
+      }
+
+      repairs.push({
+        id: r.id as string,
+        label: r.label as string,
+        isAdmin: r.isAdmin as boolean,
+        isRunning: r.isRunning as boolean,
+        runningLabel: r.runningLabel as string,
+      });
+    }
+
+    discoveryHealth = {
+      title: dh.title as string,
+      detail: dh.detail as string,
+      evidence: (dh.evidence as Array<Record<string, unknown>>).map(
+        (line) => line as unknown as string,
+      ),
+      actionLabel: dh.actionLabel as string,
+      canCheckAgain: dh.canCheckAgain as boolean,
+      repairs,
+      resultLine: (dh.resultLine as string | null) ?? null,
+    };
+  }
+
   return {
     protocol: s.protocol as number,
     revision: s.revision as number,
@@ -457,6 +520,7 @@ export function parseSnapshot(raw: unknown): AppSnapshot | null {
       title: w.title as string,
       detail: w.detail as string,
     })),
+    discoveryHealth,
     deviceCountLabel: s.deviceCountLabel as string | null,
   };
 }

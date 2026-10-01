@@ -34,6 +34,10 @@ public sealed class AdbServerSupervisorTests {
             }
             return Task.FromResult(new ProcessResult(0, "daemon started successfully", string.Empty, false));
         }
+
+        public Task<ProcessResult> KillServerAsync(string executablePath, CancellationToken ct = default) =>
+            throw new InvalidOperationException(
+                "Supervisor scenarios never kill the server (decision 0008 amendment governs the only kill path).");
     }
 
     private sealed class TestExecutableLocator : IAdbExecutableLocator {

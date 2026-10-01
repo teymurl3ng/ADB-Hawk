@@ -11,6 +11,8 @@ using System.Text.Json.Serialization;
 [JsonDerivedType(typeof(PairStartAction), "pairStart")]
 [JsonDerivedType(typeof(PairSubmitAction), "pairSubmit")]
 [JsonDerivedType(typeof(PairCancelAction), "pairCancel")]
+[JsonDerivedType(typeof(DiscoveryRecheckAction), "discoveryRecheck")]
+[JsonDerivedType(typeof(DiscoveryRepairAction), "discoveryRepair")]
 internal abstract record WebAction;
 
 internal sealed record ReadyAction : WebAction {
@@ -49,4 +51,12 @@ internal sealed record PairSubmitAction : WebAction {
 
 internal sealed record PairCancelAction : WebAction {
     public required string OfferId { get; init; }
+}
+
+/// <summary>Re-runs the one-shot discovery measurement (decision 0008). Read-only.</summary>
+internal sealed record DiscoveryRecheckAction : WebAction;
+
+/// <summary>Runs the backend-resolved repair identified by an opaque id (decision 0008 amendment).</summary>
+internal sealed record DiscoveryRepairAction : WebAction {
+    public required string Id { get; init; }
 }

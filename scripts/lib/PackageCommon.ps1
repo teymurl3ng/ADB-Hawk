@@ -320,6 +320,9 @@ function Assert-InnoScriptContract {
     # Optional Run entry must include --startup.
     $registrySection = [regex]::Match($text, '(?ms)^\[Registry\].*?(?=^\[|\z)').Value
     $registryCode = ($registrySection -split "`n" | Where-Object { $_ -notmatch '^\s*;' }) -join "`n"
+    if ($registryCode -notmatch 'ValueName: "ADB View"') {
+        throw "HKCU Run ValueName must be 'ADB View' (shared with StartupRegistrationContract)."
+    }
     if ($registryCode -notmatch '--startup') {
         throw "Optional HKCU Run entry must include --startup."
     }

@@ -286,3 +286,53 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED** — do not collap
 2. Stale Vite assets across upgrade — `[InstallDelete] {app}\wwwroot`
 3. Relative `-OutputDirectory` broke ISCC — absolutize paths in `package.ps1`
 
+
+## Phase 12.1 — Discovery health diagnostics (2026-10-01, decision 0008)
+
+**Platform:** Windows 11 `10.0.26100` · platform-tools 37.0.1 · the host with documented broken
+ADB mDNS browse (`research/2026-09-19-host-mdns-empty-while-tcp-works.md`)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Trigger fires: Wi-Fi device connected + zero services + healthy server | **AUTOMATED PASS** | `DiscoveryHealthReducerTests` truth table (incl. USB-only, offline, mdns-disabled, tracker-failed, pre-first-frame negatives) |
+| Evidence rendering: probe measured / nothing / unavailable; port holders singular+plural; virtual adapters 1–2 named | **AUTOMATED PASS** | `DiscoveryHealthReducerTests`; Vocabulary order probe → port → adapters |
+| Card clears on any service return / device loss / mdns disable | **AUTOMATED PASS** | Momentary evidence dropped with the card (10 s legacy-response TTL) |
+| `discovery-health` fixture parse + rendering | **AUTOMATED PASS** | `fixtureParity.test.ts`, Vitest, Playwright visual captures (dark + light) |
+| 5353 binder list matches `netstat -ano` | **NOT EXERCISED** | Live comparison pending on the affected host |
+| Adapter virtual flags match `Get-NetAdapter` | **NOT EXERCISED** | Live comparison pending |
+| Probe measures announcements while `adb mdns services` is empty (the acceptance) | **NOT EXERCISED** | Requires the affected host's Wi-Fi environment with a phone advertising; next live session |
+| `Check again` headed flow | **NOT EXERCISED** | Headed run pending |
+
+## Phase 12.2 — Discovery repair actions (2026-10-01, decision 0008 amendment)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Restart ADB: kill spawn → supervisor recovery → trackers reconnect → post-restart measure | **AUTOMATED PASS** | `RepairCoordinatorTests` (fixed argv `kill-server`, one-shot measure on first frame after new-generation Up; survives card-clear churn); supervisor/lifecycle recovery pre-proven (ScenarioG, Mut1) |
+| Stop Tailscale: fixed `sc.exe stop Tailscale` via UAC runas; undo unlocks; re-measure | **AUTOMATED PASS** | `RepairCoordinatorTests.StopServiceBuildsFixedScCommandAndUnlocksUndo` |
+| Disable adapter: fixed `netsh interface set interface name=<validated> admin=disable`; undo entry kept while adapter absent from Up-enumeration | **AUTOMATED PASS** | `RepairCoordinatorTests.DisableAdapterBuildsFixedNetshCommand`; charset rejection (`ValidTargetAcceptsDocumentedNamesAndRejectsInjection`) |
+| UAC decline → logged no-op, "not run" line, no undo/no re-measure | **AUTOMATED PASS** | `DeclinedLaunchReportsDeclinedWithoutUndoOrMeasure`; reducer `DeclinedRepairShowsMomentaryLineWithoutMeasurement` |
+| Result line momentary (cleared by next measurement); card clear drops repair state | **AUTOMATED PASS** | `DiscoveryHealthReducerTests` repair block |
+| Episode balloon: once per episode, cancel-on-clear during hold, latch reset on card clear, card-identical copy, master switch | **AUTOMATED PASS** | `DiscoveryBrokenNotificationTests` |
+| Boundary carve-out: `kill-server` only in AdbProcessRunner.cs | **AUTOMATED PASS** | BoundaryTests updated per the amendment; FakeAdbServer socket-kill assertion untouched and still strict |
+| Real `Restart ADB` on this host (headed) | **NOT EXERCISED** | Next live session; Phase 6D evidence says restart alone did NOT restore browse — expect "Still not working", which is honest truth, not a defect |
+| Real UAC stop-Tailscale + re-enable (headed) | **NOT EXERCISED** | Next live session (needs elevation) |
+| Real adapter disable/enable (Hyper-V Default Switch) | **NOT EXERCISED** | The one documented lever never tried on this host — now testable in-product |
+
+## Phase 12.3 — First-party DNS-SD fallback browser (2026-10-01, decision 0008 follow-through)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Codec parses PTR/SRV/TXT/A with compression, TTL, and TXT first-key-wins | **AUTOMATED PASS** | `MdnsFallbackBrowserTests` + `DnsTestMessages` fixtures |
+| PTR→instance, SRV→port+hostname, A→address via hostname, TXT→`name`/`api` | **AUTOMATED PASS** | `AbsorbBuildsInstanceFromPtrSrvTxtA` (AOSP mdns.cpp TXT schema) |
+| TTL-0 goodbye evicts; re-announcement recreates; TTL sweep drops stale | **AUTOMATED PASS** | `GoodbyeWithZeroTtlEvictsInstance`, `ExpirySweepDropsStaleInstances` |
+| Merge: adb non-empty wins entirely; adb empty + fallback rows → offers | **AUTOMATED PASS** | `DiscoveryHealthReducerTests` merge truth table (offer ids are DiscoveryKeys) |
+| Fallback rows never satisfy the broken-discovery trigger nor clear tracker warnings | **AUTOMATED PASS** | `FallbackRowsDoNotSatisfyBrokenDiscoveryTrigger`, `FallbackDoesNotClearTrackerFailureWarnings` |
+| Shared 5353 bind → passive announcements; bind failure → active-only mode | **NOT EXERCISED** | Headed run on the affected host pending; active-only path is the firewall-safe default |
+| **Acceptance: browser sees ADB services while `adb mdns services` is empty** | **NOT EXERCISED** | The Step 3 acceptance on this host — next live session with the phone advertising |
+| Windows Firewall first-listen prompt for UDP 5353 | **NOT EXERCISED** | One-time; declining = active-only (no rule needed) |

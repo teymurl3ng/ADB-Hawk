@@ -24,11 +24,18 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly Adb.AdbServerSupervisor? _supervisor;
     private readonly DeviceTrackerLifecycle? _deviceTrackerLifecycle;
     private readonly MdnsTrackerLifecycle? _mdnsTrackerLifecycle;
+    private readonly MdnsFallbackLifecycle? _mdnsFallbackLifecycle;
     private readonly PairingSession? _pairingSession;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly NotificationCoordinator? _notificationCoordinator;
     private readonly INotificationSink? _notificationSink;
     private readonly BalloonNotificationSink? _balloonSink;
+    private readonly UserPreferences? _userPreferences;
+    private readonly INetworkDiagnosticsSource? _networkDiagnosticsSource;
+    private readonly RepairCoordinator? _repairCoordinator;
+    private int _discoveryCheckRunning;
+    private long _lastServerGeneration;
+    private bool _lastSeenDiscoveryCard;
     private readonly System.Threading.CancellationTokenSource _appLifetimeCts = new();
     private Task? _supervisorTask;
     private readonly string _fixtureSuffix;
@@ -45,6 +52,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private int _currentEffectiveHeight = 500;
     private int _lastAppliedHeight;
     private int _lastReportedContentHeight;
+    private int _hiddenContentSizeReportsForInitialShow;
     private bool _suppressLightDismiss;
     private bool _lightDismissArmed;
     private int _showGeneration;
@@ -104,11 +112,17 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         INotificationSink? notificationSink = null,
         Func<DateTimeOffset>? notificationClock = null,
         Func<TimeSpan, CancellationToken, Task>? notificationDelay = null,
-        bool startupSilent = false) {
+        bool startupSilent = false,
+        INetworkDiagnosticsSource? networkDiagnosticsSource = null,
+        IElevatedProcessLauncher? processLauncher = null,
+        IServiceStateSource? serviceStateSource = null) {
         _fixtureSuffix = fixtureSuffix;
         _headless = headless;
         _isFixtureMode = !string.IsNullOrEmpty(fixtureSuffix);
         _startupSilent = startupSilent;
+        // Decision 0008: real diagnostics only for headed production; fixtures/tests stay hermetic.
+        _networkDiagnosticsSource = networkDiagnosticsSource
+            ?? (!headless && !_isFixtureMode ? new WindowsNetworkDiagnosticsSource() : null);
         // Normal interactive first launch: request one deferred show once UI is presentable.
         _pendingInitialShow = ShouldRequestInitialShow(headless, _isFixtureMode, startupSilent);
         LogConfig.Initialize();
@@ -149,9 +163,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _singleInstance.OnToggleRequested = OnToggleFlyout;
             _singleInstance.StartServer();
 
-            _trayIcon = new TrayIcon();
+            _userPreferences = new UserPreferences();
+            _trayIcon = new TrayIcon(_userPreferences, new StartupRegistration());
             _trayIcon.OnToggleRequested += (s, e) => OnToggleFlyout();
+            _trayIcon.OnOpenRequested += (s, e) => ShowFlyoutOnly();
             _trayIcon.OnExitRequested += (s, e) => Application.Exit();
+            _trayIcon.PreferencesChanged += OnTrayPreferencesChanged;
 
             _powerAndSession = new PowerAndSession();
             _powerAndSession.DisplaySettingsChanged += OnDisplayChanged;
@@ -211,6 +228,14 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 post: evt => _stateEngine.Post(evt),
                 trackerFactory: mdnsTrackerFactory);
 
+            // Decision 0008 follow-through: first-party fallback browser (headed production only;
+            // interface candidates come from the diagnostics source). Tests/fixtures stay hermetic.
+            if (_networkDiagnosticsSource is not null) {
+                _mdnsFallbackLifecycle = new MdnsFallbackLifecycle(
+                    post: evt => _stateEngine.Post(evt),
+                    interfaces: () => _networkDiagnosticsSource.GetMulticastCandidateAddresses());
+            }
+
             _pairingSession = new PairingSession(
                 post: evt => _stateEngine.Post(evt),
                 resolveOffer: offerId => {
@@ -235,7 +260,21 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             onSetPinned: pinned => _stateEngine.Post(new SetPinnedEvent(pinned)),
             onPairStart: offerId => _pairingSession?.Start(offerId),
             onPairSubmit: (offerId, code) => _pairingSession?.Submit(offerId, code),
-            onPairCancel: offerId => _pairingSession?.Cancel(offerId));
+            onPairCancel: offerId => _pairingSession?.Cancel(offerId),
+            onDiscoveryRecheck: () => _ = RunDiscoveryCheckAsync(),
+            onDiscoveryRepair: repairId => _ = RunDiscoveryRepairAsync(repairId));
+
+        if (_networkDiagnosticsSource is not null && _stateEngine is not null) {
+            // Decision 0008 amendment: repair actions only exist where diagnostics exist.
+            _repairCoordinator = new RepairCoordinator(
+                processRunner: new Adb.AdbProcessRunner(),
+                executableLocator: new Adb.AdbExecutableLocator(),
+                diagnosticsSource: _networkDiagnosticsSource,
+                launcher: processLauncher ?? new WindowsElevatedProcessLauncher(),
+                serviceState: serviceStateSource ?? new ScServiceStateSource(),
+                post: evt => _stateEngine.Post(evt),
+                runDiscoveryCheck: RunDiscoveryCheckAsync);
+        }
 
         if (!headless) {
             _webViewHost = new WebViewHost(_flyoutWindow!, _coordinator);
@@ -267,6 +306,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         Func<TimeSpan, CancellationToken, Task> delay = notificationDelay
             ?? ((TimeSpan d, CancellationToken ct) => Task.Delay(d, ct));
         _notificationCoordinator = new NotificationCoordinator(clock, delay, _notificationSink);
+        if (_userPreferences is not null) {
+            _notificationCoordinator.SetNotificationsEnabled(_userPreferences.NotificationsEnabled);
+        }
+
         // Silent baseline: first authoritative snapshot establishes NotifierState with zero balloons.
         _notificationCoordinator.AcceptSnapshot(initialSnapshot);
 
@@ -345,12 +388,42 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void OnSupervisorStateChanged(Adb.Model.AdbServerStateChanged state) {
+        _lastServerGeneration = Math.Max(_lastServerGeneration, state.Generation);
         _stateEngine?.Post(new AdbServerStateChangedEvent(state));
         _deviceTrackerLifecycle?.OnServerStateChanged(state);
         _mdnsTrackerLifecycle?.OnServerStateChanged(state);
+        _mdnsFallbackLifecycle?.OnServerStateChanged(state);
+        if (state.Phase == Adb.Model.AdbServerPhase.Up) {
+            _repairCoordinator?.OnServerUp(state.Generation);
+        }
+    }
+
+    private async Task RunDiscoveryRepairAsync(string repairId) {
+        var coordinator = _repairCoordinator;
+        if (coordinator is null) {
+            return;
+        }
+
+        await coordinator
+            .RunAsync(repairId, Interlocked.Read(ref _lastServerGeneration), _appLifetimeCts.Token)
+            .ConfigureAwait(false);
     }
 
     private void OnSnapshotPublished(AppSnapshot snapshot) {
+        // Offer withdrawal clears the snapshot card in the reducer; release the
+        // coordinator too so a later pairStart for any offer is accepted (§6.8).
+        _pairingSession?.CancelIfOfferWithdrawn();
+        if (_repairCoordinator is not null && _stateEngine is not null) {
+            _repairCoordinator.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
+            if (_lastSeenDiscoveryCard && snapshot.DiscoveryHealth is null) {
+                _lastSeenDiscoveryCard = false;
+            }
+            else if (!_lastSeenDiscoveryCard && snapshot.DiscoveryHealth is not null) {
+                // Card just appeared (or reappeared): refresh the evidence-gated offer set.
+                _lastSeenDiscoveryCard = true;
+                _ = _repairCoordinator.RebuildCatalogAsync(_appLifetimeCts.Token);
+            }
+        }
         ApplyNativeShellFromSnapshot(snapshot);
         _notificationCoordinator?.AcceptSnapshot(snapshot);
 
@@ -386,7 +459,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         // v1: intentional opaque surface only (decision 0004 — Acrylic deferred).
         bool transparency = ShellMaterialPolicy.ResolveTransparencyEnabled();
-        ThemeKind theme = SystemTheme.ReadAppsTheme();
+        ThemeKind theme = ResolveEffectiveTheme();
         _lastAppliedTheme = theme;
         _lastAppliedTransparency = transparency;
         _flyoutWindow!.ApplyShellAppearance(theme, transparency);
@@ -394,6 +467,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         // Force handle creation so OnHandleCreated/ApplyBackdrop runs before WebView2 init
         var _ = _flyoutWindow.Handle;
         Log.Information("FlyoutWindow handle forced: {Handle}", _flyoutWindow.Handle);
+
+        // Prime width to 376 epx before WebView navigates. Default WinForms size is ~300px;
+        // measuring at that width inflates wrapped content height and the first show sticks
+        // (decision 0005 freezes HWND after show).
+        PrimeHiddenLayoutViewport();
 
 #pragma warning disable CA2008 // TaskScheduler
         _webViewHost?.InitializeAsync(_fixtureSuffix).ContinueWith(t => {
@@ -506,6 +584,86 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         NotifyMetadataPresentation();
+        MaybeStartDiscoveryCheck();
+    }
+
+    /// <summary>Decision 0008: measure when the flyout opens while the health card is visible.</summary>
+    private void MaybeStartDiscoveryCheck() {
+        if (_networkDiagnosticsSource is null || _stateEngine is null) {
+            return;
+        }
+
+        if (_stateEngine.CurrentSnapshot.DiscoveryHealth is null) {
+            return;
+        }
+
+        _ = RunDiscoveryCheckAsync();
+    }
+
+    private async Task RunDiscoveryCheckAsync() {
+        var source = _networkDiagnosticsSource;
+        var engine = _stateEngine;
+        if (source is null || engine is null) {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _discoveryCheckRunning, 1, 0) != 0) {
+            return;
+        }
+
+        try {
+            engine.Post(new DiscoveryCheckStartedEvent());
+
+            var evidence = DiscoveryDiagnostics.Collect(
+                source,
+                Environment.ProcessId,
+                ResolveProcessName);
+            var interfaces = source.GetMulticastCandidateAddresses();
+            var probe = await Adb.MdnsReferenceProbe
+                .ProbeAsync(interfaces, _appLifetimeCts.Token)
+                .ConfigureAwait(false);
+
+            var diagnosis = new DiscoveryDiagnosis(
+                probe.Status switch {
+                    Adb.MdnsProbeStatus.Measured => DiscoveryProbeOutcome.Measured,
+                    _ => DiscoveryProbeOutcome.Unavailable,
+                },
+                probe.AnnouncementCount,
+                [.. evidence.PortHolderNames],
+                [.. evidence.VirtualAdapterNames]);
+            engine.Post(new DiscoveryDiagnosisReceivedEvent(diagnosis));
+        }
+        catch (OperationCanceledException) {
+            // App shutting down; no diagnosis to report.
+        }
+#pragma warning disable CA1031 // R-08: the failure is logged AND surfaced as inconclusive evidence.
+        catch (Exception ex) {
+            // R-08: the measurement failure is logged AND surfaced as an inconclusive
+            // diagnosis — the card never silently keeps stale evidence.
+            Log.Warning(ex, "Discovery diagnosis run failed; reporting inconclusive evidence.");
+            engine.Post(new DiscoveryDiagnosisReceivedEvent(
+                new DiscoveryDiagnosis(
+                    DiscoveryProbeOutcome.Unavailable,
+                    0,
+                    System.Collections.Immutable.ImmutableArray<string>.Empty,
+                    System.Collections.Immutable.ImmutableArray<string>.Empty)));
+        }
+#pragma warning restore CA1031
+        finally {
+            Interlocked.Exchange(ref _discoveryCheckRunning, 0);
+        }
+    }
+
+    private string? ResolveProcessName(int processId) {
+        try {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            return process?.ProcessName;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException) {
+            // PID exited between table enumeration and lookup — expected race, logged per R-08.
+            Log.Debug(ex, "Discovery diagnostics: process {Pid} exited before name lookup.", processId);
+            return null;
+        }
     }
 
     /// <summary>
@@ -605,6 +763,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             visible);
 
         // v1 decision 0005: while visible, never apply content-driven HWND resize.
+        // Still record height for the next-show path (already stored above).
         if (!FlyoutInteractionPolicy.ShouldApplyContentResizeToHwnd(visible)) {
             Log.Information(
                 "AppHost.ResizeFlyout: frozen visible session — ignoring HWND apply (height={Height})",
@@ -613,7 +772,41 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         ApplyImmediateResize(clampedEffectiveHeight, force: false);
+
+        if (_pendingInitialShow && !_initialShowCompleted) {
+            _hiddenContentSizeReportsForInitialShow++;
+            if (!FlyoutInteractionPolicy.ShouldCompleteInitialShow(_hiddenContentSizeReportsForInitialShow)) {
+                Log.Information(
+                    "AppHost: initial show waiting for settled content-size (report={Report}, height={Height})",
+                    _hiddenContentSizeReportsForInitialShow,
+                    clampedEffectiveHeight);
+                return;
+            }
+        }
+
         TryCompletePendingInitialShow();
+    }
+
+    private void PrimeHiddenLayoutViewport() {
+        if (_flyoutWindow is null) {
+            return;
+        }
+
+        var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
+        int physicalWidth = (int)Math.Round(376 * dpiScale);
+        int physicalHeight = (int)Math.Round(_currentEffectiveHeight * dpiScale);
+        var primed = new Size(physicalWidth, physicalHeight);
+        if (_flyoutWindow.Size == primed) {
+            return;
+        }
+
+        _flyoutWindow.Size = primed;
+        _flyoutWindow.RecalcNonClientFrame();
+        Log.Information(
+            "AppHost: primed hidden layout viewport {Width}x{Height} (effective 376x{EffectiveHeight})",
+            physicalWidth,
+            physicalHeight,
+            _currentEffectiveHeight);
     }
 
     private void ApplyImmediateResize(int clampedEffectiveHeight, bool force) {
@@ -625,9 +818,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _currentEffectiveHeight = clampedEffectiveHeight;
         _lastAppliedHeight = clampedEffectiveHeight;
 
-        // Only apply bounds when already visible for shell lifecycle re-place;
-        // interactive content reports never reach here while visible (frozen).
-        if (_isVisible && _flyoutWindow != null) {
+        // Caller only reaches here when the flyout is hidden (frozen while visible).
+        // Must update HWND so WebView2 reflows at presentation width before the next measure.
+        if (_flyoutWindow != null) {
             UpdateFlyoutBounds();
         }
     }
@@ -692,9 +885,22 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
     }
 
+    private void OnTrayPreferencesChanged(object? sender, EventArgs e) {
+        if (_userPreferences is not null) {
+            _notificationCoordinator?.SetNotificationsEnabled(_userPreferences.NotificationsEnabled);
+        }
+
+        PostCurrentShellAppearance();
+    }
+
+    private ThemeKind ResolveEffectiveTheme() {
+        ThemePreference preference = _userPreferences?.ThemePreference ?? ThemePreference.System;
+        return EffectiveTheme.Resolve(preference, SystemTheme.ReadAppsTheme());
+    }
+
     private void PostCurrentShellAppearance() {
         _stateEngine?.Post(new ShellAppearanceChangedEvent(
-            SystemTheme.ReadAppsTheme(),
+            ResolveEffectiveTheme(),
             ShellMaterialPolicy.ResolveTransparencyEnabled(),
             SystemTheme.ReadForcedColors(),
             false));
@@ -796,6 +1002,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _pairingSession?.Dispose();
         _metadataLifecycle?.Dispose();
         _mdnsTrackerLifecycle?.Dispose();
+        _mdnsFallbackLifecycle?.Dispose();
         _deviceTrackerLifecycle?.Dispose();
         _stateEngine?.Dispose();
         _appLifetimeCts.Dispose();
@@ -817,6 +1024,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _flyoutWindow.Dispose();
         }
         if (_trayIcon != null) {
+            _trayIcon.PreferencesChanged -= OnTrayPreferencesChanged;
             _trayIcon.Dispose();
         }
 

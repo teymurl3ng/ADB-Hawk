@@ -545,14 +545,30 @@ public sealed class BoundaryTests {
             "DeviceView",
             "DeviceTracker",
             "System.Net.Http",
+        };
+        // Decision 0008 amendment (2026-10-01): the single sanctioned kill lives in
+        // AdbProcessRunner.cs only (user-initiated ADB restart). Everywhere else stays forbidden.
+        var killTokens = new[]
+        {
             "host:kill",
             "kill-server",
         };
+        var killExemptFile = RootFile("src", "AdbView", "Adb", "AdbProcessRunner.cs");
 
         var violations = new List<string>();
         foreach (var file in lifecycleFiles) {
             var text = ReadText(file);
             foreach (var token in forbiddenTokens) {
+                if (text.Contains(token, StringComparison.Ordinal)) {
+                    violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
+                }
+            }
+
+            if (file == killExemptFile) {
+                continue;
+            }
+
+            foreach (var token in killTokens) {
                 if (text.Contains(token, StringComparison.Ordinal)) {
                     violations.Add($"{Path.GetRelativePath(Root, file)}: references forbidden layer token '{token}'");
                 }

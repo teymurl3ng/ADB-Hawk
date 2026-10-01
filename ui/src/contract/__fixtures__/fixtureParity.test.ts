@@ -4,10 +4,10 @@ import { mapDeviceViewToDeviceInfo, derivePairingState } from '../../bridge/adap
 import { formatAge } from '../../bridge/age';
 import canonicalSnapshots from './canonicalSnapshots.json';
 
-describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
+describe('Fixture Parity Suite (17 Canonical Fixtures)', () => {
   const fixtures = canonicalSnapshots as Record<string, unknown>;
 
-  it('contains all 16 canonical fixtures', () => {
+  it('contains all 17 canonical fixtures', () => {
     const expected = [
       'empty',
       'connected-usb',
@@ -25,11 +25,12 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       'pairing-progress',
       'pairing-success',
       'pairing-failure',
+      'discovery-health',
     ];
     for (const name of expected) {
       expect(fixtures[name]).toBeDefined();
     }
-    expect(Object.keys(fixtures).length).toBe(16);
+    expect(Object.keys(fixtures).length).toBe(17);
   });
 
   it('empty fixture: 0 devices, null pairing, empty state', () => {
@@ -226,6 +227,7 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       state: 'pairing-code',
       deviceName: 'Galaxy S24',
       offerId: 'offer-1',
+      detail: 'Enter the six-digit code shown on the phone.',
     });
 
     // progress
@@ -240,6 +242,7 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       state: 'pairing-progress',
       deviceName: 'Galaxy S24',
       offerId: 'offer-1',
+      detail: 'Keep the phone nearby while pairing completes.',
     });
 
     // success
@@ -254,6 +257,7 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       state: 'pairing-success',
       deviceName: 'Galaxy S24',
       offerId: 'offer-1',
+      detail: 'Waiting for ADB connection…',
     });
 
     // failure
@@ -268,7 +272,48 @@ describe('Fixture Parity Suite (16 Canonical Fixtures)', () => {
       state: 'pairing-failure',
       deviceName: 'Galaxy S24',
       offerId: 'offer-1',
+      detail: 'Check the code and try again.',
     });
+  });
+
+  it('discovery-health: broken-discovery card with evidence, repairs, and Check again', () => {
+    const parsed = parseSnapshot({
+      type: 'snapshot',
+      protocol: 1,
+      snapshot: fixtures['discovery-health'],
+    });
+    expect(parsed).not.toBeNull();
+    expect(parsed!.discoveryHealth).toEqual({
+      title: "Wireless discovery isn't working",
+      detail:
+        "Galaxy S24 is connected over Wi-Fi, but ADB isn't receiving device announcements on this network.",
+      evidence: [
+        '3 device announcements are visible on this network.',
+        'Microsoft Edge is using the discovery port.',
+        'Virtual network adapters are active (Tailscale).',
+      ],
+      actionLabel: 'Check again',
+      canCheckAgain: true,
+      repairs: [
+        {
+          id: 'restart-adb',
+          label: 'Restart ADB',
+          isAdmin: false,
+          isRunning: false,
+          runningLabel: 'Restarting ADB…',
+        },
+        {
+          id: 'stop-service:Tailscale',
+          label: 'Stop Tailscale service',
+          isAdmin: true,
+          isRunning: false,
+          runningLabel: 'Stopping Tailscale…',
+        },
+      ],
+      resultLine: null,
+    });
+    expect(parsed!.devices).toHaveLength(1);
+    expect(parsed!.warnings).toHaveLength(0);
   });
 
   it('age formatting helper reproduces expected strings', () => {

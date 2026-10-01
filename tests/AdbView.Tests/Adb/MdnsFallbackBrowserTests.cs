@@ -1,0 +1,224 @@
+namespace AdbView.Tests.Adb;
+
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
+using AdbView.Adb;
+using Xunit;
+
+public sealed class MdnsFallbackBrowserTests {
+    private static readonly DateTimeOffset T0 = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
+
+    [Theory]
+    [InlineData("adb-R8VXA02SNKH._adb-tls-connect._tcp.local", "adb-R8VXA02SNKH", "_adb-tls-connect._tcp")]
+    [InlineData("adb-abc123._adb-tls-pairing._tcp.local.", "adb-abc123", "_adb-tls-pairing._tcp")]
+    [InlineData("adb-R8VXA02SNKH._adb._tcp.local", "adb-R8VXA02SNKH", "_adb._tcp")]
+    public void TrySplitInstanceSeparatesInstanceFromServiceType(string fqdn, string instance, string serviceType) {
+        Assert.True(MdnsFallbackBrowser.TrySplitInstance(fqdn, out string? actualInstance, out string? actualType));
+        Assert.Equal(instance, actualInstance);
+        Assert.Equal(serviceType, actualType);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("nolabels")]
+    [InlineData("instance.notmdns")]
+    [InlineData(".leading-dot.local")]
+    public void TrySplitInstanceRejectsNonServiceNames(string fqdn) {
+        Assert.False(MdnsFallbackBrowser.TrySplitInstance(fqdn, out _, out _));
+    }
+
+    [Fact]
+    public void AbsorbBuildsInstanceFromPtrSrvTxtA() {
+        var browser = CreateBrowser();
+        var packet = DnsTestMessages.Response(
+            DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", 4500, "adb-abc123._adb-tls-connect._tcp.local"),
+            DnsTestMessages.Srv("adb-abc123._adb-tls-connect._tcp.local", 4500, 41953, "adb-abc123.local"),
+            DnsTestMessages.A("adb-abc123.local", 4500, "192.168.18.248"),
+            DnsTestMessages.Txt("adb-abc123._adb-tls-connect._tcp.local", 4500, ("v", "2"), ("name", "SM-A065F"), ("api", "36")));
+
+        Assert.True(browser.Absorb(packet, T0));
+
+        var entry = Assert.Single(browser.Instances.Values);
+        Assert.Equal("adb-abc123", entry.InstanceName);
+        Assert.Equal("_adb-tls-connect._tcp", entry.ServiceType);
+        Assert.Equal(41953, entry.Port);
+        Assert.Equal("192.168.18.248", entry.Ipv4);
+        Assert.Equal("SM-A065F", entry.ProductModel);
+        Assert.Equal("36", entry.BuildVersionSdkFull);
+        Assert.True(entry.ExpiresAt > T0);
+    }
+
+    [Fact]
+    public void AbsorbIgnoresUntrackedServiceTypes() {
+        var browser = CreateBrowser();
+        var packet = DnsTestMessages.Response(
+            DnsTestMessages.Ptr("_googlecast._tcp.local", 4500, "Chromecast._googlecast._tcp.local"));
+
+        Assert.False(browser.Absorb(packet, T0));
+        Assert.Empty(browser.Instances);
+    }
+
+    [Fact]
+    public void GoodbyeWithZeroTtlEvictsInstance() {
+        var browser = CreateBrowser();
+        browser.Absorb(
+            DnsTestMessages.Response(DnsTestMessages.Record(
+                DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", 4500, "adb-abc123._adb-tls-connect._tcp.local"))),
+            T0);
+
+        var goodbye = DnsTestMessages.Response(DnsTestMessages.Record(
+            DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", 0, "adb-abc123._adb-tls-connect._tcp.local")));
+        Assert.True(browser.Absorb(goodbye, T0.AddSeconds(1)));
+        Assert.Empty(browser.Instances);
+
+        // A lone goodbye for an unknown instance changes nothing.
+        Assert.False(browser.Absorb(goodbye, T0.AddSeconds(2)));
+    }
+
+    [Fact]
+    public void ReAnnouncementAfterGoodbyeRecreatesInstance() {
+        var browser = CreateBrowser();
+        var announce = DnsTestMessages.Response(DnsTestMessages.Record(
+            DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", 4500, "adb-abc123._adb-tls-connect._tcp.local")));
+        browser.Absorb(announce, T0);
+        browser.Absorb(
+            DnsTestMessages.Response(DnsTestMessages.Record(
+                DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", 0, "adb-abc123._adb-tls-connect._tcp.local"))),
+            T0.AddSeconds(1));
+
+        Assert.True(browser.Absorb(announce, T0.AddSeconds(2)));
+        Assert.Single(browser.Instances);
+    }
+
+    [Fact]
+    public void ExpirySweepDropsStaleInstances() {
+        var browser = CreateBrowser();
+        browser.Absorb(
+            DnsTestMessages.Response(DnsTestMessages.Record(
+                DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", ttl: 30, "adb-abc123._adb-tls-connect._tcp.local"))),
+            T0);
+
+        Assert.True(browser.SweepExpired(T0.AddSeconds(31)));
+        Assert.False(browser.SweepExpired(T0.AddSeconds(32)));
+        Assert.Empty(browser.Instances);
+    }
+
+    [Fact]
+    public void DuplicateTxtKeysKeepFirstOccurrence() {
+        var browser = CreateBrowser();
+        browser.Absorb(
+            DnsTestMessages.Response(DnsTestMessages.Record(
+                DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", 4500, "adb-abc123._adb-tls-connect._tcp.local"))),
+            T0);
+
+        browser.Absorb(DnsTestMessages.Response(DnsTestMessages.Record(
+            DnsTestMessages.Txt("adb-abc123._adb-tls-connect._tcp.local", 4500, ("name", "First"), ("name", "Second")))),
+            T0.AddSeconds(1));
+
+        Assert.Equal("First", browser.Instances.Values.Single().ProductModel);
+    }
+
+    private static MdnsFallbackBrowser CreateBrowser() {
+        return new MdnsFallbackBrowser(
+            new MdnsFallbackBrowserTestsSocketFactory(),
+            () => Array.Empty<System.Net.IPAddress>(),
+            () => T0,
+            _ => { });
+    }
+
+    private sealed class MdnsFallbackBrowserTestsSocketFactory : IUdpSocketFactory {
+        public IUdpSocket Create() => throw new InvalidOperationException("Absorb tests never open sockets.");
+    }
+}
+
+/// <summary>Minimal mDNS response packet builder for browser/codec tests.</summary>
+internal static class DnsTestMessages {
+    internal sealed record DnsRecord {
+        public required string Name { get; init; }
+        public required ushort Type { get; init; }
+        public required uint Ttl { get; init; }
+        public required byte[] Rdata { get; init; }
+
+        public override string ToString() => Name;
+    }
+
+    /// <summary>Passthrough so call sites can group records: <c>Record(Ptr(...))</c>.</summary>
+    public static DnsRecord[] Record(params DnsRecord[] records) => records;
+
+    public static DnsRecord Ptr(string name, uint ttl, string target) =>
+        new() { Name = name, Type = DnsMessageCodec.TypePtr, Ttl = ttl, Rdata = EncodeName(target) };
+
+    public static DnsRecord Srv(string name, uint ttl, ushort port, string target) {
+        var rdata = new List<byte> { 0, 0, 0, 0, (byte)(port >> 8), (byte)(port & 0xFF) };
+        rdata.AddRange(EncodeName(target));
+        return new DnsRecord { Name = name, Type = DnsMessageCodec.TypeSrv, Ttl = ttl, Rdata = rdata.ToArray() };
+    }
+
+    public static DnsRecord A(string name, uint ttl, string ipv4) =>
+        new() {
+            Name = name,
+            Type = DnsMessageCodec.TypeA,
+            Ttl = ttl,
+            Rdata = System.Net.IPAddress.Parse(ipv4).GetAddressBytes(),
+        };
+
+    public static DnsRecord Txt(string name, uint ttl, params (string Key, string Value)[] pairs) {
+        var rdata = new List<byte>();
+        foreach (var (key, value) in pairs) {
+            var entry = System.Text.Encoding.UTF8.GetBytes(key + "=" + value);
+            rdata.Add((byte)entry.Length);
+            rdata.AddRange(entry);
+        }
+
+        return new DnsRecord { Name = name, Type = DnsMessageCodec.TypeTxt, Ttl = ttl, Rdata = rdata.ToArray() };
+    }
+
+    public static byte[] Response(params DnsRecord[] records) {
+        var body = new List<byte>();
+        foreach (var record in records) {
+            body.AddRange(EncodeName(record.Name));
+            AddUInt16(body, record.Type);
+            AddUInt16(body, DnsMessageCodec.ClassInet);
+            AddUInt32(body, record.Ttl);
+            AddUInt16(body, (ushort)record.Rdata.Length);
+            body.AddRange(record.Rdata);
+        }
+
+        var message = new byte[12 + body.Count];
+        BinaryPrimitives.WriteUInt16BigEndian(message.AsSpan(0, 2), 0x4242);
+        BinaryPrimitives.WriteUInt16BigEndian(message.AsSpan(2, 2), 0x8000); // QR=1
+        BinaryPrimitives.WriteUInt16BigEndian(message.AsSpan(6, 2), (ushort)records.Length); // ANCOUNT
+        body.CopyTo(message, 12);
+        return message;
+    }
+
+    private static byte[] EncodeName(string fqdn) {
+        var bytes = new List<byte>();
+        foreach (var label in fqdn.TrimEnd('.').Split('.')) {
+            var labelBytes = System.Text.Encoding.UTF8.GetBytes(label);
+            if (labelBytes.Length > 63) {
+                throw new ArgumentException("Label too long: " + label);
+            }
+
+            bytes.Add((byte)labelBytes.Length);
+            bytes.AddRange(labelBytes);
+        }
+
+        bytes.Add(0);
+        return bytes.ToArray();
+    }
+
+    private static void AddUInt16(List<byte> into, ushort value) {
+        into.Add((byte)(value >> 8));
+        into.Add((byte)(value & 0xFF));
+    }
+
+    private static void AddUInt32(List<byte> into, uint value) {
+        into.Add((byte)(value >> 24));
+        into.Add((byte)((value >> 16) & 0xFF));
+        into.Add((byte)((value >> 8) & 0xFF));
+        into.Add((byte)(value & 0xFF));
+    }
+}

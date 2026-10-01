@@ -17,6 +17,7 @@ internal static class NotificationPolicy {
     public static readonly TimeSpan HoldDeviceProblem = TimeSpan.FromSeconds(2.5);
     public static readonly TimeSpan HoldPairingAvailable = TimeSpan.FromSeconds(1.5);
     public static readonly TimeSpan HoldAdbUnavailable = TimeSpan.FromSeconds(10);
+    public static readonly TimeSpan HoldDiscoveryBroken = TimeSpan.FromSeconds(1.5);
     public static readonly TimeSpan DedupCooldown = TimeSpan.FromSeconds(60);
     public static readonly TimeSpan PairingOfferCooldown = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan BurstWindow = TimeSpan.FromSeconds(10);
@@ -42,6 +43,12 @@ internal static class NotificationPolicy {
         // Clear outage latch when health leaves AdbUnavailable.
         if (next.Health.Kind != GlobalHealthKind.AdbUnavailable && state.AdbUnavailableOutageNotified) {
             nextState = nextState with { AdbUnavailableOutageNotified = false };
+        }
+
+        // Clear the discovery-episode latch when the health card clears (decision 0008 amendment):
+        // a later episode may notify again.
+        if (next.DiscoveryHealth is null && previous?.DiscoveryHealth is not null && state.DiscoveryBrokenNotified) {
+            nextState = nextState with { DiscoveryBrokenNotified = false };
         }
 
         if (state.ShuttingDown || state.Suspended) {
@@ -77,6 +84,7 @@ internal static class NotificationPolicy {
         DetectPairingOffer(previous, next, now, arm, cancel);
         DetectPairingResult(previous, next, immediate);
         DetectAdbUnavailable(previous, next, now, nextState, arm, cancel);
+        DetectDiscoveryBroken(previous, next, now, nextState, arm, cancel);
 
         return new NotificationDecision(
             arm.ToImmutable(),
@@ -114,6 +122,10 @@ internal static class NotificationPolicy {
         }
 
         if (hold.Key.Kind == NotificationKind.AdbUnavailable && state.AdbUnavailableOutageNotified) {
+            return null;
+        }
+
+        if (hold.Key.Kind == NotificationKind.DiscoveryBroken && state.DiscoveryBrokenNotified) {
             return null;
         }
 
@@ -176,6 +188,10 @@ internal static class NotificationPolicy {
                 continue;
             }
 
+            if (intent.Key.Kind == NotificationKind.DiscoveryBroken && next.DiscoveryBrokenNotified) {
+                continue;
+            }
+
             if (usedInWindow < BurstIndividualCap) {
                 emit.Add(intent);
                 next = RecordEmit(next, intent, now, countsTowardBurst: true);
@@ -214,6 +230,10 @@ internal static class NotificationPolicy {
 
                 if (collapsed.Key.Kind == NotificationKind.AdbUnavailable) {
                     next = next with { AdbUnavailableOutageNotified = true };
+                }
+
+                if (collapsed.Key.Kind == NotificationKind.DiscoveryBroken) {
+                    next = next with { DiscoveryBrokenNotified = true };
                 }
             }
         }
@@ -260,6 +280,10 @@ internal static class NotificationPolicy {
 
         if (intent.Key.Kind == NotificationKind.AdbUnavailable) {
             next = next with { AdbUnavailableOutageNotified = true };
+        }
+
+        if (intent.Key.Kind == NotificationKind.DiscoveryBroken) {
+            next = next with { DiscoveryBrokenNotified = true };
         }
 
         if (countsTowardBurst) {
@@ -406,7 +430,9 @@ internal static class NotificationPolicy {
             immediate.Add(new NotificationIntent(
                 new NotificationKey(NotificationKind.PairingResult, cur.OfferId),
                 Vocabulary.Notifications.PairingFailedTitle,
-                Vocabulary.Notifications.PairingFailedBody,
+                // Same cause-selected line the flyout card shows (decision 0007);
+                // a missing detail falls back to the frozen wrong-code line.
+                cur.Detail ?? Vocabulary.Pairing.FailedDetail,
                 NotificationSeverity.Warning));
         }
     }
@@ -425,6 +451,29 @@ internal static class NotificationPolicy {
             Arm(arm, key, now, HoldAdbUnavailable);
         }
         else if (next.Health.Kind != GlobalHealthKind.AdbUnavailable) {
+            Cancel(cancel, key);
+        }
+    }
+
+    /// <summary>
+    /// Decision 0008 amendment: one balloon per broken-discovery episode. Edge-triggered on the
+    /// card appearing; cancelled if the card clears during the hold; latched once per episode
+    /// (latch cleared when the card clears, so a later episode notifies again).
+    /// </summary>
+    private static void DetectDiscoveryBroken(
+        AppSnapshot previous,
+        AppSnapshot next,
+        DateTimeOffset now,
+        NotifierState state,
+        ImmutableArray<PendingHold>.Builder arm,
+        ImmutableArray<NotificationKey>.Builder cancel) {
+        var key = new NotificationKey(NotificationKind.DiscoveryBroken, GlobalSubject);
+        if (next.DiscoveryHealth is not null
+            && previous.DiscoveryHealth is null
+            && !state.DiscoveryBrokenNotified) {
+            Arm(arm, key, now, HoldDiscoveryBroken);
+        }
+        else if (next.DiscoveryHealth is null) {
             Cancel(cancel, key);
         }
     }
@@ -467,6 +516,9 @@ internal static class NotificationPolicy {
 
             case NotificationKind.AdbUnavailable:
                 return current.Health.Kind == GlobalHealthKind.AdbUnavailable;
+
+            case NotificationKind.DiscoveryBroken:
+                return current.DiscoveryHealth is not null;
 
             default:
                 return false;
@@ -536,6 +588,14 @@ internal static class NotificationPolicy {
                     Vocabulary.Notifications.AdbUnavailableTitle,
                     Vocabulary.Notifications.AdbUnavailableBody,
                     NotificationSeverity.Error);
+
+            case NotificationKind.DiscoveryBroken when current.DiscoveryHealth is not null:
+                // Same copy as the card (§32 same terminology; decision 0008 amendment).
+                return new NotificationIntent(
+                    key,
+                    current.DiscoveryHealth.Title,
+                    current.DiscoveryHealth.Detail,
+                    NotificationSeverity.Warning);
 
             default:
                 return null;

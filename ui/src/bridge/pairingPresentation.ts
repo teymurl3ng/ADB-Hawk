@@ -13,6 +13,8 @@ export interface PairingPresentationState {
     'pairing-offer' | 'pairing-code' | 'pairing-progress' | 'pairing-success' | 'pairing-failure';
   deviceName: string;
   offerId: string;
+  /** Backend-selected failure supporting line (decision 0007); failure card only. */
+  detail?: string;
   layoutPhase: string | null;
   dwellingSuccess: boolean;
   /** Device ids frozen into structural layout key while success dwell is active. */
@@ -72,6 +74,7 @@ export function resolvePairingPresentation(
         cardState: 'pairing-failure',
         deviceName: derived.deviceName,
         offerId: derived.offerId,
+        detail: derived.detail,
         layoutPhase: 'failed',
         dwellingSuccess: false,
         layoutDeviceIds: liveDeviceIds,
@@ -151,6 +154,7 @@ function deriveToPresentation(snapshot: AppSnapshot): PairingPresentationState |
     cardState: d.state as PairingPresentationState['cardState'],
     deviceName: d.deviceName,
     offerId: d.offerId,
+    detail: d.detail,
     layoutPhase,
     dwellingSuccess: false,
     layoutDeviceIds: snapshot.devices.map((x) => x.id),

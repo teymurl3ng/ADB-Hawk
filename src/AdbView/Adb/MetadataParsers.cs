@@ -40,7 +40,20 @@ internal static partial class MetadataParsers {
     }
 
     public static string? TryParseGetpropValue(ReadOnlySpan<byte> rawUtf8) {
-        string text = Encoding.UTF8.GetString(rawUtf8).Trim();
-        return text.Length == 0 ? null : text;
+        string text = Encoding.UTF8.GetString(rawUtf8)
+            .Replace("\r", string.Empty, StringComparison.Ordinal)
+            .Replace("\n", string.Empty, StringComparison.Ordinal)
+            .Trim();
+        if (text.Length == 0) {
+            return null;
+        }
+
+        // settings get / empty getprop often print literal null; treat as absent.
+        if (text.Equals("null", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("unknown", StringComparison.OrdinalIgnoreCase)) {
+            return null;
+        }
+
+        return text;
     }
 }

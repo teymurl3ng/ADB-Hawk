@@ -14,6 +14,8 @@ internal sealed record DeviceEngineState {
         ActiveGraceGeneration = 0,
         LatestAppliedMdnsAt = null,
         LatestMdnsServices = ImmutableArray<RawMdnsService>.Empty,
+        LatestFallbackServices = ImmutableArray<RawMdnsService>.Empty,
+        LatestAppliedFallbackAt = null,
         OfferBindings = ImmutableDictionary<string, PairingOfferBinding>.Empty,
         WirelessFailed = false,
         ActiveWirelessRestoringGeneration = 0,
@@ -25,6 +27,9 @@ internal sealed record DeviceEngineState {
         ActivePairingDisplayName = null,
         NextMetadataGeneration = 0,
         MetadataSessions = ImmutableDictionary<string, DeviceMetadataSession>.Empty,
+        ServerMdnsEnabled = null,
+        LatestDiscoveryDiagnosis = null,
+        DiscoveryCheckRunning = false,
     };
 
     public DateTimeOffset? LatestAppliedListAt { get; init; }
@@ -35,6 +40,11 @@ internal sealed record DeviceEngineState {
     public DateTimeOffset? LatestAppliedMdnsAt { get; init; }
 
     public ImmutableArray<RawMdnsService> LatestMdnsServices { get; init; } = ImmutableArray<RawMdnsService>.Empty;
+
+    /// <summary>Latest fallback-browser list (decision 0008 follow-through); fills only the adb gap.</summary>
+    public ImmutableArray<RawMdnsService> LatestFallbackServices { get; init; } = ImmutableArray<RawMdnsService>.Empty;
+
+    public DateTimeOffset? LatestAppliedFallbackAt { get; init; }
 
     public ImmutableDictionary<string, PairingOfferBinding> OfferBindings { get; init; } =
         ImmutableDictionary<string, PairingOfferBinding>.Empty;
@@ -60,6 +70,32 @@ internal sealed record DeviceEngineState {
 
     public ImmutableDictionary<string, DeviceMetadataSession> MetadataSessions { get; init; } =
         ImmutableDictionary<string, DeviceMetadataSession>.Empty;
+
+    /// <summary>adb server-status mdns_enabled (decision 0008 trigger input). Null until reported.</summary>
+    public bool? ServerMdnsEnabled { get; init; }
+
+    /// <summary>Last measurement result; dropped whenever the health card clears (momentary evidence).</summary>
+    public DiscoveryDiagnosis? LatestDiscoveryDiagnosis { get; init; }
+
+    /// <summary>True between DiscoveryCheckStartedEvent and its diagnosis; disables Check again.</summary>
+    public bool DiscoveryCheckRunning { get; init; }
+
+    /// <summary>Backend-owned repair offers for the visible card (decision 0008 amendment).</summary>
+    public ImmutableArray<DiscoveryRepairDescriptor> RepairCatalog { get; init; } =
+        ImmutableArray<DiscoveryRepairDescriptor>.Empty;
+
+    /// <summary>Per-repair progress; absent = available. Completed entries are hidden from the card.</summary>
+    public ImmutableDictionary<string, DiscoveryRepairOutcome> RepairResults { get; init; } =
+        ImmutableDictionary<string, DiscoveryRepairOutcome>.Empty;
+
+    /// <summary>Repair currently executing (button disabled). Null when none.</summary>
+    public string? RunningRepairId { get; init; }
+
+    /// <summary>Completed repair whose outcome the next measurement should report. Null when none.</summary>
+    public string? AwaitingMeasureRepairId { get; init; }
+
+    /// <summary>Momentary post-action result line; cleared on the next evidence change.</summary>
+    public string? RepairResultLine { get; init; }
 }
 
 /// <summary>Resolved pairing offer endpoint kept out of AppSnapshot.</summary>

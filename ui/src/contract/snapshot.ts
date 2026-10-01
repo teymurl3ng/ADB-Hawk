@@ -33,6 +33,7 @@ export interface AppSnapshot {
   pairingOffers: PairingOfferView[];
   pairing: PairingOperationView | null;
   warnings: SubsystemWarningView[];
+  discoveryHealth: DiscoveryHealthView | null;
   deviceCountLabel: string | null;
 }
 
@@ -109,6 +110,24 @@ export interface SubsystemWarningView {
   severity: SeverityKind;
   title: string;
   detail: string;
+}
+
+export interface DiscoveryHealthView {
+  title: string;
+  detail: string;
+  evidence: string[];
+  actionLabel: string;
+  canCheckAgain: boolean;
+  repairs: DiscoveryRepairCardAction[];
+  resultLine: string | null;
+}
+
+export interface DiscoveryRepairCardAction {
+  id: string;
+  label: string;
+  isAdmin: boolean;
+  isRunning: boolean;
+  runningLabel: string;
 }
 
 export interface SnapshotEnvelope {

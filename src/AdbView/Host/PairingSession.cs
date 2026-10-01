@@ -97,6 +97,26 @@ internal sealed class PairingSession : IDisposable {
         _coordinator.Cancel(offerId);
     }
 
+    /// <summary>
+    /// Releases the active operation when its offer binding no longer exists
+    /// (the offer was withdrawn from discovery). The reducer already clears the
+    /// snapshot card on withdrawal; without this the coordinator stays parked on
+    /// the dead offer and every later pairStart is rejected (ENGINEERING.md §6.8).
+    /// </summary>
+    public void CancelIfOfferWithdrawn() {
+        if (Volatile.Read(ref _disposed) != 0) {
+            return;
+        }
+
+        string? active = _coordinator.ActiveOfferId;
+        if (active is null || _resolveOffer(active) is not null) {
+            return;
+        }
+
+        Log.Information("pairing operation released: offer withdrawn from discovery");
+        _coordinator.Cancel(active);
+    }
+
     private void OnProgressed(PairingProgressed progressed) {
         string? displayName = _resolveOffer(progressed.OfferId)?.DisplayName;
         _post(new PairingProgressedEvent(

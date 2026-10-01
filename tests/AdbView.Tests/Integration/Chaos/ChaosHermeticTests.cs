@@ -369,6 +369,9 @@ public sealed class ChaosHermeticTests {
             CallCount++;
             return Task.FromResult(onStart());
         }
+
+        public Task<ProcessResult> KillServerAsync(string executablePath, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Chaos scenarios never kill the server.");
     }
 
     private static async Task WaitUntilAsync(Func<bool> pred, TimeSpan? timeout = null) {

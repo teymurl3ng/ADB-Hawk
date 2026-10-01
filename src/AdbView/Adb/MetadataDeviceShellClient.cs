@@ -48,6 +48,10 @@ internal sealed class MetadataDeviceShellClient : IMetadataDeviceShellClient {
     private const string BatteryService = "shell:dumpsys battery";
     private const string ExactModelService = "shell:getprop ro.product.model";
     private const string AndroidVersionService = "shell:getprop ro.build.version.release";
+    private const string MarketingNameService = "shell:getprop ro.product.marketname";
+    private const string DeviceNameService = "shell:settings get global device_name";
+    private const string BrandService = "shell:getprop ro.product.brand";
+    private const string ManufacturerService = "shell:getprop ro.product.manufacturer";
 
     private readonly EndPoint _endPoint;
     private readonly TimeSpan _connectTimeout;
@@ -68,11 +72,15 @@ internal sealed class MetadataDeviceShellClient : IMetadataDeviceShellClient {
         _maxFrameLength = maxFrameLength;
     }
 
-    /// <summary>Maps the closed command enum to the three compile-time shell service strings.</summary>
+    /// <summary>Maps the closed command enum to compile-time shell service strings.</summary>
     internal static string ServiceName(MetadataCommand command) => command switch {
         MetadataCommand.Battery => BatteryService,
         MetadataCommand.ExactModel => ExactModelService,
         MetadataCommand.AndroidVersion => AndroidVersionService,
+        MetadataCommand.MarketingName => MarketingNameService,
+        MetadataCommand.DeviceName => DeviceNameService,
+        MetadataCommand.Brand => BrandService,
+        MetadataCommand.Manufacturer => ManufacturerService,
         _ => throw new ArgumentOutOfRangeException(nameof(command), command, "Unknown metadata command."),
     };
 
@@ -80,9 +88,13 @@ internal sealed class MetadataDeviceShellClient : IMetadataDeviceShellClient {
         "dumpsys battery",
         "getprop ro.product.model",
         "getprop ro.build.version.release",
+        "getprop ro.product.marketname",
+        "settings get global device_name",
+        "getprop ro.product.brand",
+        "getprop ro.product.manufacturer",
     ];
 
-    /// <summary>The three allowed shell suffixes after <c>shell:</c> (boundary / mutation proofs).</summary>
+    /// <summary>Allowed shell suffixes after <c>shell:</c> (boundary / mutation proofs).</summary>
     internal static ReadOnlySpan<string> AllowedShellCommandSuffixes => AllowedSuffixes;
 
     public async Task<MetadataShellRawResult> ExecuteFixedShellAsync(

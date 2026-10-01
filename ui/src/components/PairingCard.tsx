@@ -16,6 +16,8 @@ interface PairingCardProps {
   state: PairingCardState;
   deviceName: string;
   offerId?: string;
+  /** Backend-selected failure supporting line (decision 0007); falls back to the frozen line. */
+  detail?: string;
   onPairStart?: (offerId: string) => void;
   onPairCancel?: (offerId: string) => void;
   onPairSubmit?: (offerId: string, code: string) => void;
@@ -133,6 +135,7 @@ export function PairingCard({
   state,
   deviceName,
   offerId,
+  detail,
   onPairStart,
   onPairCancel,
   onPairSubmit,
@@ -339,7 +342,7 @@ export function PairingCard({
                 Pairing failed
               </h3>
               <p className="text-[12px] text-win-text-secondary mt-0.5">
-                Check the code and try again.
+                {detail ?? 'Check the code and try again.'}
               </p>
             </div>
           </div>

@@ -141,9 +141,15 @@ internal static partial class DeviceViewMapper {
         string? exactModel = preserveMetadata ? previous?.Detail.ExactModel : null;
         string? androidVersion = preserveMetadata ? previous?.Detail.AndroidVersion : null;
 
+        // Once shell naming metadata has refined DisplayName (ExactModel present), do not
+        // let tracker ticks overwrite it with SM_A065F-style proto model strings.
+        string displayName = preserveMetadata && previous?.Detail.ExactModel is not null
+            ? previous.DisplayName
+            : normalized.DisplayName;
+
         return new DeviceView {
             Id = normalized.Id,
-            DisplayName = normalized.DisplayName,
+            DisplayName = displayName,
             State = state,
             Severity = severity,
             StateLabel = stateLabel,

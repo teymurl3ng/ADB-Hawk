@@ -13,13 +13,19 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
     private readonly NotifyIcon _notifyIcon;
     private readonly uint _taskbarCreatedMessageId;
     private readonly MessageSink _messageSink;
+    private readonly IUserPreferences _preferences;
+    private readonly IStartupRegistration _startup;
+    private readonly ContextMenuStrip _contextMenu;
     private TrayStatusKind _currentStatus = TrayStatusKind.Idle;
     private Icon? _ownedIcon;
+    private Font? _openBoldFont;
     private bool _disposed;
 
     public event EventHandler? OnToggleRequested;
+    public event EventHandler? OnOpenRequested;
     public event EventHandler? OnExitRequested;
     public event EventHandler? BalloonClicked;
+    public event EventHandler? PreferencesChanged;
 
     private sealed class MessageSink : NativeWindow {
         private readonly TrayIcon _parent;
@@ -37,7 +43,14 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
         }
     }
 
-    public TrayIcon() {
+    public TrayIcon()
+        : this(new UserPreferences(), new StartupRegistration()) {
+    }
+
+    internal TrayIcon(IUserPreferences preferences, IStartupRegistration startup) {
+        _preferences = preferences ?? throw new ArgumentNullException(nameof(preferences));
+        _startup = startup ?? throw new ArgumentNullException(nameof(startup));
+
         _taskbarCreatedMessageId = PInvoke.RegisterWindowMessage("TaskbarCreated");
         _messageSink = new MessageSink(this);
 
@@ -50,24 +63,57 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
             Icon = iconStream != null ? new Icon(iconStream) : SystemIcons.Application,
             Visible = true
         };
-#pragma warning restore CA1303
 
-        var contextMenu = new ContextMenuStrip();
-        contextMenu.Items.Add("Exit", null, (s, e) => OnExitRequested?.Invoke(this, EventArgs.Empty));
-        _notifyIcon.ContextMenuStrip = contextMenu;
+        var openItem = new ToolStripMenuItem("Open ADB View", null, OnOpenClicked);
+        _openBoldFont = new Font(SystemFonts.MenuFont ?? SystemFonts.DefaultFont, FontStyle.Bold);
+        openItem.Font = _openBoldFont;
+
+        var startupItem = new ToolStripMenuItem("Start with Windows", null, OnStartupClicked);
+        var notificationsItem = new ToolStripMenuItem("Notifications", null, OnNotificationsClicked);
+        var themeSystemItem = new ToolStripMenuItem("System", null, (_, _) => OnThemeClicked(ThemePreference.System));
+        var themeLightItem = new ToolStripMenuItem("Light", null, (_, _) => OnThemeClicked(ThemePreference.Light));
+        var themeDarkItem = new ToolStripMenuItem("Dark", null, (_, _) => OnThemeClicked(ThemePreference.Dark));
+        var themeItem = new ToolStripMenuItem("Theme");
+        themeItem.DropDownItems.Add(themeSystemItem);
+        themeItem.DropDownItems.Add(themeLightItem);
+        themeItem.DropDownItems.Add(themeDarkItem);
+        var exitItem = new ToolStripMenuItem("Exit", null, OnExitClicked);
+
+        _contextMenu = new ContextMenuStrip();
+        _contextMenu.Items.Add(openItem);
+        _contextMenu.Items.Add(new ToolStripSeparator());
+        _contextMenu.Items.Add(startupItem);
+        _contextMenu.Items.Add(notificationsItem);
+        _contextMenu.Items.Add(themeItem);
+        _contextMenu.Items.Add(new ToolStripSeparator());
+        _contextMenu.Items.Add(exitItem);
+        _contextMenu.Opening += OnContextMenuOpening;
+        _notifyIcon.ContextMenuStrip = _contextMenu;
+#pragma warning restore CA1303
 
         _notifyIcon.MouseClick += OnMouseClick;
         _notifyIcon.BalloonTipClicked += OnBalloonTipClicked;
+        RefreshMenuChecks();
     }
 
-    /// <summary>Test seam: context menu captions (Exit only).</summary>
+    /// <summary>Test seam: top-level context menu captions (separators as empty).</summary>
     internal string[] ContextMenuItemTexts {
         get {
-            if (_notifyIcon.ContextMenuStrip is null) {
-                return Array.Empty<string>();
+            var items = _contextMenu.Items;
+            var texts = new string[items.Count];
+            for (int i = 0; i < items.Count; i++) {
+                texts[i] = items[i] is ToolStripSeparator ? string.Empty : (items[i].Text ?? string.Empty);
             }
 
-            var items = _notifyIcon.ContextMenuStrip.Items;
+            return texts;
+        }
+    }
+
+    /// <summary>Test seam: Theme submenu captions.</summary>
+    internal string[] ThemeMenuItemTexts {
+        get {
+            var theme = RequireThemeItem();
+            var items = theme.DropDownItems;
             var texts = new string[items.Count];
             for (int i = 0; i < items.Count; i++) {
                 texts[i] = items[i].Text ?? string.Empty;
@@ -75,6 +121,111 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
 
             return texts;
         }
+    }
+
+    internal bool StartupChecked => RequireItem("Start with Windows").Checked;
+    internal bool NotificationsChecked => RequireItem("Notifications").Checked;
+    internal bool ThemeSystemChecked => RequireThemeChild("System").Checked;
+    internal bool ThemeLightChecked => RequireThemeChild("Light").Checked;
+    internal bool ThemeDarkChecked => RequireThemeChild("Dark").Checked;
+
+    /// <summary>Test seam: force Opening refresh without showing UI.</summary>
+    internal void RefreshMenuChecksForTests() => RefreshMenuChecks();
+
+    private ToolStripMenuItem RequireItem(string text) {
+        foreach (ToolStripItem item in _contextMenu.Items) {
+            if (item is ToolStripMenuItem mi && string.Equals(mi.Text, text, StringComparison.Ordinal)) {
+                return mi;
+            }
+        }
+
+        throw new InvalidOperationException("Missing menu item: " + text);
+    }
+
+    private ToolStripMenuItem RequireThemeItem() => RequireItem("Theme");
+
+    private ToolStripMenuItem RequireThemeChild(string text) {
+        foreach (ToolStripItem item in RequireThemeItem().DropDownItems) {
+            if (item is ToolStripMenuItem mi && string.Equals(mi.Text, text, StringComparison.Ordinal)) {
+                return mi;
+            }
+        }
+
+        throw new InvalidOperationException("Missing theme item: " + text);
+    }
+
+    private void OnContextMenuOpening(object? sender, System.ComponentModel.CancelEventArgs e) =>
+        RefreshMenuChecks();
+
+    private void RefreshMenuChecks() {
+        try {
+            RequireItem("Start with Windows").Checked = _startup.GetState().IsRegistered;
+            RequireItem("Notifications").Checked = _preferences.NotificationsEnabled;
+            ThemePreference theme = _preferences.ThemePreference;
+            RequireThemeChild("System").Checked = theme == ThemePreference.System;
+            RequireThemeChild("Light").Checked = theme == ThemePreference.Light;
+            RequireThemeChild("Dark").Checked = theme == ThemePreference.Dark;
+        }
+#pragma warning disable CA1031
+        catch (Exception ex) {
+            Log.Warning(ex, "TrayIcon: failed to refresh menu checks");
+        }
+#pragma warning restore CA1031
+    }
+
+    private void OnOpenClicked(object? sender, EventArgs e) =>
+        OnOpenRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnExitClicked(object? sender, EventArgs e) =>
+        OnExitRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnStartupClicked(object? sender, EventArgs e) {
+        try {
+            bool currently = _startup.GetState().IsRegistered;
+            if (currently) {
+                _ = _startup.Disable();
+            }
+            else {
+                _ = _startup.Enable();
+            }
+        }
+#pragma warning disable CA1031
+        catch (Exception ex) {
+            Log.Warning(ex, "TrayIcon: Start with Windows toggle failed");
+        }
+#pragma warning restore CA1031
+
+        RefreshMenuChecks();
+        PreferencesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnNotificationsClicked(object? sender, EventArgs e) {
+        try {
+            bool next = !_preferences.NotificationsEnabled;
+            _ = _preferences.SetNotificationsEnabled(next);
+        }
+#pragma warning disable CA1031
+        catch (Exception ex) {
+            Log.Warning(ex, "TrayIcon: Notifications toggle failed");
+        }
+#pragma warning restore CA1031
+
+        RefreshMenuChecks();
+        PreferencesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnThemeClicked(ThemePreference preference) {
+        try {
+            _ = _preferences.SetThemePreference(preference);
+        }
+#pragma warning disable CA1031
+        catch (Exception ex) {
+            Log.Warning(ex, "TrayIcon: Theme set failed {Theme}", preference);
+        }
+#pragma warning restore CA1031
+
+        RefreshMenuChecks();
+        PreferencesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnBalloonTipClicked(object? sender, EventArgs e) {
@@ -212,8 +363,13 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
         }
 
         _disposed = true;
+        _contextMenu.Opening -= OnContextMenuOpening;
         _notifyIcon.MouseClick -= OnMouseClick;
         _notifyIcon.BalloonTipClicked -= OnBalloonTipClicked;
+        _notifyIcon.ContextMenuStrip = null;
+        _contextMenu.Dispose();
+        _openBoldFont?.Dispose();
+        _openBoldFont = null;
         _notifyIcon.Dispose();
         _ownedIcon?.Dispose();
         _ownedIcon = null;

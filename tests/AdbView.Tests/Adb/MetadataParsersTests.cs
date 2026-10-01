@@ -60,6 +60,8 @@ public sealed class MetadataParsersTests {
         Assert.Equal("SM-A065F", MetadataParsers.TryParseGetpropValue(Encoding.UTF8.GetBytes("SM-A065F\n")));
         Assert.Null(MetadataParsers.TryParseGetpropValue(Encoding.UTF8.GetBytes("\n")));
         Assert.Null(MetadataParsers.TryParseGetpropValue(Encoding.UTF8.GetBytes("   \n")));
+        Assert.Null(MetadataParsers.TryParseGetpropValue(Encoding.UTF8.GetBytes("null\n")));
+        Assert.Null(MetadataParsers.TryParseGetpropValue(Encoding.UTF8.GetBytes("unknown\n")));
     }
 
     [Fact]

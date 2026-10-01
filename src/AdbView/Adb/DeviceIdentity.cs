@@ -158,26 +158,49 @@ internal sealed partial class DeviceIdentity {
     }
 
     /// <summary>
-    /// DisplayName = mdns.given_name ?? model ?? product ?? hardwareSerial (ENGINEERING.md §6.7).
+    /// Early DisplayName before shell naming metadata (ENGINEERING.md §6.7).
+    /// Never uses transport identity (serial / host:port / adb-*) as presentation.
     /// </summary>
     internal static string ResolveDisplayName(
         string? givenName,
         string? model,
         string? product,
         string hardwareSerial) {
-        if (!string.IsNullOrEmpty(givenName)) {
-            return givenName;
+        _ = hardwareSerial; // kept for call-site compatibility; never used as DisplayName
+        if (IsUsableEarlyLabel(givenName)) {
+            return givenName!.Trim();
         }
 
-        if (!string.IsNullOrEmpty(model)) {
-            return model;
+        if (IsUsableEarlyLabel(model)) {
+            return model!.Trim();
         }
 
-        if (!string.IsNullOrEmpty(product)) {
-            return product;
+        if (IsUsableEarlyLabel(product)) {
+            return product!.Trim();
         }
 
-        return hardwareSerial;
+        // Must match Vocabulary.Pairing.DefaultDeviceName (State must not be referenced here).
+        return "Android device";
+    }
+
+    private static bool IsUsableEarlyLabel(string? value) {
+        if (string.IsNullOrWhiteSpace(value)) {
+            return false;
+        }
+
+        string trimmed = value.Trim();
+        if (trimmed.Equals("null", StringComparison.OrdinalIgnoreCase)
+            || trimmed.Equals("unknown", StringComparison.OrdinalIgnoreCase)) {
+            return false;
+        }
+
+        if (AdbMdnsLooseInstanceSerialRegex().IsMatch(trimmed)
+            || EndpointSerialRegex().IsMatch(trimmed)
+            || DnsSdServiceSuffixRegex().IsMatch(trimmed)) {
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>Back-compat overload used by older call sites/tests.</summary>

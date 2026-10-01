@@ -12,8 +12,17 @@ export default defineConfig({
   },
   projects: [
     {
+      name: 'centering',
+      testMatch: /visual\/centering\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        colorScheme: 'dark',
+        viewport: { width: 376, height: 600 },
+      },
+    },
+    {
       name: 'chromium-dark',
-      testMatch: /visual\/.*\.spec\.ts/,
+      testMatch: /visual\/fixtures\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         colorScheme: 'dark',
@@ -22,7 +31,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-light',
-      testMatch: /visual\/.*\.spec\.ts/,
+      testMatch: /visual\/fixtures\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         colorScheme: 'light',

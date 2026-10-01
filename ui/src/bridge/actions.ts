@@ -34,6 +34,14 @@ export function pairCancel(offerId: string): void {
   postAction({ type: 'pairCancel', offerId });
 }
 
+export function discoveryRecheck(): void {
+  postAction({ type: 'discoveryRecheck' });
+}
+
+export function discoveryRepair(id: string): void {
+  postAction({ type: 'discoveryRepair', id });
+}
+
 export function sendReady(): void {
   postAction({ type: 'ready', protocol: 1 });
 }

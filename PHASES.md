@@ -232,6 +232,21 @@
 
 ---
 
+## Phase 12 — Discovery health (post-Phase-11 hardening; decision 0008)
+
+**Trigger:** Field evidence (`research/2026-09-19-host-mdns-empty-while-tcp-works.md`): the shared ADB server's mDNS browse can silently return empty while unicast pair/connect works; the product then shows zero offers and zero errors. Human-approved design change (decision 0008, 2026-10-01) adds a measured discovery-health surface instead of silent failure.
+
+**Scope (waves):**
+- **12.1** Broken-discovery detection + evidence card: unprivileged UDP-discovery-port ownership (GetExtendedUdpTable) and virtual-adapter enumeration, one-shot legacy-unicast mDNS reference probe (ephemeral port, RFC 6762 §6.7), event-driven trigger (Wi-Fi device connected + zero services + healthy server), `DiscoveryHealthCard` after pairing/before warnings, `Check again` action, fixture `discovery-health`.
+- **12.2** Repair actions behind approval buttons (Restart ADB with verify-and-report; UAC allow-list for admin-only repairs; one balloon per broken episode) — amends decision 0008.
+- **12.3** First-party DNS-SD fallback browser merged with the ADB server stream (research → scope → implement; acceptance: browser sees services while `adb mdns services` is empty on the affected host).
+- **12.4** Post-pair active connect (decision 0009; replaces the ≤60 s wait on adb auto-connect).
+- **Parked:** QR pairing (decision 0010, on request).
+
+**Tests:** reducer truth table, diagnostics seams, DNS codec fixtures, FakeAdbServer scenarios, Vitest + visual fixture, live matrix rows (probe measures announcements while `adb mdns services` is empty).
+
+---
+
 ## Completion record
 
 | Phase | Completed (date) | Commit  | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |

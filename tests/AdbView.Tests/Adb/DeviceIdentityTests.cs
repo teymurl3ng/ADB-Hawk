@@ -247,7 +247,7 @@ public sealed class DeviceIdentityTests {
     // ---------- AB display name ----------
 
     [Fact]
-    public void DisplayName_ModelBeatsProductBeatsSerial() {
+    public void DisplayName_ModelBeatsProduct_NeverUsesSerial() {
         var identity = new DeviceIdentity();
         Assert.Equal(
             "SM_A065F",
@@ -255,9 +255,13 @@ public sealed class DeviceIdentityTests {
         Assert.Equal(
             "a06xx",
             identity.Normalize(Proto("S", 8, product: "a06xx", model: null)).DisplayName);
+        // Transport/hardware serial must never become the presentation title.
         Assert.Equal(
-            "S",
+            "Android device",
             identity.Normalize(Proto("S", 8, product: null, model: null)).DisplayName);
+        Assert.Equal(
+            "Android device",
+            identity.Normalize(Proto("192.168.1.20:5555", 8, connectionType: 2, product: null, model: null)).DisplayName);
     }
 
     // ---------- AC unknown diagnostic once ----------

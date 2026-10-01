@@ -465,6 +465,23 @@ public sealed class NotificationTimelineTests {
             Assert.Equal(Vocabulary.Pairing.FailedTitle, sink.Emitted[0].Title);
             Assert.Equal(Vocabulary.Pairing.FailedDetail, sink.Emitted[0].Body);
 
+            // cause-selected body (decision 0007): timeout detail flows to the notification
+            await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(61));
+            sink.Clear();
+            var timedOut = NotificationFixtures.Empty(30).WithPairing("o3", "Galaxy", PairingPhase.Pairing);
+            var timedOutFailed = timedOut with {
+                Pairing = timedOut.Pairing! with {
+                    Phase = PairingPhase.Failed,
+                    Detail = Vocabulary.Pairing.FailedDetailFor(AdbView.Adb.Model.PairingFailureKind.Timeout),
+                },
+            };
+            coord.AcceptSnapshot(timedOut);
+            coord.AcceptSnapshot(timedOutFailed);
+            await WaitUntilAsync(() => sink.Emitted.Count >= 1);
+            Assert.Equal(
+                Vocabulary.Pairing.FailedDetailFor(AdbView.Adb.Model.PairingFailureKind.Timeout),
+                sink.Emitted[0].Body);
+
             // PairingResult bypasses burst: flood devices then pairing still emits
             await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(61));
             sink.Clear();

@@ -45,7 +45,15 @@ public sealed class MetadataIntegrationTests {
                     "16",
                     MetadataFieldStatus.Ok,
                     MetadataFieldStatus.Ok,
-                    MetadataFieldStatus.Ok);
+                    MetadataFieldStatus.Ok,
+                    MarketingName: null,
+                    DeviceName: "Galaxy A06",
+                    Brand: "samsung",
+                    Manufacturer: "samsung",
+                    MarketingNameStatus: MetadataFieldStatus.Unavailable,
+                    DeviceNameStatus: MetadataFieldStatus.Ok,
+                    BrandStatus: MetadataFieldStatus.Ok,
+                    ManufacturerStatus: MetadataFieldStatus.Ok);
             }
             finally {
                 Interlocked.Decrement(ref InFlight);
@@ -145,7 +153,129 @@ public sealed class MetadataIntegrationTests {
         Assert.Equal(80, after.BatteryPercent);
         Assert.Equal("SM-A065F", after.Detail.ExactModel);
         Assert.Equal("16", after.Detail.AndroidVersion);
+        Assert.Equal("Galaxy A06", after.DisplayName);
         Assert.Equal(before.Id, after.Id);
+        Assert.Equal(before.ConnectedSince, after.ConnectedSince);
+    }
+
+    [Fact]
+    public async Task DisplayName_Refinement_Preserves_Identity_And_Does_Not_Reset_ConnectedSince() {
+        await using var engine = new StateEngine(StateEngine.CreateDefaultSnapshot(revision: 1), getUtcNow: () => T0);
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray.Create(Proto("R8")), T0));
+        await engine.DrainAsync();
+        var early = Assert.Single(engine.CurrentSnapshot.Devices);
+        Assert.Equal("SM_A065F", early.DisplayName);
+        Assert.Null(early.Detail.ExactModel);
+        DateTimeOffset? connectedSince = early.ConnectedSince;
+        Assert.NotNull(connectedSince);
+        long gen = engine.CurrentDeviceState.MetadataSessions[early.Id].Generation;
+
+        engine.PostMetadata(
+            gen,
+            new MetadataReceivedEvent(
+                early.Id,
+                99,
+                "SM-A065F",
+                "16",
+                MarketingName: null,
+                DeviceName: "Galaxy A06",
+                Brand: "samsung",
+                Manufacturer: "samsung"));
+        await engine.DrainAsync();
+
+        var refined = Assert.Single(engine.CurrentSnapshot.Devices);
+        Assert.Equal(early.Id, refined.Id);
+        Assert.Equal("Galaxy A06", refined.DisplayName);
+        Assert.Equal("SM-A065F", refined.Detail.ExactModel);
+        Assert.Equal(connectedSince, refined.ConnectedSince);
+        Assert.Equal(DeviceStateKind.Connected, refined.State);
+
+        // Tracker tick after shell naming must not restore SM_A065F.
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray.Create(Proto("R8")), T0.AddSeconds(1)));
+        await engine.DrainAsync();
+        var afterTracker = Assert.Single(engine.CurrentSnapshot.Devices);
+        Assert.Equal(early.Id, afterTracker.Id);
+        Assert.Equal("Galaxy A06", afterTracker.DisplayName);
+        Assert.Equal("SM-A065F", afterTracker.Detail.ExactModel);
+        Assert.Equal(connectedSince, afterTracker.ConnectedSince);
+    }
+
+    [Fact]
+    public async Task Duplicate_Friendly_Names_Keep_Distinct_DeviceIds() {
+        await using var engine = new StateEngine(StateEngine.CreateDefaultSnapshot(revision: 1), getUtcNow: () => T0);
+        engine.Post(new DeviceListReceivedEvent(
+            ImmutableArray.Create(Proto("R8A"), Proto("R8B")),
+            T0));
+        await engine.DrainAsync();
+        Assert.Equal(2, engine.CurrentSnapshot.Devices.Length);
+        long genA = engine.CurrentDeviceState.MetadataSessions["usb:R8A"].Generation;
+        long genB = engine.CurrentDeviceState.MetadataSessions["usb:R8B"].Generation;
+
+        engine.PostMetadata(
+            genA,
+            new MetadataReceivedEvent("usb:R8A", 50, "SM-A065F", "16", DeviceName: "Galaxy A06", Brand: "samsung"));
+        engine.PostMetadata(
+            genB,
+            new MetadataReceivedEvent("usb:R8B", 40, "SM-A065F", "16", DeviceName: "Galaxy A06", Brand: "samsung"));
+        await engine.DrainAsync();
+
+        Assert.Equal(2, engine.CurrentSnapshot.Devices.Length);
+        Assert.All(engine.CurrentSnapshot.Devices, d => Assert.Equal("Galaxy A06", d.DisplayName));
+        Assert.Contains(engine.CurrentSnapshot.Devices, d => d.Id == "usb:R8A");
+        Assert.Contains(engine.CurrentSnapshot.Devices, d => d.Id == "usb:R8B");
+        Assert.NotEqual(
+            engine.CurrentSnapshot.Devices[0].Id,
+            engine.CurrentSnapshot.Devices[1].Id);
+    }
+
+    [Fact]
+    public async Task Usb_And_Wifi_Same_Shell_Metadata_Same_DisplayName() {
+        await using var engine = new StateEngine(StateEngine.CreateDefaultSnapshot(revision: 1), getUtcNow: () => T0);
+        var usb = Proto("R8HW", connectionType: 1); // USB
+        var wifi = new RawDevice {
+            Serial = "192.168.1.20:5555",
+            ProtoState = 8,
+            ConnectionType = 2, // SOCKET → WiFi
+            Model = "SM_A065F",
+            Product = "a06xx",
+            Device = "a06",
+            Format = RawDeviceFormat.ProtoBinary,
+        };
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray.Create(usb, wifi), T0));
+        await engine.DrainAsync();
+
+        string usbId = Assert.Single(engine.CurrentSnapshot.Devices.Where(d => d.Transport == TransportKind.Usb)).Id;
+        string wifiId = Assert.Single(engine.CurrentSnapshot.Devices.Where(d => d.Transport == TransportKind.WiFi)).Id;
+        Assert.NotEqual(usbId, wifiId);
+
+        long genUsb = engine.CurrentDeviceState.MetadataSessions[usbId].Generation;
+        long genWifi = engine.CurrentDeviceState.MetadataSessions[wifiId].Generation;
+        engine.PostMetadata(
+            genUsb,
+            new MetadataReceivedEvent(
+                usbId,
+                90,
+                "SM-A065F",
+                "16",
+                DeviceName: "Galaxy A06",
+                Brand: "samsung"));
+        engine.PostMetadata(
+            genWifi,
+            new MetadataReceivedEvent(
+                wifiId,
+                88,
+                "SM-A065F",
+                "16",
+                DeviceName: "Galaxy A06",
+                Brand: "samsung"));
+        await engine.DrainAsync();
+
+        Assert.Equal(
+            "Galaxy A06",
+            engine.CurrentSnapshot.Devices.Single(d => d.Id == usbId).DisplayName);
+        Assert.Equal(
+            "Galaxy A06",
+            engine.CurrentSnapshot.Devices.Single(d => d.Id == wifiId).DisplayName);
     }
 
     [Fact]

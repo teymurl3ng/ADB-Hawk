@@ -44,6 +44,9 @@ public sealed class NotificationIntegrationTests {
     private sealed class HermeticProcessRunner : IAdbProcessRunner {
         public Task<ProcessResult> StartServerAsync(string executablePath, CancellationToken ct = default) =>
             Task.FromResult(new ProcessResult(1, "", "Failed", false));
+
+        public Task<ProcessResult> KillServerAsync(string executablePath, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Hermetic notification scenarios never kill the server.");
     }
 
     private static AdbServerSupervisor CreateHermeticSupervisor() =>

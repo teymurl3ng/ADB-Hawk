@@ -82,7 +82,8 @@ Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 ; Clear any prior Run value first so a modify/reinstall with startup unchecked does not leave an orphan.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
     ValueName: "ADB View"; Flags: deletevalue
-; Optional auto-start only when the startup task is selected (installer owns Run; app never writes it).
+; Optional auto-start when the startup task is selected. Runtime tray "Start with Windows"
+; toggles this same value (StartupRegistrationContract.ValueName = "ADB View").
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
     ValueType: string; ValueName: "ADB View"; \
     ValueData: """{app}\{#MyAppExeName}"" --startup"; \

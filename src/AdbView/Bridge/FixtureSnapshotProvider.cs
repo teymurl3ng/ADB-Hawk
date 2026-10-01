@@ -24,7 +24,8 @@ internal static class FixtureSnapshotProvider {
         "pairing-code",
         "pairing-progress",
         "pairing-success",
-        "pairing-failure"
+        "pairing-failure",
+        "discovery-health"
     ];
 
     private static ShellView CreateShell(bool isPinned) => new() {
@@ -105,6 +106,7 @@ internal static class FixtureSnapshotProvider {
             "PAIRING-PROGRESS" => CreatePairingProgressSnapshot(isPinned, revision),
             "PAIRING-SUCCESS" => CreatePairingSuccessSnapshot(isPinned, revision),
             "PAIRING-FAILURE" => CreatePairingFailureSnapshot(isPinned, revision),
+            "DISCOVERY-HEALTH" => CreateDiscoveryHealthSnapshot(isPinned, revision),
             _ => CreateEmptySnapshot(isPinned, revision)
         };
     }
@@ -134,6 +136,68 @@ internal static class FixtureSnapshotProvider {
         PairingOffers = ImmutableArray<PairingOfferView>.Empty,
         Pairing = null,
         Warnings = ImmutableArray<SubsystemWarningView>.Empty,
+        DeviceCountLabel = null
+    };
+
+    // Decision 0008: connected Wi-Fi device + zero services + healthy server; evidence from
+    // a measured probe and environmental findings.
+    private static AppSnapshot CreateDiscoveryHealthSnapshot(bool isPinned, long revision) => new() {
+        Protocol = BridgeProtocol.Version,
+        Revision = revision,
+        GeneratedAt = T0,
+        Health = new HealthView {
+            Kind = GlobalHealthKind.Healthy,
+            Title = null,
+            Detail = null,
+            Hint = null,
+            Tray = TrayStatusKind.Connected,
+            TrayTooltip = "Connected: Galaxy S24 (Wi-Fi)"
+        },
+        Shell = CreateShell(isPinned),
+        Devices = ImmutableArray.Create(
+            CreateGalaxyS24(
+                state: DeviceStateKind.Connected,
+                severity: SeverityKind.Positive,
+                stateLabel: "Connected",
+                transport: TransportKind.WiFi,
+                transportLabel: "Wi-Fi",
+                battery: 82,
+                metaTemplate: "Connected {age}",
+                ageOffset: TimeSpan.FromSeconds(46),
+                connectedSince: T0 - TimeSpan.FromSeconds(46)
+            )
+        ),
+        PairingOffers = ImmutableArray<PairingOfferView>.Empty,
+        Pairing = null,
+        Warnings = ImmutableArray<SubsystemWarningView>.Empty,
+        DiscoveryHealth = new DiscoveryHealthView {
+            Title = Vocabulary.Discovery.BrokenTitle,
+            Detail = Vocabulary.Discovery.BrokenDetail("Galaxy S24"),
+            Evidence = ImmutableArray.Create(
+                Vocabulary.Discovery.MeasuredEvidence(3),
+                Vocabulary.Discovery.PortHeldEvidence("Microsoft Edge"),
+                Vocabulary.Discovery.VirtualAdaptersNamedEvidence("Tailscale")
+            ),
+            ActionLabel = Vocabulary.Discovery.CheckAgainActionLabel,
+            CanCheckAgain = true,
+            Repairs = ImmutableArray.Create(
+                new DiscoveryRepairCardAction {
+                    Id = "restart-adb",
+                    Label = Vocabulary.Discovery.RestartAdbLabel,
+                    IsAdmin = false,
+                    IsRunning = false,
+                    RunningLabel = Vocabulary.Discovery.RestartAdbRunningLabel
+                },
+                new DiscoveryRepairCardAction {
+                    Id = "stop-service:Tailscale",
+                    Label = Vocabulary.Discovery.StopServiceLabel("Tailscale"),
+                    IsAdmin = true,
+                    IsRunning = false,
+                    RunningLabel = Vocabulary.Discovery.StopServiceRunningLabel("Tailscale")
+                }
+            ),
+            ResultLine = null
+        },
         DeviceCountLabel = null
     };
 

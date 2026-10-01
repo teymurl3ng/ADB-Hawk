@@ -22,6 +22,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "connected-usb": {
@@ -50,7 +51,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00b7 USB",
+        "statusLine": "Connected \u00B7 USB",
         "guidance": null,
         "transport": "usb",
         "transportLabel": "USB",
@@ -76,6 +77,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "connected-wifi": {
@@ -104,7 +106,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00b7 Wi-Fi",
+        "statusLine": "Connected \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -135,6 +137,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "expanded": {
@@ -163,7 +166,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00b7 Wi-Fi",
+        "statusLine": "Connected \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -194,6 +197,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "unauthorized": {
@@ -222,7 +226,7 @@
         "state": "unauthorized",
         "severity": "attention",
         "stateLabel": "Unauthorized",
-        "statusLine": "Unauthorized \u00b7 Wi-Fi",
+        "statusLine": "Unauthorized \u00B7 Wi-Fi",
         "guidance": "Check the phone and allow USB debugging.",
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -253,6 +257,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "offline": {
@@ -281,7 +286,7 @@
         "state": "offline",
         "severity": "neutral",
         "stateLabel": "Offline",
-        "statusLine": "Offline \u00b7 Wi-Fi",
+        "statusLine": "Offline \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -312,6 +317,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "recovery": {
@@ -340,7 +346,7 @@
         "state": "recovery",
         "severity": "informational",
         "stateLabel": "Recovery",
-        "statusLine": "Recovery \u00b7 Wi-Fi",
+        "statusLine": "Recovery \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -371,6 +377,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "bootloader": {
@@ -399,7 +406,7 @@
         "state": "bootloader",
         "severity": "informational",
         "stateLabel": "Bootloader",
-        "statusLine": "Bootloader \u00b7 Wi-Fi",
+        "statusLine": "Bootloader \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -430,6 +437,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "sideload": {
@@ -458,7 +466,7 @@
         "state": "sideload",
         "severity": "informational",
         "stateLabel": "Sideload",
-        "statusLine": "Sideload \u00b7 Wi-Fi",
+        "statusLine": "Sideload \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -489,6 +497,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "unknown": {
@@ -517,7 +526,7 @@
         "state": "unknown",
         "severity": "informational",
         "stateLabel": "Unknown",
-        "statusLine": "Unknown \u00b7 Wi-Fi",
+        "statusLine": "Unknown \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -548,6 +557,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "multi-device": {
@@ -576,7 +586,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00b7 Wi-Fi",
+        "statusLine": "Connected \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -609,7 +619,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00b7 USB",
+        "statusLine": "Connected \u00B7 USB",
         "guidance": null,
         "transport": "usb",
         "transportLabel": "USB",
@@ -637,7 +647,7 @@
         "state": "unauthorized",
         "severity": "attention",
         "stateLabel": "Unauthorized",
-        "statusLine": "Unauthorized \u00b7 USB",
+        "statusLine": "Unauthorized \u00B7 USB",
         "guidance": "Check the phone and allow USB debugging.",
         "transport": "usb",
         "transportLabel": "USB",
@@ -665,7 +675,7 @@
         "state": "recovery",
         "severity": "informational",
         "stateLabel": "Recovery",
-        "statusLine": "Recovery \u00b7 USB",
+        "statusLine": "Recovery \u00B7 USB",
         "guidance": null,
         "transport": "usb",
         "transportLabel": "USB",
@@ -693,7 +703,7 @@
         "state": "offline",
         "severity": "neutral",
         "stateLabel": "Offline",
-        "statusLine": "Offline \u00b7 Wi-Fi",
+        "statusLine": "Offline \u00B7 Wi-Fi",
         "guidance": null,
         "transport": "wifi",
         "transportLabel": "Wi-Fi",
@@ -726,7 +736,7 @@
         "state": "connected",
         "severity": "positive",
         "stateLabel": "Connected",
-        "statusLine": "Connected \u00b7 USB",
+        "statusLine": "Connected \u00B7 USB",
         "guidance": null,
         "transport": "usb",
         "transportLabel": "USB",
@@ -752,6 +762,7 @@
     "pairingOffers": [],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": "6 devices"
   },
   "pairing-offer": {
@@ -785,6 +796,7 @@
     ],
     "pairing": null,
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "pairing-code": {
@@ -820,6 +832,7 @@
       "codeLength": 6
     },
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "pairing-progress": {
@@ -855,6 +868,7 @@
       "codeLength": 6
     },
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "pairing-success": {
@@ -890,6 +904,7 @@
       "codeLength": 6
     },
     "warnings": [],
+    "discoveryHealth": null,
     "deviceCountLabel": null
   },
   "pairing-failure": {
@@ -925,6 +940,94 @@
       "codeLength": 6
     },
     "warnings": [],
+    "discoveryHealth": null,
+    "deviceCountLabel": null
+  },
+  "discovery-health": {
+    "protocol": 1,
+    "revision": 1,
+    "generatedAt": "2026-09-17T12:00:00.000Z",
+    "health": {
+      "kind": "healthy",
+      "title": null,
+      "detail": null,
+      "hint": null,
+      "tray": "connected",
+      "trayTooltip": "Connected: Galaxy S24 (Wi-Fi)"
+    },
+    "shell": {
+      "pinned": false,
+      "theme": "dark",
+      "transparencyEnabled": false,
+      "forcedColors": false,
+      "reducedMotion": false
+    },
+    "devices": [
+      {
+        "id": "d1",
+        "displayName": "Galaxy S24",
+        "state": "connected",
+        "severity": "positive",
+        "stateLabel": "Connected",
+        "statusLine": "Connected \u00B7 Wi-Fi",
+        "guidance": null,
+        "transport": "wifi",
+        "transportLabel": "Wi-Fi",
+        "batteryPercent": 82,
+        "metaTemplate": "Connected {age}",
+        "stateSince": "2026-09-17T11:59:14.000Z",
+        "connectedSince": "2026-09-17T11:59:14.000Z",
+        "detail": {
+          "serial": "R5CW\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+          "exactModel": "SM-S921W",
+          "androidVersion": "16",
+          "address": "192.168.1.144:39421",
+          "copyFields": [
+            {
+              "key": "address",
+              "label": "Address",
+              "value": "192.168.1.144:39421"
+            },
+            {
+              "key": "serial",
+              "label": "Serial",
+              "value": "R5CW\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+            }
+          ]
+        }
+      }
+    ],
+    "pairingOffers": [],
+    "pairing": null,
+    "warnings": [],
+    "discoveryHealth": {
+      "title": "Wireless discovery isn\u0027t working",
+      "detail": "Galaxy S24 is connected over Wi-Fi, but ADB isn\u0027t receiving device announcements on this network.",
+      "evidence": [
+        "3 device announcements are visible on this network.",
+        "Microsoft Edge is using the discovery port.",
+        "Virtual network adapters are active (Tailscale)."
+      ],
+      "actionLabel": "Check again",
+      "canCheckAgain": true,
+      "repairs": [
+        {
+          "id": "restart-adb",
+          "label": "Restart ADB",
+          "isAdmin": false,
+          "isRunning": false,
+          "runningLabel": "Restarting ADB\u2026"
+        },
+        {
+          "id": "stop-service:Tailscale",
+          "label": "Stop Tailscale service",
+          "isAdmin": true,
+          "isRunning": false,
+          "runningLabel": "Stopping Tailscale\u2026"
+        }
+      ],
+      "resultLine": null
+    },
     "deviceCountLabel": null
   }
 }

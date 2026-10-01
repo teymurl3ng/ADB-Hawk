@@ -15,6 +15,7 @@ internal sealed record AppSnapshot {
     public required ImmutableArray<PairingOfferView> PairingOffers { get; init; }
     public PairingOperationView? Pairing { get; init; }                    // at most one at a time
     public required ImmutableArray<SubsystemWarningView> Warnings { get; init; }
+    public DiscoveryHealthView? DiscoveryHealth { get; init; }             // decision 0008; null when hidden
     public required string? DeviceCountLabel { get; init; }   // "3 devices" or null (<2 devices)
 }
 
@@ -124,4 +125,27 @@ internal sealed record SubsystemWarningView {
     public required SeverityKind Severity { get; init; }  // Attention or Informational
     public required string Title { get; init; }  // "Wireless discovery unavailable" | "Restoring wireless discovery…"
     public required string Detail { get; init; } // "USB ADB is still working normally."
+}
+
+// ---------- discovery health (decision 0008) ----------
+// Evidence lines are rendered by Vocabulary from structured diagnosis and arrive ready to
+// display; the frontend never derives wording (R-07).
+
+internal sealed record DiscoveryHealthView {
+    public required string Title { get; init; }
+    public required string Detail { get; init; }   // device display name interpolated
+    public required ImmutableArray<string> Evidence { get; init; }  // only findings; may be empty
+    public required string ActionLabel { get; init; }  // "Check again"
+    public required bool CanCheckAgain { get; init; }  // false while a measurement runs
+    public required ImmutableArray<DiscoveryRepairCardAction> Repairs { get; init; }  // decision 0008 amendment
+    public string? ResultLine { get; init; }           // momentary post-action outcome (amendment)
+}
+
+/// <summary>One offered repair on the card. Id is opaque; label/state rendered from Vocabulary.</summary>
+internal sealed record DiscoveryRepairCardAction {
+    public required string Id { get; init; }
+    public required string Label { get; init; }
+    public required bool IsAdmin { get; init; }        // UAC-shield hint for the frontend
+    public required bool IsRunning { get; init; }
+    public required string RunningLabel { get; init; } // label shown while IsRunning
 }

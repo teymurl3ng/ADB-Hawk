@@ -29,7 +29,7 @@ internal static class StateReducer {
         ArgumentNullException.ThrowIfNull(deviceState);
         ArgumentNullException.ThrowIfNull(evt);
 
-        return evt switch {
+        var result = evt switch {
             AdbServerStateChangedEvent serverChanged =>
                 ReduceServerStateChanged(current, deviceState, serverChanged.State, now),
             SetPinnedEvent setPinned =>
@@ -44,6 +44,8 @@ internal static class StateReducer {
                 ReduceGraceExpired(current, deviceState, grace.Generation, now),
             MdnsServicesReceivedEvent mdns =>
                 ReduceMdnsServices(current, deviceState, mdns, now),
+            MdnsFallbackReceivedEvent fallback =>
+                ReduceMdnsFallback(current, deviceState, fallback, now),
             MdnsTrackerFailedEvent =>
                 ReduceMdnsFailed(current, deviceState),
             WirelessDiscoveryRestoringExpiredEvent restoring =>
@@ -56,8 +58,22 @@ internal static class StateReducer {
                 ReducePairingWaitExpired(current, deviceState, wait.Generation, now),
             MetadataReceivedEvent metadata =>
                 ReduceMetadataReceived(current, deviceState, metadata, now),
+            DiscoveryCheckStartedEvent =>
+                ReduceDiscoveryCheckStarted(current, deviceState),
+            DiscoveryDiagnosisReceivedEvent diagnosis =>
+                ReduceDiscoveryDiagnosisReceived(current, deviceState, diagnosis),
+            DiscoveryRepairCatalogEvent catalog =>
+                ReduceDiscoveryRepairCatalog(current, deviceState, catalog),
+            DiscoveryRepairStartedEvent repairStart =>
+                ReduceDiscoveryRepairStarted(current, deviceState, repairStart),
+            DiscoveryRepairFinishedEvent repairDone =>
+                ReduceDiscoveryRepairFinished(current, deviceState, repairDone),
             _ => ReduceResult.Unchanged(current, deviceState),
         };
+
+        // Decision 0008: the discovery-health trigger is re-evaluated after every event so the
+        // card always reflects the latest devices / services / server state (event-driven; no timers).
+        return ApplyDiscoveryHealth(result, now);
     }
 
     private static ReduceResult ReduceServerStateChanged(
@@ -66,9 +82,14 @@ internal static class StateReducer {
         AdbServerStateChanged state,
         DateTimeOffset now) {
         var targetHealth = MapHealth(state.Phase, current);
+        var nextState = deviceState with { ServerMdnsEnabled = state.Status?.MdnsEnabled };
+
+        if (current.Health == targetHealth && deviceState.ServerMdnsEnabled == nextState.ServerMdnsEnabled) {
+            return ReduceResult.Unchanged(current, nextState);
+        }
 
         if (current.Health == targetHealth) {
-            return ReduceResult.Unchanged(current, deviceState);
+            return ReduceResult.With(current, nextState);
         }
 
         var next = current with {
@@ -77,7 +98,7 @@ internal static class StateReducer {
             Health = WithDeviceDerivedTray(targetHealth, current.Devices, current.PairingOffers),
         };
 
-        return ReduceResult.With(next, deviceState);
+        return ReduceResult.With(next, nextState);
     }
 
     private static ReduceResult ReduceSetPinned(
@@ -304,6 +325,21 @@ internal static class StateReducer {
         string? model = evt.Model ?? device.Detail.ExactModel;
         string? version = evt.AndroidVersion ?? device.Detail.AndroidVersion;
 
+        // Refine DisplayName only when a naming candidate arrived. Brand/manufacturer alone
+        // must not overwrite an early tracker title with the generic fallback.
+        bool namingProbe = evt.MarketingName is not null
+            || evt.DeviceName is not null
+            || evt.Model is not null;
+
+        string displayName = namingProbe
+            ? DeviceDisplayName.Resolve(
+                marketingName: evt.MarketingName,
+                deviceName: evt.DeviceName,
+                model: model,
+                brand: evt.Brand,
+                manufacturer: evt.Manufacturer)
+            : device.DisplayName;
+
         DateTimeOffset? observed = battery is null ? null : now;
         var nextState = deviceState;
         if (deviceState.MetadataSessions.TryGetValue(evt.DeviceId, out DeviceMetadataSession? session)) {
@@ -316,7 +352,8 @@ internal static class StateReducer {
 
         if (device.BatteryPercent == battery
             && device.Detail.ExactModel == model
-            && device.Detail.AndroidVersion == version) {
+            && device.Detail.AndroidVersion == version
+            && device.DisplayName == displayName) {
             // Values unchanged — still refresh BatteryObservedAt so successful
             // same-% battery probes reset the 30s/120s staleness clocks.
             return ReduceResult.With(current, nextState);
@@ -328,6 +365,7 @@ internal static class StateReducer {
         };
         var updatedDevice = device with {
             BatteryPercent = battery,
+            DisplayName = displayName,
             Detail = updatedDetail,
         };
 
@@ -451,7 +489,66 @@ internal static class StateReducer {
             return ReduceResult.Unchanged(current, deviceState);
         }
 
-        var (offers, bindings) = PairingOfferMapper.Map(mdns.Services, current.Devices);
+        // Decision 0008 follow-through: the ADB server stays authoritative. When its list is
+        // empty, fallback rows fill the gap so offers/pairing survive a broken server browse.
+        var effective = EffectiveServices(mdns.Services, deviceState.LatestFallbackServices);
+        return ReduceOfferSource(
+            current,
+            deviceState,
+            effective,
+            mdns.Services,
+            MdnsSourceKind.Adb,
+            mdns.At,
+            now);
+    }
+
+    private static ReduceResult ReduceMdnsFallback(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        MdnsFallbackReceivedEvent fallback,
+        DateTimeOffset now) {
+        if (deviceState.LatestAppliedFallbackAt is DateTimeOffset latest && fallback.At < latest) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        var effective = EffectiveServices(deviceState.LatestMdnsServices, fallback.Services);
+        return ReduceOfferSource(
+            current,
+            deviceState,
+            effective,
+            fallback.Services,
+            MdnsSourceKind.Fallback,
+            fallback.At,
+            now);
+    }
+
+    /// <summary>ADB source wins; fallback rows fill only the empty gap (decision 0008 follow-through).</summary>
+    private static ImmutableArray<RawMdnsService> EffectiveServices(
+        ImmutableArray<RawMdnsService> adbServices,
+        ImmutableArray<RawMdnsService> fallbackServices) {
+        if (!adbServices.IsDefaultOrEmpty) {
+            return adbServices;
+        }
+
+        return fallbackServices.IsDefault ? ImmutableArray<RawMdnsService>.Empty : fallbackServices;
+    }
+
+    internal enum MdnsSourceKind { Adb, Fallback }
+
+    /// <summary>
+    /// Shared offer-source path: maps the effective service set into offers/bindings, applies
+    /// offer-withdrawal, health/tray, and (adb source only) wireless-warning bookkeeping.
+    /// </summary>
+    private static ReduceResult ReduceOfferSource(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        ImmutableArray<RawMdnsService> effectiveServices,
+        ImmutableArray<RawMdnsService> sourceServices,
+        MdnsSourceKind source,
+        DateTimeOffset sourceAt,
+        DateTimeOffset now) {
+        bool treatAsAdbSource = source == MdnsSourceKind.Adb;
+        var (offers, bindings) = PairingOfferMapper.Map(effectiveServices, current.Devices);
         var health = WithDeviceDerivedTray(current.Health, current.Devices, offers);
 
         PairingOperationView? pairing = current.Pairing;
@@ -471,7 +568,7 @@ internal static class StateReducer {
             pairingWait = GraceCommand.Cancel;
         }
 
-        var warnings = ClearWirelessWarnings(current.Warnings);
+        var warnings = treatAsAdbSource ? ClearWirelessWarnings(current.Warnings) : current.Warnings;
         bool offersEqual = PairingOfferMapper.OffersSemanticallyEqual(current.PairingOffers, offers);
         bool healthEqual = current.Health == health;
         bool warningsEqual = WarningsEqual(current.Warnings, warnings);
@@ -479,19 +576,27 @@ internal static class StateReducer {
             || (pairing is null && current.Pairing is null)
             || (pairing is not null && current.Pairing is not null && pairing == current.Pairing);
 
-        var nextState = nextPairingState with {
-            LatestAppliedMdnsAt = mdns.At,
-            LatestMdnsServices = mdns.Services,
-            OfferBindings = bindings,
-            WirelessFailed = false,
-            ActiveWirelessRestoringGeneration = 0,
-            ActiveWirelessUnavailableGeneration = 0,
-        };
+        var stamped = (source == MdnsSourceKind.Adb
+            ? nextPairingState with {
+                LatestAppliedMdnsAt = sourceAt,
+                LatestMdnsServices = sourceServices,
+            }
+            : nextPairingState with {
+                LatestAppliedFallbackAt = sourceAt,
+                LatestFallbackServices = sourceServices,
+            }) with { OfferBindings = bindings };
+        var nextState = treatAsAdbSource
+            ? stamped with {
+                WirelessFailed = false,
+                ActiveWirelessRestoringGeneration = 0,
+                ActiveWirelessUnavailableGeneration = 0,
+            }
+            : stamped;
 
-        GraceCommand cancelRestoring = deviceState.ActiveWirelessRestoringGeneration != 0
+        GraceCommand cancelRestoring = treatAsAdbSource && deviceState.ActiveWirelessRestoringGeneration != 0
             ? GraceCommand.Cancel
             : GraceCommand.None;
-        GraceCommand cancelUnavailable = deviceState.ActiveWirelessUnavailableGeneration != 0
+        GraceCommand cancelUnavailable = treatAsAdbSource && deviceState.ActiveWirelessUnavailableGeneration != 0
             ? GraceCommand.Cancel
             : GraceCommand.None;
 
@@ -627,7 +732,8 @@ internal static class StateReducer {
                 ? binding.DisplayName
                 : Vocabulary.Pairing.DefaultDeviceName);
 
-        PairingOperationView? operation = PairingOperationMapper.Map(evt.OfferId, evt.Phase, displayName);
+        PairingOperationView? operation =
+            PairingOperationMapper.Map(evt.OfferId, evt.Phase, evt.FailureKind, displayName);
 
         GraceCommand pairingWait = GraceCommand.None;
         var nextState = deviceState;
@@ -715,6 +821,295 @@ internal static class StateReducer {
         };
 
         return ReduceResult.With(next, nextState);
+    }
+
+    private static ReduceResult ReduceDiscoveryCheckStarted(
+        AppSnapshot current,
+        DeviceEngineState deviceState) {
+        if (deviceState.DiscoveryCheckRunning) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        return ReduceResult.With(current, deviceState with { DiscoveryCheckRunning = true });
+    }
+
+    private static ReduceResult ReduceDiscoveryDiagnosisReceived(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        DiscoveryDiagnosisReceivedEvent evt) {
+        var diagnosis = evt.Diagnosis with {
+            PortHolders = Normalize(evt.Diagnosis.PortHolders),
+            VirtualAdapters = Normalize(evt.Diagnosis.VirtualAdapters),
+        };
+
+        // Decision 0008 amendment: a measurement following a completed repair reports the
+        // momentary outcome while the trigger is still broken; restoration clears the card
+        // (and the line with it). The line is momentary: any later measurement clears it.
+        string? resultLine = deviceState.AwaitingMeasureRepairId is null
+            ? null
+            : Vocabulary.Discovery.ResultStillBroken;
+
+        var nextState = deviceState with {
+            LatestDiscoveryDiagnosis = diagnosis,
+            DiscoveryCheckRunning = false,
+            AwaitingMeasureRepairId = null,
+            RepairResultLine = resultLine,
+        };
+        return ReduceResult.With(current, nextState);
+
+        static ImmutableArray<string> Normalize(ImmutableArray<string> values) =>
+            values.IsDefault ? ImmutableArray<string>.Empty : values;
+    }
+
+    private static ReduceResult ReduceDiscoveryRepairCatalog(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        DiscoveryRepairCatalogEvent evt) {
+        var repairs = evt.Repairs.IsDefault ? ImmutableArray<DiscoveryRepairDescriptor>.Empty : evt.Repairs;
+        var nextState = deviceState with { RepairCatalog = repairs };
+        return ReduceResult.With(current, nextState);
+    }
+
+    private static ReduceResult ReduceDiscoveryRepairStarted(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        DiscoveryRepairStartedEvent evt) {
+        if (deviceState.RunningRepairId is not null) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        // A new attempt supersedes the previous momentary line.
+        var nextState = deviceState with {
+            RunningRepairId = evt.RepairId,
+            RepairResultLine = null,
+        };
+        return ReduceResult.With(current, nextState);
+    }
+
+    private static ReduceResult ReduceDiscoveryRepairFinished(
+        AppSnapshot current,
+        DeviceEngineState deviceState,
+        DiscoveryRepairFinishedEvent evt) {
+        if (deviceState.RunningRepairId != evt.RepairId) {
+            return ReduceResult.Unchanged(current, deviceState);
+        }
+
+        bool measuresAfter = evt.Outcome == DiscoveryRepairOutcome.Completed
+            && MeasuresAfterCompletion(deviceState, evt.RepairId);
+        string? resultLine = evt.Outcome == DiscoveryRepairOutcome.Completed
+            ? null // reported by the follow-up measurement (or the card clears on restoration)
+            : Vocabulary.Discovery.ResultLineFor(evt.Outcome);
+
+        var nextState = deviceState with {
+            RunningRepairId = null,
+            RepairResults = deviceState.RepairResults.SetItem(evt.RepairId, evt.Outcome),
+            AwaitingMeasureRepairId = measuresAfter ? evt.RepairId : null,
+            RepairResultLine = resultLine,
+        };
+        return ReduceResult.With(current, nextState);
+
+        static bool MeasuresAfterCompletion(DeviceEngineState state, string repairId) {
+            var descriptor = state.RepairCatalog.FirstOrDefault(r => r.Id == repairId);
+            return descriptor is not null
+                && descriptor.Kind is DiscoveryRepairActionKind.RestartAdb
+                    or DiscoveryRepairActionKind.StopService
+                    or DiscoveryRepairActionKind.DisableAdapter;
+        }
+    }
+
+    /// <summary>
+    /// Decision 0008 trigger: a connected Wi-Fi device must be announcing itself, so
+    /// zero services on a healthy server (discovery enabled, tracker not failed, at least one
+    /// complete service list received) is a measured discovery failure. Quiet-but-healthy
+    /// networks never surface the card.
+    /// </summary>
+    private static bool IsDiscoveryBroken(AppSnapshot snapshot, DeviceEngineState deviceState) {
+        if (snapshot.Health.Kind != GlobalHealthKind.Healthy) {
+            return false;
+        }
+
+        if (deviceState.ServerMdnsEnabled != true || deviceState.WirelessFailed) {
+            return false;
+        }
+
+        // A complete list must have arrived at least once — empty-before-first-frame is not evidence.
+        if (deviceState.LatestAppliedMdnsAt is null) {
+            return false;
+        }
+
+        if (!deviceState.LatestMdnsServices.IsDefaultOrEmpty) {
+            return false;
+        }
+
+        return HasConnectedWifiDevice(snapshot.Devices);
+    }
+
+    private static bool HasConnectedWifiDevice(ImmutableArray<DeviceView> devices) {
+        if (devices.IsDefaultOrEmpty) {
+            return false;
+        }
+
+        for (int i = 0; i < devices.Length; i++) {
+            if (devices[i].Transport == TransportKind.WiFi
+                && devices[i].State == DeviceStateKind.Connected) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static ReduceResult ApplyDiscoveryHealth(ReduceResult result, DateTimeOffset now) {
+        var snapshot = result.Snapshot;
+        var deviceState = result.DeviceState;
+
+        if (!IsDiscoveryBroken(snapshot, deviceState)) {
+            if (snapshot.DiscoveryHealth is null
+                && deviceState.LatestDiscoveryDiagnosis is null
+                && !deviceState.DiscoveryCheckRunning
+                && deviceState.RepairCatalog.IsEmpty
+                && deviceState.RunningRepairId is null
+                && deviceState.RepairResults.IsEmpty
+                && deviceState.RepairResultLine is null) {
+                return result;
+            }
+
+            // Evidence is momentary (RFC 6762 legacy responses live ≤10 s): drop it with the card.
+            // Repair state belongs to the card episode and clears with it (fresh episode, fresh
+            // catalog — the coordinator rebuilds offers on the next card).
+            var clearedState = deviceState with {
+                LatestDiscoveryDiagnosis = null,
+                DiscoveryCheckRunning = false,
+                RepairCatalog = ImmutableArray<DiscoveryRepairDescriptor>.Empty,
+                RepairResults = ImmutableDictionary<string, DiscoveryRepairOutcome>.Empty,
+                RunningRepairId = null,
+                AwaitingMeasureRepairId = null,
+                RepairResultLine = null,
+            };
+            var clearedSnapshot = snapshot with {
+                Revision = NextRevision(snapshot.Revision),
+                GeneratedAt = now,
+                DiscoveryHealth = null,
+            };
+            return result with { Snapshot = clearedSnapshot, DeviceState = clearedState };
+        }
+
+        var view = BuildDiscoveryHealthView(snapshot, deviceState);
+        if (DiscoveryHealthViewEquals(snapshot.DiscoveryHealth, view)) {
+            return result;
+        }
+
+        var next = snapshot with {
+            Revision = NextRevision(snapshot.Revision),
+            GeneratedAt = now,
+            DiscoveryHealth = view,
+        };
+        return result with { Snapshot = next };
+    }
+
+    private static DiscoveryHealthView BuildDiscoveryHealthView(
+        AppSnapshot snapshot,
+        DeviceEngineState deviceState) {
+        string deviceName = Vocabulary.Pairing.DefaultDeviceName;
+        for (int i = 0; i < snapshot.Devices.Length; i++) {
+            var device = snapshot.Devices[i];
+            if (device.Transport == TransportKind.WiFi && device.State == DeviceStateKind.Connected) {
+                deviceName = device.DisplayName;
+                break;
+            }
+        }
+
+        var evidence = ImmutableArray.CreateBuilder<string>();
+        if (deviceState.LatestDiscoveryDiagnosis is { } diagnosis) {
+            switch (diagnosis.ProbeOutcome) {
+                case DiscoveryProbeOutcome.Measured when diagnosis.AnnouncementCount > 0:
+                    evidence.Add(Vocabulary.Discovery.MeasuredEvidence(diagnosis.AnnouncementCount));
+                    break;
+                case DiscoveryProbeOutcome.Measured:
+                    evidence.Add(Vocabulary.Discovery.MeasuredNothingEvidence);
+                    break;
+                case DiscoveryProbeOutcome.Unavailable:
+                    evidence.Add(Vocabulary.Discovery.ProbeUnavailableEvidence);
+                    break;
+            }
+
+            if (diagnosis.PortHolders.Length == 1) {
+                evidence.Add(Vocabulary.Discovery.PortHeldEvidence(diagnosis.PortHolders[0]));
+            }
+            else if (diagnosis.PortHolders.Length > 1) {
+                evidence.Add(Vocabulary.Discovery.PortHoldersEvidence(diagnosis.PortHolders[0], diagnosis.PortHolders.Length - 1));
+            }
+
+            if (diagnosis.VirtualAdapters.Length == 1) {
+                evidence.Add(Vocabulary.Discovery.VirtualAdaptersNamedEvidence(diagnosis.VirtualAdapters[0]));
+            }
+            else if (diagnosis.VirtualAdapters.Length > 1) {
+                evidence.Add(Vocabulary.Discovery.VirtualAdaptersNamedEvidence(diagnosis.VirtualAdapters[0], diagnosis.VirtualAdapters[1]));
+            }
+        }
+
+        var repairs = ImmutableArray.CreateBuilder<DiscoveryRepairCardAction>();
+        if (!deviceState.RepairCatalog.IsDefaultOrEmpty) {
+            foreach (var descriptor in deviceState.RepairCatalog) {
+                // Completed actions leave the card; their undo entries are separate catalog items.
+                if (deviceState.RepairResults.TryGetValue(descriptor.Id, out var outcome)
+                    && outcome == DiscoveryRepairOutcome.Completed) {
+                    continue;
+                }
+
+                bool running = deviceState.RunningRepairId == descriptor.Id;
+                bool isAdmin = descriptor.Kind is not DiscoveryRepairActionKind.RestartAdb;
+                repairs.Add(new DiscoveryRepairCardAction {
+                    Id = descriptor.Id,
+                    Label = Vocabulary.Discovery.RepairLabel(descriptor.Kind, descriptor.Target),
+                    IsAdmin = isAdmin,
+                    IsRunning = running,
+                    RunningLabel = Vocabulary.Discovery.RepairRunningLabel(descriptor.Kind, descriptor.Target),
+                });
+            }
+        }
+
+        return new DiscoveryHealthView {
+            Title = Vocabulary.Discovery.BrokenTitle,
+            Detail = Vocabulary.Discovery.BrokenDetail(deviceName),
+            Evidence = evidence.ToImmutable(),
+            ActionLabel = Vocabulary.Discovery.CheckAgainActionLabel,
+            CanCheckAgain = !deviceState.DiscoveryCheckRunning && deviceState.RunningRepairId is null,
+            Repairs = repairs.ToImmutable(),
+            ResultLine = deviceState.RepairResultLine,
+        };
+    }
+
+    private static bool DiscoveryHealthViewEquals(DiscoveryHealthView? left, DiscoveryHealthView right) {
+        if (left is null) {
+            return false;
+        }
+
+        if (left.Title != right.Title
+            || left.Detail != right.Detail
+            || left.ActionLabel != right.ActionLabel
+            || left.CanCheckAgain != right.CanCheckAgain
+            || left.ResultLine != right.ResultLine
+            || left.Evidence.IsDefault
+            || left.Evidence.Length != right.Evidence.Length
+            || left.Repairs.IsDefault
+            || left.Repairs.Length != right.Repairs.Length) {
+            return false;
+        }
+
+        for (int i = 0; i < left.Evidence.Length; i++) {
+            if (left.Evidence[i] != right.Evidence[i]) {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < left.Repairs.Length; i++) {
+            if (left.Repairs[i] != right.Repairs[i]) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public static HealthView MapHealth(AdbServerPhase phase, AppSnapshot? current = null) {

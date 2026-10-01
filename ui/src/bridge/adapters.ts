@@ -57,6 +57,8 @@ export interface DerivedPairingState {
   state: PairingCardState;
   deviceName: string;
   offerId: string;
+  /** Backend-selected failure supporting line (decision 0007); failure card only. */
+  detail?: string;
 }
 
 /**
@@ -71,6 +73,7 @@ export function derivePairingState(snapshot: AppSnapshot | null): DerivedPairing
       state: mapPairingPhaseToCardState(snapshot.pairing.phase),
       deviceName: snapshot.pairing.displayName,
       offerId: snapshot.pairing.offerId,
+      detail: snapshot.pairing.detail ?? undefined,
     };
   }
 

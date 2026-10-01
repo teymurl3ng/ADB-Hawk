@@ -54,6 +54,7 @@
       "pairingOffers": [],
       "pairing": null,
       "warnings": [],
+      "discoveryHealth": null,
       "deviceCountLabel": null
     }
   },
@@ -112,6 +113,7 @@
       "pairingOffers": [],
       "pairing": null,
       "warnings": [],
+      "discoveryHealth": null,
       "deviceCountLabel": null
     }
   },
@@ -226,6 +228,7 @@
       "pairingOffers": [],
       "pairing": null,
       "warnings": [],
+      "discoveryHealth": null,
       "deviceCountLabel": "3 devices"
     }
   },
@@ -280,6 +283,7 @@
         "codeLength": 6
       },
       "warnings": [],
+      "discoveryHealth": null,
       "deviceCountLabel": null
     }
   },
@@ -338,6 +342,7 @@
       "pairingOffers": [],
       "pairing": null,
       "warnings": [],
+      "discoveryHealth": null,
       "deviceCountLabel": null
     }
   },
@@ -449,6 +454,7 @@
           "detail": "mDNS service tracker is monitoring for devices."
         }
       ],
+      "discoveryHealth": null,
       "deviceCountLabel": "2 devices"
     }
   }

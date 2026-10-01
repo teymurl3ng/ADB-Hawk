@@ -1,5 +1,8 @@
 namespace AdbView.State;
 
+using System.Globalization;
+using AdbView.Adb.Model;
+
 /// <summary>
 /// Dynamic semantic/state wording shared across flyout, tooltip, and notifications.
 /// Device copy follows DESIGN.md §12 / ENGINEERING.md §4.3.
@@ -63,6 +66,17 @@ internal static class Vocabulary {
         public const string FailedTitle = "Pairing failed";
         public const string FailedDetail = "Check the code and try again.";
 
+        /// <summary>
+        /// Failure supporting line selected by cause (decision 0007, DESIGN.md §15).
+        /// Any kind outside the fixed set keeps the frozen wrong-code line.
+        /// </summary>
+        public static string FailedDetailFor(PairingFailureKind kind) => kind switch {
+            PairingFailureKind.Timeout => "The phone did not respond in time. Try again.",
+            PairingFailureKind.RateLimited => "Too many attempts. Wait a moment and try again.",
+            PairingFailureKind.InvalidRequest => "The pairing offer changed. Tap Pair and enter the new code.",
+            _ => FailedDetail,
+        };
+
         public static string CodeEntryTitle(string displayName) => "Pairing with " + displayName;
         public static string ProgressTitle(string displayName) => "Pairing with " + displayName + "…";
         public static string SuccessTitle(string displayName) => "Paired with " + displayName;
@@ -73,6 +87,87 @@ internal static class Vocabulary {
         public const string UnavailableDetail = "USB ADB is still working normally.";
         public const string RestoringTitle = "Restoring wireless discovery…";
         public const string RestoringDetail = "USB ADB is still working normally.";
+    }
+
+    /// <summary>
+    /// Discovery-health card copy (decision 0008, DESIGN.md §18). Evidence lines describe
+    /// findings only; never protocols, ports, or driver names (R-15).
+    /// </summary>
+    internal static class Discovery {
+        public const string BrokenTitle = "Wireless discovery isn't working";
+        public const string CheckAgainActionLabel = "Check again";
+        public const string MeasuredNothingEvidence = "No announcements were measured just now.";
+        public const string ProbeUnavailableEvidence = "ADB View couldn't measure the network just now.";
+        public const string VirtualAdaptersEvidence = "Virtual network adapters are active";
+        public const string PortHoldersEvidenceSuffix = "using the discovery port";
+
+        public static string BrokenDetail(string displayName) =>
+            displayName + " is connected over Wi-Fi, but ADB isn't receiving device announcements on this network.";
+
+        public static string MeasuredEvidence(int count) => count switch {
+            1 => "1 device announcement is visible on this network.",
+            _ => count.ToString(CultureInfo.InvariantCulture) + " device announcements are visible on this network.",
+        };
+
+        public static string PortHeldEvidence(string processName) =>
+            processName + " is using the discovery port.";
+
+        public static string PortHoldersEvidence(string firstProcessName, int additionalCount) =>
+            additionalCount switch {
+                1 => firstProcessName + " and 1 other app are using the discovery port.",
+                _ => firstProcessName + " and " + additionalCount.ToString(CultureInfo.InvariantCulture)
+                    + " other apps are using the discovery port.",
+            };
+
+        public static string VirtualAdaptersNamedEvidence(string first, string second) =>
+            VirtualAdaptersEvidence + " (" + first + ", " + second + ").";
+
+        public static string VirtualAdaptersNamedEvidence(string only) =>
+            VirtualAdaptersEvidence + " (" + only + ").";
+
+        // ----- repair actions (decision 0008 amendment) -----
+
+        public const string RestartAdbLabel = "Restart ADB";
+        public const string RestartAdbRunningLabel = "Restarting ADB…";
+        public const string ResultStillBroken = "Still not working after this action.";
+        public const string ResultDeclined = "Approval was declined, so nothing was changed.";
+        public const string ResultFailed = "The action couldn't be completed.";
+
+        public static string StopServiceLabel(string service) => "Stop " + service + " service";
+        public static string StartServiceLabel(string service) => "Start " + service + " service";
+        public static string DisableAdapterLabel(string adapter) => "Disable " + adapter;
+        public static string EnableAdapterLabel(string adapter) => "Re-enable " + adapter;
+
+        public static string StopServiceRunningLabel(string service) => "Stopping " + service + "…";
+        public static string StartServiceRunningLabel(string service) => "Starting " + service + "…";
+        public static string DisableAdapterRunningLabel(string adapter) => "Disabling " + adapter + "…";
+        public static string EnableAdapterRunningLabel(string adapter) => "Re-enabling " + adapter + "…";
+
+        /// <summary>Renders a repair button label from the backend-owned action kind/target.</summary>
+        public static string RepairLabel(DiscoveryRepairActionKind kind, string? target) => kind switch {
+            DiscoveryRepairActionKind.RestartAdb => RestartAdbLabel,
+            DiscoveryRepairActionKind.StopService => StopServiceLabel(target ?? string.Empty),
+            DiscoveryRepairActionKind.StartService => StartServiceLabel(target ?? string.Empty),
+            DiscoveryRepairActionKind.DisableAdapter => DisableAdapterLabel(target ?? string.Empty),
+            DiscoveryRepairActionKind.EnableAdapter => EnableAdapterLabel(target ?? string.Empty),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown repair kind."),
+        };
+
+        public static string RepairRunningLabel(DiscoveryRepairActionKind kind, string? target) => kind switch {
+            DiscoveryRepairActionKind.RestartAdb => RestartAdbRunningLabel,
+            DiscoveryRepairActionKind.StopService => StopServiceRunningLabel(target ?? string.Empty),
+            DiscoveryRepairActionKind.StartService => StartServiceRunningLabel(target ?? string.Empty),
+            DiscoveryRepairActionKind.DisableAdapter => DisableAdapterRunningLabel(target ?? string.Empty),
+            DiscoveryRepairActionKind.EnableAdapter => EnableAdapterRunningLabel(target ?? string.Empty),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown repair kind."),
+        };
+
+        public static string ResultLineFor(DiscoveryRepairOutcome outcome) => outcome switch {
+            DiscoveryRepairOutcome.Completed => ResultStillBroken,
+            DiscoveryRepairOutcome.Declined => ResultDeclined,
+            DiscoveryRepairOutcome.Failed => ResultFailed,
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "Unknown repair outcome."),
+        };
     }
 
     /// <summary>
@@ -105,8 +200,6 @@ internal static class Vocabulary {
         public static string PairingSuccessBody => Pairing.SuccessDetail;
 
         public static string PairingFailedTitle => Pairing.FailedTitle;
-
-        public static string PairingFailedBody => Pairing.FailedDetail;
 
         public static string AdbUnavailableTitle => Health.AdbUnavailableTitle;
 

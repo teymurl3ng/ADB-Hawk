@@ -8,6 +8,7 @@ namespace AdbView.Tests.State;
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
 using AdbView.Adb;
@@ -92,6 +93,9 @@ public sealed class CompositionTests {
     private sealed class HermeticProcessRunner : IAdbProcessRunner {
         public Task<ProcessResult> StartServerAsync(string executablePath, CancellationToken ct = default) =>
             Task.FromResult(new ProcessResult(1, "", "Failed", false));
+
+        public Task<ProcessResult> KillServerAsync(string executablePath, CancellationToken ct = default) =>
+            throw new InvalidOperationException("Composition scenarios never kill the server.");
     }
 
     private AdbServerSupervisor CreateHermeticSupervisor() =>
@@ -171,6 +175,55 @@ public sealed class CompositionTests {
 
         Assert.Equal(GlobalHealthKind.AdbRestoring, host.StateEngine.CurrentSnapshot.Health.Kind);
         Assert.False(host.DeviceTrackerLifecycle.IsRunning);
+    }
+
+    [Fact]
+    public async Task ScenarioAW_OfferWithdrawal_ReleasesCoordinatorForNextOffer() {
+        var t0 = new DateTimeOffset(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
+        using var host = new AppHost(
+            sessionId: 54323,
+            fixtureSuffix: "",
+            supervisorFactory: CreateHermeticSupervisor,
+            bridgeHost: new MockBridgeHost(),
+            headless: true);
+
+        var offerA = new RawMdnsService {
+            InstanceName = "phone-a",
+            ServiceType = MdnsServiceTypes.Pairing,
+            Kind = MdnsServiceKind.Pairing,
+            Ipv4 = "192.168.1.10",
+            Port = 37100,
+            Format = RawMdnsFormat.ProtoBinary,
+        };
+        host.StateEngine!.Post(new MdnsServicesReceivedEvent(ImmutableArray.Create(offerA), t0));
+        await host.StateEngine.DrainAsync();
+        Assert.Single(host.StateEngine.CurrentSnapshot.PairingOffers);
+
+        host.Coordinator!.HandleAction(new PairStartAction { OfferId = offerA.DiscoveryKey });
+        await host.StateEngine.DrainAsync();
+        Assert.Equal(AdbView.State.PairingPhase.AwaitingCode, host.StateEngine.CurrentSnapshot.Pairing!.Phase);
+        Assert.Equal(offerA.DiscoveryKey, host.StateEngine.CurrentSnapshot.Pairing.OfferId);
+
+        // Offer A withdrawn (e.g. the phone dialog closed); a fresh offer B appears.
+        var offerB = new RawMdnsService {
+            InstanceName = "phone-b",
+            ServiceType = MdnsServiceTypes.Pairing,
+            Kind = MdnsServiceKind.Pairing,
+            Ipv4 = "192.168.1.11",
+            Port = 37101,
+            Format = RawMdnsFormat.ProtoBinary,
+        };
+        host.StateEngine.Post(new MdnsServicesReceivedEvent(ImmutableArray.Create(offerB), t0.AddSeconds(1)));
+        await host.StateEngine.DrainAsync();
+        Assert.Null(host.StateEngine.CurrentSnapshot.Pairing);
+
+        // Regression: pairStart for B must be accepted, not rejected as a failed op.
+        host.Coordinator.HandleAction(new PairStartAction { OfferId = offerB.DiscoveryKey });
+        await host.StateEngine.DrainAsync();
+        var pairing = host.StateEngine.CurrentSnapshot.Pairing;
+        Assert.NotNull(pairing);
+        Assert.Equal(AdbView.State.PairingPhase.AwaitingCode, pairing!.Phase);
+        Assert.Equal(offerB.DiscoveryKey, pairing.OfferId);
     }
 
     [Fact]

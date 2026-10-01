@@ -11,9 +11,9 @@ using AdbView.Adb.Model;
 /// </summary>
 internal static partial class PairingDisplayName {
     public static string Resolve(RawMdnsService service, ImmutableArray<DeviceView> devices) {
-        if (!string.IsNullOrWhiteSpace(service.GivenName)
-            && !IsProtocolInstanceLabel(service.GivenName)) {
-            return service.GivenName.Trim();
+        if (DeviceDisplayName.TryAccept(service.GivenName, out string given)
+            && !IsProtocolInstanceLabel(given)) {
+            return given;
         }
 
         if (!string.IsNullOrEmpty(service.Serial) && !devices.IsDefaultOrEmpty) {
@@ -25,9 +25,9 @@ internal static partial class PairingDisplayName {
             }
         }
 
-        if (!string.IsNullOrWhiteSpace(service.ProductModel)
-            && !IsProtocolInstanceLabel(service.ProductModel)) {
-            return service.ProductModel.Trim();
+        if (DeviceDisplayName.TryAccept(service.ProductModel, out string model)
+            && !IsProtocolInstanceLabel(model)) {
+            return model;
         }
 
         return Vocabulary.Pairing.DefaultDeviceName;

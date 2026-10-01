@@ -24,6 +24,7 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
     private readonly Dictionary<string, PendingEntry> _pending = new(StringComparer.Ordinal);
     private CancellationTokenSource _lifetime = new();
     private bool _disposed;
+    private bool _notificationsEnabled = true;
 
     private sealed class PendingEntry {
         public required PendingHold Hold { get; init; }
@@ -48,6 +49,32 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
         }
     }
 
+    public bool NotificationsEnabled {
+        get {
+            lock (_gate) {
+                return _notificationsEnabled;
+            }
+        }
+    }
+
+    public void SetNotificationsEnabled(bool enabled) {
+        lock (_gate) {
+            if (_disposed || _state.ShuttingDown) {
+                return;
+            }
+
+            if (_notificationsEnabled == enabled) {
+                return;
+            }
+
+            _notificationsEnabled = enabled;
+            CancelAllPendingLocked();
+            if (enabled && _current is not null) {
+                _previous = _current;
+            }
+        }
+    }
+
     public void AcceptSnapshot(AppSnapshot snapshot) {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -68,6 +95,13 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
 
             NotificationDecision decision = NotificationPolicy.Evaluate(previous, snapshot, _state, now);
             _state = decision.NextState with { BaselineEstablished = true };
+
+            if (!_notificationsEnabled) {
+                CancelAllPendingLocked();
+                // Keep accepted snapshot as baseline so re-enable does not backfill.
+                _previous = snapshot;
+                return;
+            }
 
             absorbOnly = previous is null || now < _state.SuppressUntil || _state.Suspended;
             if (absorbOnly) {
@@ -139,7 +173,7 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
     private void ArmHold(PendingHold hold) {
         CancellationTokenSource cts;
         lock (_gate) {
-            if (_disposed || _state.ShuttingDown || _state.Suspended) {
+            if (_disposed || _state.ShuttingDown || _state.Suspended || !_notificationsEnabled) {
                 return;
             }
 
@@ -187,7 +221,7 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
     private void OnHoldDue(PendingHold hold) {
         List<PendingHold> dueHolds;
         lock (_gate) {
-            if (_disposed || _state.ShuttingDown || _state.Suspended) {
+            if (_disposed || _state.ShuttingDown || _state.Suspended || !_notificationsEnabled) {
                 return;
             }
 
@@ -258,6 +292,10 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
     private void EmitBatch(IReadOnlyList<NotificationIntent> candidates) {
         System.Collections.Immutable.ImmutableArray<NotificationIntent> toEmit;
         lock (_gate) {
+            if (!_notificationsEnabled) {
+                return;
+            }
+
             DateTimeOffset now = _clock();
             (toEmit, _state) = NotificationPolicy.ApplyBurstAndRecord(
                 System.Collections.Immutable.ImmutableArray.CreateRange(candidates),

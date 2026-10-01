@@ -48,6 +48,7 @@ function baseSnapshot(over: Partial<AppSnapshot> = {}): AppSnapshot {
     pairingOffers: [],
     pairing: null,
     warnings: [],
+    discoveryHealth: null,
     shell: {
       theme: 'dark',
       pinned: false,

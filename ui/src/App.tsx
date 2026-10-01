@@ -3,9 +3,18 @@ import { Header } from './components/Header';
 import { EmptyState } from './components/EmptyState';
 import { DeviceCard } from './components/DeviceCard';
 import { PairingCard } from './components/PairingCard';
+import { DiscoveryHealthCard } from './components/DiscoveryHealthCard';
 import { useSnapshot } from './bridge/useSnapshot';
 import { useContentSize } from './bridge/useContentSize';
-import { isTestMode, requestDismiss, pairStart, pairCancel, pairSubmit } from './bridge/actions';
+import {
+  isTestMode,
+  requestDismiss,
+  pairStart,
+  pairCancel,
+  pairSubmit,
+  discoveryRecheck,
+  discoveryRepair,
+} from './bridge/actions';
 import { mapDeviceViewToDeviceInfo } from './bridge/adapters';
 import {
   createDwellController,
@@ -33,6 +42,7 @@ const FIXTURES: FixtureName[] = [
   'pairing-progress',
   'pairing-success',
   'pairing-failure',
+  'discovery-health',
 ];
 
 export function App() {
@@ -217,6 +227,7 @@ export function App() {
               state={pairingInfo.cardState}
               deviceName={pairingInfo.deviceName}
               offerId={pairingInfo.offerId}
+              detail={pairingInfo.detail}
               onPairStart={pairStart}
               onPairCancel={pairCancel}
               onPairSubmit={pairSubmit}
@@ -232,6 +243,21 @@ export function App() {
               onToggleExpand={handleToggleExpand}
             />
           ))}
+
+          {/* Decision 0008 (+ amendment): after pairing/devices, before any future warning. */}
+          {snapshot?.discoveryHealth && (
+            <DiscoveryHealthCard
+              title={snapshot.discoveryHealth.title}
+              detail={snapshot.discoveryHealth.detail}
+              evidence={snapshot.discoveryHealth.evidence}
+              actionLabel={snapshot.discoveryHealth.actionLabel}
+              canCheckAgain={snapshot.discoveryHealth.canCheckAgain}
+              repairs={snapshot.discoveryHealth.repairs}
+              resultLine={snapshot.discoveryHealth.resultLine}
+              onCheckAgain={discoveryRecheck}
+              onRepair={discoveryRepair}
+            />
+          )}
         </div>
       </div>
 

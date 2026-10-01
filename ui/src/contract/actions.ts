@@ -13,4 +13,6 @@ export type WebAction =
     }
   | { type: 'pairStart'; offerId: string }
   | { type: 'pairSubmit'; offerId: string; code: string }
-  | { type: 'pairCancel'; offerId: string };
+  | { type: 'pairCancel'; offerId: string }
+  | { type: 'discoveryRecheck' }
+  | { type: 'discoveryRepair'; id: string };

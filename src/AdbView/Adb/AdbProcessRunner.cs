@@ -10,12 +10,22 @@ internal sealed record ProcessResult(int ExitCode, string StandardOutput, string
 
 internal interface IAdbProcessRunner {
     Task<ProcessResult> StartServerAsync(string executablePath, CancellationToken ct = default);
+
+    /// <summary>
+    /// Decision 0008 amendment: the single sanctioned kill — user-initiated ADB restart from the
+    /// discovery-health card. Never called automatically; the supervisor owns recovery afterwards.
+    /// </summary>
+    Task<ProcessResult> KillServerAsync(string executablePath, CancellationToken ct = default);
 }
 
 internal sealed class AdbProcessRunner : IAdbProcessRunner {
     public const int DefaultTimeoutSeconds = 20;
 
     internal static ProcessStartInfo CreateStartInfo(string executablePath) {
+        return CreateStartInfo(executablePath, "start-server");
+    }
+
+    internal static ProcessStartInfo CreateStartInfo(string executablePath, string arguments) {
         ArgumentNullException.ThrowIfNull(executablePath);
         if (!Path.IsPathRooted(executablePath)) {
             throw new ArgumentException($"Executable path must be absolute: '{executablePath}'", nameof(executablePath));
@@ -23,7 +33,7 @@ internal sealed class AdbProcessRunner : IAdbProcessRunner {
 
         return new ProcessStartInfo {
             FileName = executablePath,
-            Arguments = "start-server",
+            Arguments = arguments,
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardOutput = true,
@@ -33,7 +43,14 @@ internal sealed class AdbProcessRunner : IAdbProcessRunner {
     }
 
     public async Task<ProcessResult> StartServerAsync(string executablePath, CancellationToken ct = default) {
-        var psi = CreateStartInfo(executablePath);
+        return await RunAsync(CreateStartInfo(executablePath, "start-server"), ct).ConfigureAwait(false);
+    }
+
+    public Task<ProcessResult> KillServerAsync(string executablePath, CancellationToken ct = default) {
+        return RunAsync(CreateStartInfo(executablePath, "kill-server"), ct);
+    }
+
+    private static async Task<ProcessResult> RunAsync(ProcessStartInfo psi, CancellationToken ct) {
 
         using var process = new Process { StartInfo = psi };
         if (!process.Start()) {

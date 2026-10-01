@@ -12,6 +12,7 @@ internal enum NotificationKind {
     PairingAvailable,
     PairingResult,
     AdbUnavailable,
+    DiscoveryBroken,
     DevicesChanged,
 }
 
@@ -45,6 +46,7 @@ internal sealed record NotifierState {
         SuppressUntil = processStartedAt.AddSeconds(5),
         BaselineEstablished = false,
         AdbUnavailableOutageNotified = false,
+        DiscoveryBrokenNotified = false,
         LastEmittedAt = ImmutableDictionary<string, DateTimeOffset>.Empty,
         LastPairingOfferEmittedAt = ImmutableDictionary<string, DateTimeOffset>.Empty,
         RecentBurstEmits = ImmutableArray<DateTimeOffset>.Empty,
@@ -58,6 +60,9 @@ internal sealed record NotifierState {
 
     /// <summary>True after a successful AdbUnavailable emit until health leaves AdbUnavailable.</summary>
     public bool AdbUnavailableOutageNotified { get; init; }
+
+    /// <summary>True after a DiscoveryBroken emit until the discovery-health card clears (decision 0008 amendment).</summary>
+    public bool DiscoveryBrokenNotified { get; init; }
 
     public ImmutableDictionary<string, DateTimeOffset> LastEmittedAt { get; init; }
         = ImmutableDictionary<string, DateTimeOffset>.Empty;

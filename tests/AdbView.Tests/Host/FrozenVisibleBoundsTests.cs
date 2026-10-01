@@ -34,6 +34,15 @@ public sealed class FrozenVisibleBoundsTests {
         Assert.True(FlyoutInteractionPolicy.ShouldApplyContentResizeToHwnd(flyoutVisible: false));
     }
 
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, true)]
+    public void Initial_Show_Completes_After_First_Content_Size(int reports, bool complete) {
+        Assert.Equal(complete, FlyoutInteractionPolicy.ShouldCompleteInitialShow(reports));
+    }
+
     [Fact]
     public void Light_Dismiss_Policy_Unchanged() {
         Assert.True(FlyoutInteractionPolicy.ShouldHonorLightDismiss(suppress: false, armed: true, pinned: false));

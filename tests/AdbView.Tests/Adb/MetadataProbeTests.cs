@@ -310,6 +310,10 @@ public sealed class MetadataProbeTests {
                 "shell:dumpsys battery" => FakeDeviceShellPlan.OkText("  level: 80\n"),
                 "shell:getprop ro.product.model" => FakeDeviceShellPlan.OkText("SM-A065F\n"),
                 "shell:getprop ro.build.version.release" => FakeDeviceShellPlan.OkText("\n"),
+                "shell:getprop ro.product.marketname" => FakeDeviceShellPlan.OkText("\n"),
+                "shell:settings get global device_name" => FakeDeviceShellPlan.OkText("null\n"),
+                "shell:getprop ro.product.brand" => FakeDeviceShellPlan.OkText("samsung\n"),
+                "shell:getprop ro.product.manufacturer" => FakeDeviceShellPlan.OkText("samsung\n"),
                 _ => FakeDeviceShellPlan.ShellFail("unexpected"),
             };
         });
@@ -360,18 +364,34 @@ public sealed class MetadataProbeTests {
         "dumpsys battery",
         "getprop ro.product.model",
         "getprop ro.build.version.release",
+        "getprop ro.product.marketname",
+        "settings get global device_name",
+        "getprop ro.product.brand",
+        "getprop ro.product.manufacturer",
     ];
 
     [Fact]
-    public void AA_Exactly_Three_CompileTime_Command_Strings() {
+    public void AA_Exactly_Seven_CompileTime_Command_Strings() {
         var suffixes = MetadataDeviceShellClient.AllowedShellCommandSuffixes.ToArray();
-        Assert.Equal(3, suffixes.Length);
+        Assert.Equal(7, suffixes.Length);
         Assert.Equal(ExpectedShellSuffixes, suffixes);
         Assert.Equal("shell:dumpsys battery", MetadataDeviceShellClient.ServiceName(MetadataCommand.Battery));
         Assert.Equal("shell:getprop ro.product.model", MetadataDeviceShellClient.ServiceName(MetadataCommand.ExactModel));
         Assert.Equal(
             "shell:getprop ro.build.version.release",
             MetadataDeviceShellClient.ServiceName(MetadataCommand.AndroidVersion));
+        Assert.Equal(
+            "shell:getprop ro.product.marketname",
+            MetadataDeviceShellClient.ServiceName(MetadataCommand.MarketingName));
+        Assert.Equal(
+            "shell:settings get global device_name",
+            MetadataDeviceShellClient.ServiceName(MetadataCommand.DeviceName));
+        Assert.Equal(
+            "shell:getprop ro.product.brand",
+            MetadataDeviceShellClient.ServiceName(MetadataCommand.Brand));
+        Assert.Equal(
+            "shell:getprop ro.product.manufacturer",
+            MetadataDeviceShellClient.ServiceName(MetadataCommand.Manufacturer));
     }
 
     [Fact]

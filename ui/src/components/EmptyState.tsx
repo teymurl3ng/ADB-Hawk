@@ -1,6 +1,9 @@
 export function EmptyState() {
   return (
-    <div className="rounded-lg bg-win-card border border-win-card-border p-6 flex flex-col items-center justify-center text-center">
+    <div
+      data-testid="empty-state"
+      className="rounded-lg bg-win-card border border-win-card-border p-6 flex flex-col items-center justify-center text-center"
+    >
       <div className="w-10 h-10 rounded-full bg-win-glyph-bg border border-win-glyph-border flex items-center justify-center text-win-text-muted mb-3">
         <svg
           fill="none"

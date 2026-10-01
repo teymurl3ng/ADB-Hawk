@@ -10,6 +10,7 @@ internal static class PairingOperationMapper {
     public static PairingOperationView? Map(
         string offerId,
         DomainPhase phase,
+        PairingFailureKind failureKind,
         string displayName) {
         return phase switch {
             DomainPhase.Cleared => null,
@@ -51,7 +52,7 @@ internal static class PairingOperationMapper {
                 DisplayName = displayName,
                 Phase = PairingPhase.Failed,
                 Title = Vocabulary.Pairing.FailedTitle,
-                Detail = Vocabulary.Pairing.FailedDetail,
+                Detail = Vocabulary.Pairing.FailedDetailFor(failureKind),
                 CanSubmitCode = false,
                 CanCancel = true,
                 CanRetry = true,
