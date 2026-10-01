@@ -360,3 +360,12 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | USB + Wi-Fi same serial → still two cards (pinned §6.7) | **AUTOMATED PASS** | `UsbAndWifiSameSerialRemainTwoCards` |
 | Post-pair connect skipped when the phone is already tracked over Wi-Fi (any port) | **AUTOMATED PASS** | `PostPairConnectCoordinatorTests` guard cases (other host / non-Wi-Fi unaffected) |
 | Live: real stale+fresh transport pair collapses to one card after update | **NOT EXERCISED** | Next live session: `adb devices -l` shows the two transports; UI shows one; stale entry dies without UI change |
+
+### Double-transport collapse amendment (2026-10-02, decision 0011 amendment)
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Serial extracted from AOSP instance name (`adb-<serial>-<6 alphanum>`, legacy `adb-<serial>`) | **AUTOMATED PASS** | `MdnsFallbackMapperTests` + `DeviceIdentity.ExtractSerialFromInstanceName` |
+| Stale port (no advertisement) collapses via host-only match on the current advertisement | **AUTOMATED PASS** | `StaleTransportCollapsesViaCurrentAdvertisementOnly` — the live-defect shape |
+| Two distinct phones (distinct IPs) remain two cards | **AUTOMATED PASS** | Over-merge guard |
+| Live: real stale+fresh transport pair collapses to one card after update | **NOT EXERCISED** | Live session; requires app restart to pick up |

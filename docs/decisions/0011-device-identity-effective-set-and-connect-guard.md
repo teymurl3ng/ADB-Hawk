@@ -49,3 +49,23 @@ Live QR-pairing validation showed the same phone as **two** `Connected · Wi-Fi`
   adb-source-only variant behaves exactly as before; USB↔Wi-Fi same-serial still two cards.
 - Coordinator: same-host connected Wi-Fi device → no connect; different host → fires as before.
 - Live matrix row: real double-transport scenario collapses to one card.
+
+## Amendment (2026-10-02) — serial extraction + host-only match (live-verified gap)
+
+The original 0011 collapse was tested against rows carrying an explicit `Serial` field — but
+production fallback rows never had one (the browser parses only `name`/`api` from TXT), so the
+fix never fired in the field and one phone still rendered as two cards. Amendment:
+
+1. **Serial extraction moved into the identity layer**
+   (`DeviceIdentity.ExtractSerialFromInstanceName`): the AOSP instance name carries the serial —
+   TLS-connect `adb-<serial>-<6 random alphanum>` (greedy middle tolerates dashes), legacy
+   `adb-<serial>`. The Host mapper delegates to it so fallback rows carry `Serial`.
+2. **Host-only second pass**: exact IP+port matching stranded a STALE transport (its port has no
+   advertisement anymore — the phone re-announces only the current port). When no exact match
+   resolves, any Connect row for the same host (IP) supplies the serial. One phone = one LAN IP;
+   distinct phones have distinct IPs (guard test included).
+3. Mapper tests pin extraction; reducer tests are production-shaped (rows without `Serial`,
+   stale-port scenario); USB↔Wi-Fi two-card and no-discovery degradation behaviors unchanged.
+
+Rejected: `host:disconnect` of the stale transport (outside observation scope — the collapsed
+UI hides it and adb reaps it when TCP teardown is noticed).

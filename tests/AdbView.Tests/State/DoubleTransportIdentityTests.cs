@@ -7,10 +7,11 @@ using AdbView.State;
 using Xunit;
 
 /// <summary>
-/// Decision 0011: two adb transports (`ip:portA` + `ip:portB`) for one physical phone must
-/// collapse to ONE card when the effective discovery set (adb source, else fallback rows)
-/// carries the connect row that resolves both to the same hardware serial — including when the
-/// ADB server's own browse is empty and only the fallback browser saw the announcement.
+/// Decision 0011 (+ amendment): two adb transports (`ip:portA` + `ip:portB`) for one physical
+/// phone must collapse to ONE card when the effective discovery set resolves them to the same
+/// hardware serial. Production shape: the fallback browser derives the serial from the AOSP
+/// instance name (`adb-&lt;serial&gt;-&lt;6 alphanum&gt;`); a STALE port has no advertisement
+/// left, so the collapse must work host-only (the phone re-announces only its current port).
 /// </summary>
 public sealed class DoubleTransportIdentityTests {
     private static readonly DateTimeOffset T0 = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
@@ -22,13 +23,13 @@ public sealed class DoubleTransportIdentityTests {
         Format = RawDeviceFormat.ProtoBinary,
     };
 
-    private static RawMdnsService FallbackConnectRow(string instance, string ipv4, int port, string serial) => new() {
+    /// <summary>Production shape: no explicit Serial — the mapper derives it from the instance.</summary>
+    private static RawMdnsService FallbackConnectRow(string instance, string ipv4, int port) => new() {
         InstanceName = instance,
         ServiceType = "_adb-tls-connect._tcp",
         Kind = MdnsServiceKind.Connect,
         Ipv4 = ipv4,
         Port = port,
-        Serial = serial,
         Format = RawMdnsFormat.Fallback,
     };
 
@@ -41,15 +42,15 @@ public sealed class DoubleTransportIdentityTests {
         };
 
     [Fact]
-    public void TwoTransportsCollapseToOneCardViaFallbackRows() {
-        // Same phone: two live transports on different ports; the fallback browser saw the
-        // connect announcement (adb browse empty). Both resolve to hardware serial R5CW1234.
+    public void StaleTransportCollapsesViaCurrentAdvertisementOnly() {
+        // The real defect shape: the phone advertises ONE connect service (current port 41953).
+        // A stale transport on port 39001 has no row of its own — host-only resolution must
+        // still collapse both transports to wifi:R5CW1234.
         var devices = ImmutableArray.Create(
             WifiDevice("192.168.18.248:41953"),
             WifiDevice("192.168.18.248:39001"));
         var fallback = ImmutableArray.Create(
-            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 41953, "R5CW1234"),
-            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 39001, "R5CW1234"));
+            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 41953));
 
         var result = StateReducer.ReduceWithDeviceState(
             StateEngine.CreateDefaultSnapshot(),
@@ -68,8 +69,7 @@ public sealed class DoubleTransportIdentityTests {
             WifiDevice("192.168.18.248:41953"),
             WifiDevice("192.168.18.248:39001"));
         var adbRows = ImmutableArray.Create(
-            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 41953, "R5CW1234"),
-            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 39001, "R5CW1234"));
+            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 41953));
         var state = StateWithFallback(ImmutableArray<RawMdnsService>.Empty) with {
             LatestMdnsServices = adbRows,
         };
@@ -84,9 +84,28 @@ public sealed class DoubleTransportIdentityTests {
     }
 
     [Fact]
+    public void TwoDifferentPhonesOnDifferentHostsRemainTwoCards() {
+        // Guard against over-merging: host-only matching is per-IP; two distinct phones stay
+        // distinct even when their serial-bearing rows exist.
+        var devices = ImmutableArray.Create(
+            WifiDevice("192.168.18.248:41953"),
+            WifiDevice("192.168.18.9:41953"));
+        var fallback = ImmutableArray.Create(
+            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 41953),
+            FallbackConnectRow("adb-R9ZZ9999-def456", "192.168.18.9", 41953));
+
+        var result = StateReducer.ReduceWithDeviceState(
+            StateEngine.CreateDefaultSnapshot(),
+            StateWithFallback(fallback),
+            new DeviceListReceivedEvent(devices, T0),
+            T0);
+
+        Assert.Equal(2, result.Snapshot.Devices.Length);
+    }
+
+    [Fact]
     public void WithoutAnyDiscoveryRowsTwoTransportsRemainTwoCards() {
-        // Honest degradation: no discovery data at all → per-port identities, two cards
-        // (pre-0011 behavior; unchanged).
+        // Honest degradation: no discovery data at all → per-port identities, two cards.
         var devices = ImmutableArray.Create(
             WifiDevice("192.168.18.248:41953"),
             WifiDevice("192.168.18.248:39001"));
@@ -112,7 +131,7 @@ public sealed class DoubleTransportIdentityTests {
                 Format = RawDeviceFormat.ProtoBinary,
             });
         var fallback = ImmutableArray.Create(
-            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 41953, "R5CW1234"));
+            FallbackConnectRow("adb-R5CW1234-abc123", "192.168.18.248", 41953));
 
         var result = StateReducer.ReduceWithDeviceState(
             StateEngine.CreateDefaultSnapshot(),

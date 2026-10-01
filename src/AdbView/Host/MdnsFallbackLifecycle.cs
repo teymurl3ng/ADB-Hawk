@@ -168,9 +168,14 @@ internal static class MdnsFallbackMapper {
             Kind = MdnsServiceTypes.Classify(instance.ServiceType),
             Ipv4 = instance.Ipv4,
             Port = instance.Port,
+            Serial = ExtractSerialFromInstance(instance.InstanceName),
             ProductModel = instance.ProductModel,
             BuildVersionSdkFull = instance.BuildVersionSdkFull,
             Format = RawMdnsFormat.Fallback,
         }).ToImmutableArray();
     }
+
+    /// <summary>Serial extraction delegates to the identity layer (AOSP instance formats).</summary>
+    public static string? ExtractSerialFromInstance(string instanceName) =>
+        DeviceIdentity.ExtractSerialFromInstanceName(instanceName);
 }

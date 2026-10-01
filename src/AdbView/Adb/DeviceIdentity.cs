@@ -212,6 +212,7 @@ internal sealed partial class DeviceIdentity {
             return null;
         }
 
+        // Pass 1 (decision 0011): exact endpoint match — IP + port both agree.
         foreach (RawMdnsService service in services) {
             if (service.Kind != MdnsServiceKind.Connect
                 || !string.Equals(service.ServiceType, MdnsServiceTypes.Connect, StringComparison.Ordinal)) {
@@ -227,7 +228,93 @@ internal sealed partial class DeviceIdentity {
             }
         }
 
+        // Pass 2 (decision 0011 amendment): host-only match. A phone is one LAN address; a
+        // stale transport on an old port has no advertisement left (the phone re-announces only
+        // the current port), so exact-port matching stranded the stale endpoint with a
+        // per-port identity and rendered one phone as two cards. Any connect row for the same
+        // host carries the same physical device's serial — taken from the row's Serial when
+        // present, otherwise extracted from the AOSP instance name.
+        if (!TrySplitEndpoint(endpointSerial, out string host, out int _)) {
+            return null;
+        }
+
+        foreach (RawMdnsService service in services) {
+            if (service.Kind != MdnsServiceKind.Connect
+                || !string.Equals(service.ServiceType, MdnsServiceTypes.Connect, StringComparison.Ordinal)) {
+                continue;
+            }
+
+            if (!ServiceHostMatches(service, host)) {
+                continue;
+            }
+
+            string? serial = !string.IsNullOrEmpty(service.Serial)
+                ? service.Serial
+                : ExtractSerialFromInstanceName(service.InstanceName);
+            if (!string.IsNullOrEmpty(serial)) {
+                return serial;
+            }
+        }
+
         return null;
+    }
+
+    /// <summary>
+    /// AOSP instance-name formats: TLS-connect advertises <c>adb-&lt;serial&gt;-&lt;6 random
+    /// alphanum&gt;</c> (persist.adb.wifi.guid); legacy advertises <c>adb-&lt;serial&gt;</c>.
+    /// The serial rides the instance name — the TXT record does not carry it.
+    /// </summary>
+    internal static string? ExtractSerialFromInstanceName(string? instanceName) {
+        if (string.IsNullOrEmpty(instanceName) || !instanceName.StartsWith("adb-", StringComparison.Ordinal)) {
+            return null;
+        }
+
+        string rest = instanceName[4..];
+        if (rest.Length == 0) {
+            return null;
+        }
+
+        // TLS-connect form: adb-<serial>-<6 random alphanum> — greedy middle tolerates dashes
+        // inside the serial itself.
+        if (rest.Length > 7 && rest[^7] == '-') {
+            bool suffixAlnum = true;
+            for (int i = rest.Length - 6; i < rest.Length; i++) {
+                if (!char.IsAsciiLetterOrDigit(rest[i])) {
+                    suffixAlnum = false;
+                    break;
+                }
+            }
+
+            if (suffixAlnum) {
+                return rest[..^7];
+            }
+        }
+
+        // Legacy form: adb-<serial> with no suffix (alphanumeric serial).
+        foreach (char c in rest) {
+            if (!char.IsAsciiLetterOrDigit(c)) {
+                return null;
+            }
+        }
+
+        return rest;
+    }
+
+    private static bool ServiceHostMatches(RawMdnsService service, string host) {
+        if (!string.IsNullOrEmpty(service.Ipv4)
+            && string.Equals(service.Ipv4, host, StringComparison.OrdinalIgnoreCase)) {
+            return true;
+        }
+
+        if (!service.Ipv6.IsDefaultOrEmpty) {
+            foreach (string v6 in service.Ipv6) {
+                if (string.Equals(v6, host, StringComparison.OrdinalIgnoreCase)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     private static string? FindConnectGivenName(

@@ -3,8 +3,10 @@ namespace AdbView.Tests.Adb;
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using AdbView.Adb;
+using AdbView.Host;
 using Xunit;
 
 public sealed class MdnsFallbackBrowserTests {
@@ -220,5 +222,47 @@ internal static class DnsTestMessages {
         into.Add((byte)((value >> 16) & 0xFF));
         into.Add((byte)((value >> 8) & 0xFF));
         into.Add((byte)(value & 0xFF));
+    }
+}
+
+/// <summary>Decision 0011 amendment: fallback rows must carry the serial extracted from the
+/// AOSP instance name — without it, DeviceIdentity rule 2c never resolves and one phone renders
+/// as two cards.</summary>
+public sealed class MdnsFallbackMapperTests {
+    [Theory]
+    [InlineData("adb-R5CW1234-abc123", "R5CW1234")]   // TLS-connect: adb-<serial>-<6 alphanum>
+    [InlineData("adb-R5CW-12-34-abc123", "R5CW-12-34")] // dashes in serial tolerated (greedy middle)
+    [InlineData("adb-R8VXA02SNKH", "R8VXA02SNKH")]     // legacy: adb-<serial> (no suffix)
+    public void ExtractsSerialFromAospInstanceNames(string instance, string expected) {
+        Assert.Equal(expected, MdnsFallbackMapper.ExtractSerialFromInstance(instance));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("adbview-1a2b3c4d")]       // our own QR pairing instances are not adb serials
+    [InlineData("adb-")]
+    [InlineData("adbview-1a2b3c4d-x")]
+    [InlineData("adb-R5CW1234-abc123-x")]  // suffix not exactly 6
+    [InlineData("Chromecast._googlecast")]
+    public void RejectsNonSerialInstances(string instance) {
+        Assert.Null(MdnsFallbackMapper.ExtractSerialFromInstance(instance));
+    }
+
+    [Fact]
+    public void MappedRowsCarryDerivedSerialForIdentityResolution() {
+        var instances = ImmutableArray.Create(new MdnsFallbackInstance {
+            ServiceType = "_adb-tls-connect._tcp",
+            InstanceName = "adb-R5CW1234-abc123",
+            Port = 41953,
+            Ipv4 = "192.168.18.248",
+            ExpiresAt = DateTimeOffset.UtcNow,
+        });
+
+        var rows = MdnsFallbackMapper.Map(instances);
+
+        var row = Assert.Single(rows);
+        Assert.Equal("R5CW1234", row.Serial);
+        Assert.Equal("192.168.18.248", row.Ipv4);
+        Assert.Equal(41953, row.Port);
     }
 }
