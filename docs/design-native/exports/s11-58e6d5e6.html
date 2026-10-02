@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ADB View - System Tray Flyout</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-variant": "#32353b",
+            "on-primary-fixed-variant": "#004883",
+            "surface-container": "#1d2026",
+            "on-error": "#690005",
+            "inverse-primary": "#0060ac",
+            "surface-tint": "#a4c9ff",
+            "tertiary-fixed-dim": "#f9bd22",
+            "secondary-fixed-dim": "#7bd0ff",
+            "secondary-container": "#00a6e0",
+            "inverse-on-surface": "#2d3037",
+            "on-primary-container": "#003a6b",
+            "tertiary-fixed": "#ffdf9f",
+            "on-tertiary-fixed": "#261a00",
+            "on-tertiary": "#402d00",
+            "on-surface": "#e1e2ea",
+            "on-secondary-fixed-variant": "#004c69",
+            "secondary": "#7bd0ff",
+            "primary-fixed": "#d4e3ff",
+            "background": "#101319",
+            "tertiary-container": "#ce9a00",
+            "on-secondary": "#00354a",
+            "on-primary": "#00315d",
+            "surface": "#101319",
+            "surface-container-highest": "#32353b",
+            "on-tertiary-container": "#4a3500",
+            "surface-container-lowest": "#0b0e14",
+            "surface-bright": "#363940",
+            "on-primary-fixed": "#001c39",
+            "primary-fixed-dim": "#a4c9ff",
+            "error": "#ffb4ab",
+            "tertiary": "#f9bd22",
+            "on-tertiary-fixed-variant": "#5c4300",
+            "primary-container": "#60a5fa",
+            "primary": "#a4c9ff",
+            "outline-variant": "#414751",
+            "outline": "#8b919d",
+            "error-container": "#93000a",
+            "on-secondary-fixed": "#001e2c",
+            "on-error-container": "#ffdad6",
+            "on-secondary-container": "#00374d",
+            "secondary-fixed": "#c4e7ff",
+            "on-surface-variant": "#c1c7d3",
+            "inverse-surface": "#e1e2ea",
+            "on-background": "#e1e2ea",
+            "surface-container-low": "#191c21",
+            "surface-container-high": "#272a30",
+            "surface-dim": "#101319"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-lg": "0.75rem",
+            "space-xs": "0.25rem",
+            "margin": "0.75rem",
+            "gutter": "0.5rem",
+            "space-xl": "1rem",
+            "space-sm": "0.375rem",
+            "space-md": "0.5rem"
+          },
+          "fontFamily": {
+            "code-sm": ["JetBrains Mono"],
+            "body-sm": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "headline-lg": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "code-xs": ["JetBrains Mono"],
+            "headline-md": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "headline-sm": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "label-sm": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "label-md": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "body-md": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "body-lg": ["Geist", "Segoe UI Variable", "sans-serif"]
+          },
+          "fontSize": {
+            "code-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "-0.02em", "fontWeight": "400" }],
+            "body-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "400" }],
+            "headline-lg": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.015em", "fontWeight": "600" }],
+            "code-xs": ["10px", { "lineHeight": "12px", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+            "headline-md": ["15px", { "lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "headline-sm": ["13px", { "lineHeight": "18px", "letterSpacing": "-0.005em", "fontWeight": "600" }],
+            "label-sm": ["10px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+            "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "500" }],
+            "body-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }],
+            "body-lg": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+      font-size: 16px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .custom-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-[#0b0e14] text-on-surface min-h-screen flex items-center justify-center p-4 font-body-md antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- Windows 11 Desktop Workspace Context Container -->
+<div class="relative w-full max-w-[420px] flex flex-col items-center">
+<!-- Tray Flyout Shell (376px fixed target, rounded-lg, Windows Mica translucent surface) -->
+<div class="w-[376px] rounded-lg border border-white/[0.08] bg-[#202329]/95 backdrop-blur-[28px] shadow-[0_12px_32px_rgba(0,0,0,0.55),0_2px_6px_rgba(0,0,0,0.35)] overflow-hidden flex flex-col transition-all duration-200">
+<!-- 1. System Header (Conforming strictly to TopAppBar shared component) -->
+<header class="flex justify-between items-center h-10 w-full px-space-md border-b border-outline-variant/30 bg-surface dark:bg-surface shadow-sm">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-container" data-icon="smartphone">smartphone</span>
+<h1 class="text-headline-sm font-headline-sm font-semibold text-on-surface">ADB View</h1>
+<span class="font-code-xs text-code-xs text-on-surface-variant bg-white/[0.05] px-2 py-0.5 rounded border border-white/[0.06] tracking-tight">v1.0.41:5037</span>
+</div>
+<div class="flex items-center gap-0.5">
+<button aria-label="Pin flyout to desktop" class="w-7 h-7 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface active:scale-[0.99] transition-colors transition-transform duration-150">
+<span class="material-symbols-outlined" data-icon="push_pin">push_pin</span>
+</button>
+<button aria-label="More options" class="w-7 h-7 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface active:scale-[0.99] transition-colors transition-transform duration-150">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</header>
+<!-- Scrollable Flyout Core Content (14px padding, 12px gap) -->
+<main class="p-[14px] flex flex-col gap-3 max-h-[520px] overflow-y-auto custom-scroll">
+<!-- 2. Quiet Action Row: Pair over Wi-Fi -->
+<div class="group flex items-center justify-between p-2.5 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:bg-white/[0.07] hover:border-white/[0.12] transition-colors cursor-pointer select-none active:scale-[0.995]" role="button" tabindex="0">
+<div class="flex items-center gap-2.5 min-w-0">
+<div class="w-7 h-7 rounded-md bg-white/[0.05] flex items-center justify-center text-primary shrink-0 border border-white/[0.06]">
+<span class="material-symbols-outlined" data-icon="wifi_find">wifi_find</span>
+</div>
+<div class="flex flex-col truncate">
+<span class="text-body-md font-body-md font-medium text-on-surface truncate">Pair a device over Wi-Fi</span>
+<span class="text-body-sm font-body-sm text-on-surface-variant/70 truncate">Use wireless pairing code or QR</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-outline group-hover:text-on-surface group-hover:translate-x-0.5 transition-all shrink-0 ml-1" data-icon="chevron_right">chevron_right</span>
+</div>
+<!-- 3. Connected Device Card (Galaxy S24 - Wi-Fi, Expanded state) -->
+<article class="flex flex-col rounded-lg bg-white/[0.04] border border-primary-container/40 p-2.5 gap-2.5 transition-all shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]">
+<!-- Device Header -->
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-2 min-w-0">
+<div class="w-8 h-8 rounded-lg bg-primary-container/10 border border-primary-container/20 flex items-center justify-center text-primary-container shrink-0">
+<span class="material-symbols-outlined" data-icon="phone_android">phone_android</span>
+</div>
+<div class="flex flex-col truncate">
+<span class="text-headline-md font-headline-md font-semibold text-on-surface truncate leading-tight">Galaxy S24</span>
+<span class="text-body-sm font-body-sm text-on-surface-variant/70 truncate">SM-S921W · Android 16</span>
+</div>
+</div>
+<button aria-label="Collapse device panel" class="w-6 h-6 rounded flex items-center justify-center text-outline hover:text-on-surface hover:bg-white/[0.06] transition-colors shrink-0">
+<span class="material-symbols-outlined" data-icon="keyboard_arrow_up">keyboard_arrow_up</span>
+</button>
+</div>
+<!-- Badges Cluster -->
+<div class="flex items-center gap-1.5 flex-wrap">
+<!-- Green Online Status Pill -->
+<div class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-high border border-white/[0.06]">
+<span class="relative flex h-1.5 w-1.5">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#4ade80] opacity-75"></span>
+<span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-[#4ade80]"></span>
+</span>
+<span class="text-label-sm font-label-sm text-[#4ade80] font-medium">Connected</span>
+</div>
+<!-- Wi-Fi Protocol Badge -->
+<div class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.06] font-code-xs text-code-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[13px]" data-icon="wifi">wifi</span>
+<span>Wi-Fi</span>
+</div>
+<!-- Battery Badge -->
+<div class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white/[0.05] border border-white/[0.06] font-code-xs text-code-xs text-on-surface-variant">
+<span class="material-symbols-outlined text-[13px]" data-icon="battery_3_bar">battery_3_bar</span>
+<span>29%</span>
+</div>
+</div>
+<!-- Expanded Details Inset Grid -->
+<div class="rounded-md bg-black/30 border border-white/[0.06] p-2 flex flex-col gap-1.5 font-code-sm text-code-sm">
+<div class="flex items-center justify-between leading-none py-0.5">
+<span class="font-body-sm text-body-sm text-on-surface-variant/70">Model</span>
+<span class="text-on-surface font-medium select-all">SM-S921W</span>
+</div>
+<div class="flex items-center justify-between leading-none py-0.5">
+<span class="font-body-sm text-body-sm text-on-surface-variant/70">Android</span>
+<span class="text-on-surface font-medium select-all">16 (API 36)</span>
+</div>
+<div class="flex items-center justify-between leading-none py-0.5">
+<span class="font-body-sm text-body-sm text-on-surface-variant/70">Address</span>
+<div class="flex items-center gap-1 text-on-surface">
+<span class="select-all">192.168.1.144:39421</span>
+<button aria-label="Copy address" class="w-4 h-4 flex items-center justify-center text-outline hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[12px]" data-icon="content_copy">content_copy</span>
+</button>
+</div>
+</div>
+<div class="flex items-center justify-between leading-none py-0.5">
+<span class="font-body-sm text-body-sm text-on-surface-variant/70">Serial</span>
+<div class="flex items-center gap-1 text-on-surface">
+<span class="select-all">192.168.1.144:39421</span>
+<button aria-label="Copy serial" class="w-4 h-4 flex items-center justify-center text-outline hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-[12px]" data-icon="content_copy">content_copy</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Action Buttons Row -->
+<div class="grid grid-cols-3 gap-1.5 pt-0.5">
+<button class="flex items-center justify-center gap-1.5 h-7 rounded-md bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] text-body-sm font-body-sm text-on-surface transition-colors active:scale-[0.99]">
+<span class="material-symbols-outlined text-[14px] text-outline-variant" data-icon="terminal">terminal</span>
+<span>Shell</span>
+</button>
+<button class="flex items-center justify-center gap-1.5 h-7 rounded-md bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] text-body-sm font-body-sm text-on-surface transition-colors active:scale-[0.99]">
+<span class="material-symbols-outlined text-[14px] text-outline-variant" data-icon="lan">lan</span>
+<span>TCP/IP</span>
+</button>
+<button class="flex items-center justify-center gap-1.5 h-7 rounded-md bg-white/[0.05] hover:bg-white/[0.09] border border-white/[0.08] text-body-sm font-body-sm text-on-surface transition-colors active:scale-[0.99]">
+<span class="material-symbols-outlined text-[14px] text-outline-variant" data-icon="refresh">refresh</span>
+<span>Restart</span>
+</button>
+</div>
+</article>
+<!-- 4. Diagnostics / Discovery-Health Warning Card (Amber) -->
+<section class="rounded-lg bg-tertiary-container/10 border border-tertiary/30 p-2.5 flex flex-col gap-2 relative">
+<!-- Header with Warning Icon -->
+<div class="flex items-start gap-2">
+<div class="w-6 h-6 rounded flex items-center justify-center text-tertiary shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-[18px]" data-icon="warning">warning</span>
+</div>
+<div class="flex flex-col min-w-0">
+<h2 class="text-headline-sm font-headline-sm text-tertiary leading-tight">Wireless discovery isn't working</h2>
+<p class="text-body-sm font-body-sm text-on-surface-variant/80 mt-1 leading-snug">Galaxy S24 is connected over Wi-Fi, but ADB isn't receiving device announcements on this network.</p>
+</div>
+</div>
+<!-- Bullet Diagnostics Context List -->
+<ul class="flex flex-col gap-1 pl-7 pr-1 font-body-sm text-body-sm text-on-surface-variant/85 list-disc marker:text-tertiary/70">
+<li class="leading-tight">3 device announcements are visible on this network.</li>
+<li class="leading-tight">Microsoft Edge is using the discovery port.</li>
+<li class="leading-tight">Virtual network adapters are active (Tailscale).</li>
+</ul>
+<!-- Diagnostic Action Buttons -->
+<div class="flex items-center gap-1.5 pt-1">
+<button class="flex items-center justify-center gap-1.5 h-7 px-2.5 rounded-md bg-white/[0.08] hover:bg-white/[0.12] border border-white/[0.12] text-body-sm font-body-sm font-medium text-on-surface transition-colors active:scale-[0.99]">
+<span class="material-symbols-outlined text-[13px]" data-icon="restart_alt">restart_alt</span>
+<span>Restart ADB</span>
+</button>
+<button class="flex items-center justify-center gap-1.5 h-7 px-2.5 rounded-md bg-transparent hover:bg-white/[0.06] border border-white/[0.1] text-body-sm font-body-sm text-on-surface-variant hover:text-on-surface transition-colors active:scale-[0.99]">
+<span class="material-symbols-outlined text-[13px]" data-icon="shield">shield</span>
+<span>Stop Tailscale service</span>
+</button>
+</div>
+<!-- Diagnostics Footer Note -->
+<div class="flex items-center justify-between pt-1 border-t border-white/[0.06] font-code-xs text-code-xs">
+<span class="text-on-surface-variant/60">Port conflict · mDNS 5353</span>
+<button class="flex items-center gap-0.5 text-primary-container hover:underline transition-all">
+<span>Check again</span>
+<span class="material-symbols-outlined text-[12px]" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</section>
+</main>
+<!-- 5. System Tray Footer / Daemon Status -->
+<footer class="h-9 px-3 border-t border-white/[0.06] bg-black/25 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="w-1.5 h-1.5 rounded-full bg-[#4ade80]"></span>
+<span class="font-body-sm text-body-sm text-on-surface-variant/70">Daemon running · :5037</span>
+</div>
+<button aria-label="Kill adb server" class="flex items-center gap-1 px-1.5 py-0.5 rounded text-error hover:bg-error-container/20 text-body-sm font-body-sm font-medium transition-colors">
+<span class="material-symbols-outlined text-[13px]" data-icon="power_settings_new">power_settings_new</span>
+<span>Kill server</span>
+</button>
+</footer>
+</div>
+</div>
+</body></html>

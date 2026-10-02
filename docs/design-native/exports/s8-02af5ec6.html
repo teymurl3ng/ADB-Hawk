@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ADB View - Wireless Pairing Lifecycle</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-tint": "#a4c9ff",
+            "background": "#101319",
+            "secondary-fixed-dim": "#7bd0ff",
+            "primary-fixed-dim": "#a4c9ff",
+            "inverse-primary": "#0060ac",
+            "surface": "#101319",
+            "on-secondary-container": "#00374d",
+            "surface-container-lowest": "#0b0e14",
+            "surface-container": "#1d2026",
+            "inverse-on-surface": "#2d3037",
+            "outline": "#8b919d",
+            "on-tertiary-fixed-variant": "#5c4300",
+            "tertiary-fixed": "#ffdf9f",
+            "error": "#ffb4ab",
+            "primary": "#a4c9ff",
+            "on-secondary": "#00354a",
+            "on-tertiary-fixed": "#261a00",
+            "on-secondary-fixed": "#001e2c",
+            "surface-variant": "#32353b",
+            "secondary-fixed": "#c4e7ff",
+            "on-background": "#e1e2ea",
+            "surface-dim": "#101319",
+            "on-primary-container": "#003a6b",
+            "on-primary-fixed": "#001c39",
+            "on-surface": "#e1e2ea",
+            "surface-container-low": "#191c21",
+            "outline-variant": "#414751",
+            "primary-fixed": "#d4e3ff",
+            "on-tertiary": "#402d00",
+            "secondary-container": "#00a6e0",
+            "on-error-container": "#ffdad6",
+            "on-surface-variant": "#c1c7d3",
+            "inverse-surface": "#e1e2ea",
+            "error-container": "#93000a",
+            "tertiary": "#f9bd22",
+            "surface-container-highest": "#32353b",
+            "surface-container-high": "#272a30",
+            "primary-container": "#60a5fa",
+            "surface-bright": "#363940",
+            "on-secondary-fixed-variant": "#004c69",
+            "on-error": "#690005",
+            "on-primary-fixed-variant": "#004883",
+            "on-primary": "#00315d",
+            "tertiary-container": "#ce9a00",
+            "secondary": "#7bd0ff",
+            "on-tertiary-container": "#4a3500",
+            "tertiary-fixed-dim": "#f9bd22"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "gutter": "0.5rem",
+            "space-sm": "0.375rem",
+            "space-xs": "0.25rem",
+            "space-lg": "0.75rem",
+            "space-md": "0.5rem",
+            "space-xl": "1rem",
+            "margin": "0.75rem"
+          },
+          "fontFamily": {
+            "label-md": ["Geist"],
+            "headline-lg": ["Geist"],
+            "headline-md": ["Geist"],
+            "body-md": ["Geist"],
+            "body-sm": ["Geist"],
+            "body-lg": ["Geist"],
+            "code-xs": ["JetBrains Mono"],
+            "headline-sm": ["Geist"],
+            "label-sm": ["Geist"],
+            "code-sm": ["JetBrains Mono"]
+          },
+          "fontSize": {
+            "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "500" }],
+            "headline-lg": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.015em", "fontWeight": "600" }],
+            "headline-md": ["15px", { "lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "body-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }],
+            "body-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "400" }],
+            "body-lg": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }],
+            "code-xs": ["10px", { "lineHeight": "12px", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+            "headline-sm": ["13px", { "lineHeight": "18px", "letterSpacing": "-0.005em", "fontWeight": "600" }],
+            "label-sm": ["10px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+            "code-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "-0.02em", "fontWeight": "400" }]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 20;
+      font-size: 16px;
+      line-height: 1;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .flyout-shadow {
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.25);
+    }
+    .top-light-highlight {
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+    }
+    @keyframes spin-slow {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .animate-spin-ring {
+      animation: spin-slow 1.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    }
+    /* Windows 11 Overlay Scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface-container-lowest text-on-surface min-h-screen flex items-center justify-center p-space-md select-none font-body-md antialiased">
+<!-- Desktop Backdrop Representation -->
+<div class="fixed inset-0 pointer-events-none opacity-20 bg-[radial-gradient(#414751_1px,transparent_1px)] [background-size:16px_16px]"></div>
+<!-- Windows 11 System Tray Flyout Container (Exact 376px Width) -->
+<div class="relative w-[376px] bg-[#202329]/95 backdrop-blur-[28px] border border-white/10 rounded-lg flyout-shadow overflow-hidden flex flex-col top-light-highlight z-10">
+<!-- TopAppBar from Shared Components Specification -->
+<header class="bg-surface dark:bg-surface flex justify-between items-center h-10 w-full px-space-md border-b border-outline-variant/30 docked full-width top rounded-t-lg shadow-sm">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary-container dark:text-primary-container" data-icon="smartphone">smartphone</span>
+<span class="text-headline-sm font-headline-sm font-semibold text-on-surface dark:text-on-surface tracking-tight">ADB View</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant bg-surface-container-high border border-white/5 px-1 py-0.5 rounded">v1.0.41:5037</span>
+</div>
+<div class="flex items-center gap-1">
+<button aria-label="Pin flyout" class="w-7 h-7 flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface rounded active:scale-[0.99] transition-transform duration-150" type="button">
+<span class="material-symbols-outlined" data-icon="push_pin">push_pin</span>
+</button>
+<button aria-label="More options" class="w-7 h-7 flex items-center justify-center text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface rounded active:scale-[0.99] transition-transform duration-150" type="button">
+<span class="material-symbols-outlined" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</header>
+<!-- Sub-header & Protocol Status Header -->
+<div class="px-space-md pt-3 pb-2 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="text-headline-sm font-headline-sm text-on-surface">Wireless pairing lifecycle</span>
+</div>
+<div class="flex items-center gap-1.5 bg-surface-container-high/80 border border-white/5 px-2 py-0.5 rounded">
+<span class="relative flex h-1.5 w-1.5">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-container opacity-75"></span>
+<span class="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary-container"></span>
+</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">mDNS Active</span>
+</div>
+</div>
+<!-- Scrollable Card View Stack -->
+<div class="p-space-md pt-0 space-y-2.5 max-h-[480px] overflow-y-auto">
+<!-- STATE 1: In Progress Pairing Card -->
+<section class="bg-white/[0.04] border border-white/[0.08] rounded-lg top-light-highlight overflow-hidden transition-all duration-150 hover:bg-white/[0.06] hover:border-white/[0.12]">
+<div class="p-[14px] flex flex-col items-center text-center">
+<!-- 32px Circular Ring Progress -->
+<div class="relative w-8 h-8 mb-3 flex items-center justify-center">
+<svg class="w-8 h-8 animate-spin-ring" fill="none" viewbox="0 0 32 32">
+<!-- Background Track (20% Opacity) -->
+<circle cx="16" cy="16" r="14" stroke="#60a5fa" stroke-opacity="0.2" stroke-width="2"></circle>
+<!-- Rotating Arc Accent Blue -->
+<circle cx="16" cy="16" r="14" stroke="#60a5fa" stroke-dasharray="22 66" stroke-linecap="round" stroke-width="2"></circle>
+</svg>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-1">Pairing with Galaxy S24…</h3>
+<p class="font-body-md text-body-md text-on-surface-variant/80 max-w-[280px]">Keep the phone nearby while pairing completes.</p>
+</div>
+<!-- Hairline Divider Separator -->
+<div class="h-[1px] w-full bg-white/[0.06]"></div>
+<!-- Quiet Action Button -->
+<button class="w-full h-9 flex items-center justify-center font-headline-sm text-headline-sm text-on-surface-variant hover:text-on-surface hover:bg-white/[0.04] active:scale-[0.99] transition-all" type="button">
+          Cancel pairing
+        </button>
+</section>
+<!-- STATE 2: Success Pairing Card -->
+<section class="bg-[#4ade80]/[0.06] border border-[#4ade80]/20 rounded-lg top-light-highlight p-[14px] transition-all duration-150">
+<div class="flex items-start justify-between">
+<div class="flex items-start gap-3">
+<!-- 32px Soft Green Check Icon Indicator -->
+<div class="w-8 h-8 rounded-full bg-[#16a34a]/20 border border-[#4ade80]/30 flex items-center justify-center text-[#4ade80] flex-shrink-0 mt-0.5">
+<span class="material-symbols-outlined" data-icon="check">check</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-2">
+<h3 class="font-headline-md text-headline-md text-on-surface">Paired with Galaxy S24</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant/80 mt-0.5">Waiting for ADB connection…</p>
+</div>
+</div>
+<!-- Status Pill -->
+<div class="flex items-center gap-1.5 bg-[#4ade80]/10 border border-[#4ade80]/20 px-2 py-0.5 rounded-full flex-shrink-0">
+<span class="h-1.5 w-1.5 rounded-full bg-[#4ade80]"></span>
+<span class="font-code-xs text-code-xs text-[#4ade80]">Paired</span>
+</div>
+</div>
+</section>
+<!-- STATE 3: Failure Pairing Card -->
+<section class="bg-[#f87171]/[0.06] border border-[#f87171]/20 rounded-lg top-light-highlight p-[14px] transition-all duration-150">
+<div class="flex items-start gap-3">
+<!-- 28px Red Alert Circle Icon -->
+<div class="w-7 h-7 rounded-full bg-[#ef4444]/20 border border-[#f87171]/30 flex items-center justify-center text-[#f87171] flex-shrink-0 mt-0.5">
+<span class="material-symbols-outlined" data-icon="priority_high">priority_high</span>
+</div>
+<div class="flex flex-col flex-grow">
+<h3 class="font-headline-md text-headline-md text-on-surface">Pairing failed</h3>
+<p class="font-body-md text-body-md text-on-surface-variant/80 mt-0.5">Check the code and try again.</p>
+<!-- Action Buttons Row -->
+<div class="flex items-center justify-end gap-2 mt-3 pt-1">
+<button class="h-7 px-3 rounded font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-white/[0.06] active:scale-[0.99] transition-all" type="button">
+                Cancel
+              </button>
+<button class="h-7 px-3 rounded bg-[#ef4444] hover:bg-[#dc2626] text-white font-headline-sm text-headline-sm shadow-sm active:scale-[0.99] transition-all flex items-center gap-1" type="button">
+<span class="material-symbols-outlined" data-icon="refresh" style="font-size: 14px;">refresh</span>
+<span>Retry</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</div>
+<!-- Daemon Status & Footer Strip -->
+<footer class="h-9 px-space-md border-t border-white/[0.06] bg-surface-container-lowest/60 flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="h-1.5 w-1.5 rounded-full bg-[#4ade80]"></span>
+<span class="font-code-xs text-code-xs text-on-surface-variant">Daemon running · :5037</span>
+</div>
+<button class="font-label-sm text-label-sm text-[#f87171] hover:bg-[#f87171]/10 px-1.5 py-0.5 rounded transition-colors active:scale-[0.98]" type="button">
+        Kill server
+      </button>
+</footer>
+</div>
+</body></html>

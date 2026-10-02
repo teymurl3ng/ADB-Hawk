@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ADB View - System Flyout</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-container": "#1d2026",
+            "tertiary-fixed": "#ffdf9f",
+            "surface-container-lowest": "#0b0e14",
+            "secondary": "#7bd0ff",
+            "error": "#ffb4ab",
+            "secondary-container": "#00a6e0",
+            "on-secondary-fixed": "#001e2c",
+            "secondary-fixed-dim": "#7bd0ff",
+            "on-background": "#e1e2ea",
+            "on-primary-container": "#003a6b",
+            "tertiary": "#f9bd22",
+            "surface-container-highest": "#32353b",
+            "surface-container-high": "#272a30",
+            "on-error-container": "#ffdad6",
+            "on-primary": "#00315d",
+            "on-tertiary": "#402d00",
+            "on-primary-fixed-variant": "#004883",
+            "outline-variant": "#414751",
+            "surface-dim": "#101319",
+            "on-surface-variant": "#c1c7d3",
+            "surface": "#101319",
+            "on-surface": "#e1e2ea",
+            "surface-container-low": "#191c21",
+            "inverse-on-surface": "#2d3037",
+            "background": "#101319",
+            "on-tertiary-container": "#4a3500",
+            "primary-fixed-dim": "#a4c9ff",
+            "secondary-fixed": "#c4e7ff",
+            "on-secondary-container": "#00374d",
+            "tertiary-fixed-dim": "#f9bd22",
+            "error-container": "#93000a",
+            "tertiary-container": "#ce9a00",
+            "primary": "#a4c9ff",
+            "inverse-surface": "#e1e2ea",
+            "primary-fixed": "#d4e3ff",
+            "surface-bright": "#363940",
+            "primary-container": "#60a5fa",
+            "surface-tint": "#a4c9ff",
+            "outline": "#8b919d",
+            "on-error": "#690005",
+            "on-tertiary-fixed": "#261a00",
+            "inverse-primary": "#0060ac",
+            "on-primary-fixed": "#001c39",
+            "surface-variant": "#32353b",
+            "on-tertiary-fixed-variant": "#5c4300",
+            "on-secondary-fixed-variant": "#004c69",
+            "on-secondary": "#00354a"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-sm": "0.375rem",
+            "space-xs": "0.25rem",
+            "space-xl": "1rem",
+            "space-lg": "0.75rem",
+            "space-md": "0.5rem",
+            "margin": "0.75rem",
+            "gutter": "0.5rem"
+          },
+          "fontFamily": {
+            "body-lg": ["Geist"],
+            "label-sm": ["Geist"],
+            "headline-md": ["Geist"],
+            "label-md": ["Geist"],
+            "code-xs": ["JetBrains Mono"],
+            "code-sm": ["JetBrains Mono"],
+            "body-md": ["Geist"],
+            "headline-sm": ["Geist"],
+            "body-sm": ["Geist"],
+            "headline-lg": ["Geist"]
+          },
+          "fontSize": {
+            "body-lg": ["13px", {"lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400"}],
+            "label-sm": ["10px", {"lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+            "headline-md": ["15px", {"lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+            "label-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+            "code-xs": ["10px", {"lineHeight": "12px", "letterSpacing": "-0.01em", "fontWeight": "400"}],
+            "code-sm": ["11px", {"lineHeight": "14px", "letterSpacing": "-0.02em", "fontWeight": "400"}],
+            "body-md": ["12px", {"lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400"}],
+            "headline-sm": ["13px", {"lineHeight": "18px", "letterSpacing": "-0.005em", "fontWeight": "600"}],
+            "body-sm": ["11px", {"lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "400"}],
+            "headline-lg": ["18px", {"lineHeight": "24px", "letterSpacing": "-0.015em", "fontWeight": "600"}]
+          }
+        }
+      }
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 20;
+      font-size: 16px;
+      line-height: 1;
+    }
+    
+    .fluent-acrylic {
+      background: rgba(32, 35, 41, 0.94);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .top-light-highlight {
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: transparent;
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface-container-lowest text-on-surface min-h-screen flex items-center justify-center p-space-lg select-none antialiased font-body-md text-body-md">
+<!-- Desktop Tray Flyout Container (Windows 11 Anchor) -->
+<div class="w-[376px] fluent-acrylic rounded-lg overflow-hidden flex flex-col top-light-highlight transition-all">
+<!-- TopAppBar Component (Rendered strictly according to Shared Component JSON) -->
+<header class="bg-surface dark:bg-surface border-b border-outline-variant/30 shadow-sm flex justify-between items-center h-10 w-full px-space-md docked full-width top rounded-t-lg">
+<!-- Leading Icon + Headline -->
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary-container dark:text-primary-container" data-icon="smartphone">smartphone</span>
+<span class="text-headline-sm font-headline-sm font-semibold text-on-surface dark:text-on-surface">ADB View</span>
+<span class="px-1.5 py-0.5 rounded bg-surface-container-highest text-on-surface-variant font-code-xs text-code-xs border border-outline-variant/40">
+          v1.0.41:5037
+        </span>
+</div>
+<!-- Action Tools / Trailing Icon -->
+<div class="flex items-center gap-1">
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface transition-colors active:scale-[0.99] duration-150" title="Pin Flyout">
+<span class="material-symbols-outlined" data-icon="push_pin">push_pin</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface transition-colors active:scale-[0.99] duration-150" title="More Options">
+<span class="material-symbols-outlined" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</header>
+<!-- Sub-header Status Bar -->
+<div class="px-space-md py-space-xs flex items-center justify-between bg-surface-container/40 border-b border-outline-variant/20">
+<div class="flex items-center gap-space-xs">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-tertiary-fixed-dim opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-tertiary"></span>
+</span>
+<span class="text-label-md font-label-md text-on-surface-variant">Wireless pairing</span>
+</div>
+<span class="text-label-sm font-label-sm text-outline font-code-xs">mDNS Discovery</span>
+</div>
+<!-- Scrollable Body Content -->
+<main class="p-space-md space-y-space-md overflow-y-auto max-h-[500px] custom-scrollbar">
+<!-- Fluent InfoBar Warning Card (Amber, Structured) -->
+<section class="rounded-lg bg-surface-container-high/80 border border-tertiary/30 p-space-md relative overflow-hidden top-light-highlight">
+<div class="flex items-start gap-space-sm">
+<!-- Amber Status Icon Tile -->
+<div class="w-8 h-8 rounded-full bg-tertiary-container/20 border border-tertiary/40 flex items-center justify-center shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-tertiary" data-icon="wifi_tethering_error">wifi_tethering_error</span>
+</div>
+<!-- Main Info Content -->
+<div class="flex-1 space-y-space-xs">
+<div class="flex items-center justify-between">
+<h2 class="text-headline-sm font-headline-sm text-tertiary-fixed">Wireless discovery isn't working</h2>
+</div>
+<p class="text-body-md font-body-md text-on-surface/80">
+              Galaxy S24 is connected over Wi-Fi, but ADB isn't receiving device announcements on this network.
+            </p>
+<!-- Evidence List Box -->
+<div class="mt-space-sm p-space-sm rounded bg-surface-container-lowest/60 border border-outline-variant/25 space-y-1">
+<div class="flex items-center gap-1.5 text-body-sm font-body-sm text-on-surface-variant">
+<span class="text-tertiary text-xs leading-none">•</span>
+<span>3 device announcements are visible on this network.</span>
+</div>
+<div class="flex items-center gap-1.5 text-body-sm font-body-sm text-on-surface-variant">
+<span class="text-tertiary text-xs leading-none">•</span>
+<span>Microsoft Edge is using the discovery port.</span>
+</div>
+<div class="flex items-center gap-1.5 text-body-sm font-body-sm text-on-surface-variant">
+<span class="text-tertiary text-xs leading-none">•</span>
+<span>Virtual network adapters are active (Tailscale).</span>
+</div>
+</div>
+<!-- Action Button Row -->
+<div class="pt-space-xs flex flex-wrap gap-space-xs">
+<button class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-container-highest/80 hover:bg-surface-bright border border-outline-variant/40 text-on-surface text-label-md font-label-md active:scale-[0.99] transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="refresh">refresh</span>
+<span>Restart ADB</span>
+</button>
+<button class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-surface-container-highest/80 hover:bg-surface-bright border border-outline-variant/40 text-on-surface text-label-md font-label-md active:scale-[0.99] transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="shield">shield</span>
+<span>Stop Tailscale service</span>
+</button>
+</div>
+<!-- Card Hairline Separation & Footer -->
+<div class="pt-space-xs mt-space-xs border-t border-outline-variant/20 flex items-center justify-between text-body-sm">
+<span class="font-code-xs text-code-xs text-outline">Port conflict · MDNS 5353</span>
+<button class="flex items-center gap-0.5 text-label-md font-label-md text-primary-container hover:text-primary transition-colors">
+<span>Check again</span>
+<span class="material-symbols-outlined text-xs" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Active Devices & Shortcuts Section -->
+<section class="space-y-space-xs">
+<div class="flex items-center justify-between px-space-xs">
+<span class="text-label-md font-label-md text-on-surface-variant">Active devices & shortcuts</span>
+<button class="text-label-md font-label-md text-primary-container hover:text-primary transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+<span>Pair new</span>
+</button>
+</div>
+<!-- Device Row Card (Galaxy S24) -->
+<div class="rounded-lg bg-surface-container/60 hover:bg-surface-container-high/60 border border-outline-variant/30 p-space-sm flex items-center justify-between gap-space-sm transition-colors group">
+<div class="flex items-center gap-space-sm min-w-0">
+<div class="w-8 h-8 rounded bg-surface-container-highest flex items-center justify-center text-on-surface-variant shrink-0">
+<span class="material-symbols-outlined" data-icon="stay_current_portrait">stay_current_portrait</span>
+</div>
+<div class="min-w-0">
+<div class="flex items-center gap-space-xs">
+<span class="text-headline-sm font-headline-sm text-on-surface truncate">Galaxy S24</span>
+<span class="px-1.5 py-0.2 rounded bg-tertiary-container/30 text-tertiary-fixed text-label-sm font-label-sm border border-tertiary/20">
+                  Wi-Fi Paired
+                </span>
+</div>
+<div class="text-code-xs font-code-xs text-outline truncate">
+                192.168.1.184:41209
+              </div>
+</div>
+</div>
+<!-- Action Icons Cluster -->
+<div class="flex items-center gap-1 shrink-0">
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-bright hover:text-on-surface transition-colors" title="Open ADB Shell">
+<span class="material-symbols-outlined" data-icon="terminal">terminal</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-bright hover:text-on-surface transition-colors" title="Mirror Screen (scrcpy)">
+<span class="material-symbols-outlined" data-icon="cast">cast</span>
+</button>
+</div>
+</div>
+<!-- Manual Connect Row -->
+<div class="rounded-lg bg-surface-container-lowest/50 border border-outline-variant/25 px-space-sm py-1.5 flex items-center justify-between gap-space-sm">
+<div class="flex items-center gap-2 text-on-surface-variant min-w-0">
+<span class="material-symbols-outlined text-outline" data-icon="lan">lan</span>
+<span class="text-code-sm font-code-sm text-on-surface/90 truncate">192.168.1.184:5555</span>
+</div>
+<button class="px-3 py-1 rounded bg-primary-container text-on-primary font-label-md text-label-md font-medium hover:bg-primary transition-colors active:scale-[0.98]">
+            Connect
+          </button>
+</div>
+</section>
+</main>
+<!-- Bottom Tray Footer Strip -->
+<footer class="px-space-md py-space-xs bg-surface border-t border-outline-variant/30 flex items-center justify-between text-body-sm font-body-sm">
+<div class="flex items-center gap-space-xs">
+<span class="w-2 h-2 rounded-full bg-[#4ade80] shadow-[0_0_6px_rgba(74,222,128,0.5)]"></span>
+<span class="text-on-surface-variant font-code-xs text-code-xs">Daemon running · :5037</span>
+</div>
+<button class="text-label-sm font-label-sm text-error/90 hover:text-error hover:bg-error-container/20 px-1.5 py-0.5 rounded transition-colors" title="Shut down daemon">
+        Kill server
+      </button>
+</footer>
+</div>
+</body></html>

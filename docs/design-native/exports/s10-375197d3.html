@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ADB View - Flyout</title>
+<!-- Material Symbols Outlined -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts: Geist & JetBrains Mono -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+            "surface-dim": "#101319",
+            "inverse-on-surface": "#2d3037",
+            "tertiary-container": "#ce9a00",
+            "on-secondary-fixed-variant": "#004c69",
+            "on-primary-fixed-variant": "#004883",
+            "on-surface-variant": "#c1c7d3",
+            "on-primary-fixed": "#001c39",
+            "on-primary": "#00315d",
+            "surface-tint": "#a4c9ff",
+            "primary-fixed": "#d4e3ff",
+            "on-surface": "#e1e2ea",
+            "on-tertiary": "#402d00",
+            "outline": "#8b919d",
+            "on-error": "#690005",
+            "secondary-container": "#00a6e0",
+            "surface-container": "#1d2026",
+            "inverse-surface": "#e1e2ea",
+            "error": "#ffb4ab",
+            "on-tertiary-container": "#4a3500",
+            "surface-container-highest": "#32353b",
+            "error-container": "#93000a",
+            "on-primary-container": "#003a6b",
+            "surface-bright": "#363940",
+            "primary": "#a4c9ff",
+            "inverse-primary": "#0060ac",
+            "surface-container-low": "#191c21",
+            "surface-container-high": "#272a30",
+            "on-secondary-fixed": "#001e2c",
+            "surface": "#101319",
+            "tertiary-fixed": "#ffdf9f",
+            "on-tertiary-fixed": "#261a00",
+            "on-secondary-container": "#00374d",
+            "primary-container": "#60a5fa",
+            "surface-variant": "#32353b",
+            "primary-fixed-dim": "#a4c9ff",
+            "secondary-fixed": "#c4e7ff",
+            "tertiary-fixed-dim": "#f9bd22",
+            "on-secondary": "#00354a",
+            "secondary-fixed-dim": "#7bd0ff",
+            "secondary": "#7bd0ff",
+            "tertiary": "#f9bd22",
+            "on-error-container": "#ffdad6",
+            "surface-container-lowest": "#0b0e14",
+            "on-background": "#e1e2ea",
+            "on-tertiary-fixed-variant": "#5c4300",
+            "outline-variant": "#414751",
+            "background": "#101319"
+          },
+          "borderRadius": {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+          "spacing": {
+            "space-xl": "1rem",
+            "space-lg": "0.75rem",
+            "space-md": "0.5rem",
+            "margin": "0.75rem",
+            "space-xs": "0.25rem",
+            "space-sm": "0.375rem",
+            "gutter": "0.5rem"
+          },
+          "fontFamily": {
+            "code-sm": ["JetBrains Mono", "monospace"],
+            "body-sm": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "label-md": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "headline-sm": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "code-xs": ["JetBrains Mono", "monospace"],
+            "headline-md": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "body-md": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "label-sm": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "headline-lg": ["Geist", "Segoe UI Variable", "sans-serif"],
+            "body-lg": ["Geist", "Segoe UI Variable", "sans-serif"]
+          },
+          "fontSize": {
+            "code-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "-0.02em", "fontWeight": "400" }],
+            "body-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.01em", "fontWeight": "400" }],
+            "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "500" }],
+            "headline-sm": ["13px", { "lineHeight": "18px", "letterSpacing": "-0.005em", "fontWeight": "600" }],
+            "code-xs": ["10px", { "lineHeight": "12px", "letterSpacing": "-0.01em", "fontWeight": "400" }],
+            "headline-md": ["15px", { "lineHeight": "20px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+            "body-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }],
+            "label-sm": ["10px", { "lineHeight": "14px", "letterSpacing": "0.02em", "fontWeight": "500" }],
+            "headline-lg": ["18px", { "lineHeight": "24px", "letterSpacing": "-0.015em", "fontWeight": "600" }],
+            "body-lg": ["13px", { "lineHeight": "18px", "letterSpacing": "0em", "fontWeight": "400" }]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-family: 'Material Symbols Outlined';
+      font-weight: normal;
+      font-style: normal;
+      font-size: 16px;
+      line-height: 1;
+      display: inline-block;
+      text-transform: none;
+      letter-spacing: normal;
+      word-wrap: normal;
+      white-space: nowrap;
+      direction: ltr;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* Windows 11 Fluent mica simulated texture and custom scrollbar */
+    .fluent-acrylic {
+      background: rgba(25, 28, 33, 0.94);
+      backdrop-filter: blur(28px) saturate(180%);
+      -webkit-backdrop-filter: blur(28px) saturate(180%);
+      box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3), inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .fluent-card {
+      box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+    }
+    
+    .fluent-scroll::-webkit-scrollbar {
+      width: 4px;
+    }
+    .fluent-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .fluent-scroll::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.16);
+      border-radius: 4px;
+    }
+    .fluent-scroll::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.28);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface-container-lowest text-on-surface min-h-screen flex items-center justify-center p-space-md select-none font-body-md antialiased">
+<!-- Windows 11 Fluent Flyout Container (Fixed 376px width) -->
+<div class="w-[376px] fluent-acrylic border border-outline-variant/30 rounded-lg overflow-hidden flex flex-col transition-all duration-150 relative">
+<!-- Shared Component: TopAppBar -->
+<header class="bg-surface dark:bg-surface border-b border-outline-variant/30 shadow-sm flex justify-between items-center h-10 w-full px-space-md docked full-width top rounded-t-lg">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary-container dark:text-primary-container" data-icon="smartphone">smartphone</span>
+<span class="text-headline-sm font-headline-sm font-semibold text-on-surface dark:text-on-surface">ADB View</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded border border-outline-variant/30 ml-1">v1.0.41:5037</span>
+</div>
+<div class="flex items-center gap-0.5">
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface transition-colors active:scale-[0.99]" title="Pin to desktop">
+<span class="material-symbols-outlined" data-icon="push_pin">push_pin</span>
+</button>
+<button class="w-7 h-7 flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-variant/50 hover:text-on-surface transition-colors active:scale-[0.99]" title="More options">
+<span class="material-symbols-outlined" data-icon="more_horiz">more_horiz</span>
+</button>
+</div>
+</header>
+<!-- Sub-header / Status Category -->
+<div class="px-space-md pt-2.5 pb-1.5 flex items-center justify-between">
+<div class="flex items-center gap-1.5">
+<span class="font-label-md text-label-md text-on-surface font-medium">Wireless pairing</span>
+<span class="inline-block w-1.5 h-1.5 rounded-full bg-tertiary animate-pulse" title="Warning detected"></span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant">mDNS Discovery</span>
+</div>
+<!-- Scrollable Content Area -->
+<main class="fluent-scroll overflow-y-auto max-h-[460px] px-space-md pb-space-md flex flex-col gap-space-sm">
+<!-- Fluent InfoBar Warning Card -->
+<section class="fluent-card rounded-lg bg-surface-container-high/60 border border-tertiary-container/30 p-space-md flex flex-col gap-2.5 relative overflow-hidden transition-all duration-150">
+<!-- Top ambient subtle accent strip -->
+<div class="absolute top-0 left-0 right-0 h-[2px] bg-tertiary/70"></div>
+<!-- Warning Card Header: 32px Amber Icon Tile + Title -->
+<div class="flex items-start gap-2.5 pt-0.5">
+<div class="w-8 h-8 rounded-full bg-tertiary/15 border border-tertiary/20 flex items-center justify-center shrink-0 text-tertiary">
+<span class="material-symbols-outlined text-[18px]" data-icon="wifi_off">wifi_off</span>
+</div>
+<div class="flex-1 min-w-0">
+<h2 class="font-headline-sm text-headline-sm text-tertiary-fixed leading-tight">Wireless discovery isn't working</h2>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-1 leading-normal">Galaxy S24 is connected over Wi-Fi, but ADB isn't receiving device announcements on this network.</p>
+</div>
+</div>
+<!-- Evidence List (Compact bullet points) -->
+<div class="bg-surface-container-lowest/60 rounded border border-outline-variant/20 p-2 flex flex-col gap-1 text-on-surface-variant font-body-sm text-body-sm">
+<div class="flex items-start gap-1.5">
+<span class="text-tertiary leading-none mt-0.5">•</span>
+<span>3 device announcements are visible on this network.</span>
+</div>
+<div class="flex items-start gap-1.5">
+<span class="text-tertiary leading-none mt-0.5">•</span>
+<span>Microsoft Edge is using the discovery port.</span>
+</div>
+<div class="flex items-start gap-1.5">
+<span class="text-tertiary leading-none mt-0.5">•</span>
+<span>Virtual network adapters are active (Tailscale).</span>
+</div>
+</div>
+<!-- Action Button Row -->
+<div class="flex items-center gap-1.5 pt-0.5">
+<button class="h-6 px-2.5 rounded bg-surface-variant/70 hover:bg-surface-variant text-on-surface font-label-sm text-label-sm border border-outline-variant/30 flex items-center gap-1 transition-colors active:scale-[0.98]">
+<span class="material-symbols-outlined text-[13px]" data-icon="refresh">refresh</span>
+<span>Restart ADB</span>
+</button>
+<button class="h-6 px-2 rounded bg-surface-variant/70 hover:bg-surface-variant text-on-surface font-label-sm text-label-sm border border-outline-variant/30 flex items-center gap-1 transition-colors active:scale-[0.98]">
+<span class="material-symbols-outlined text-[13px] text-tertiary" data-icon="admin_panel_settings">admin_panel_settings</span>
+<span>Stop Tailscale service</span>
+</button>
+</div>
+<!-- Card Footer: Right-aligned 'Check again' -->
+<div class="flex items-center justify-between border-t border-outline-variant/20 pt-2 mt-0.5">
+<span class="font-code-xs text-code-xs text-on-surface-variant/70">Port conflict · MDNS 5353</span>
+<button class="font-label-sm text-label-sm text-primary-container hover:text-primary transition-colors flex items-center gap-0.5 active:scale-[0.98]">
+<span>Check again</span>
+<span class="material-symbols-outlined text-[13px]" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</section>
+<!-- Section: Connected Devices / Alternatives -->
+<div class="pt-1 flex flex-col gap-1.5">
+<div class="flex items-center justify-between px-0.5">
+<span class="font-label-sm text-label-sm text-on-surface-variant">Active devices &amp; shortcuts</span>
+<button class="font-code-xs text-code-xs text-primary-container hover:underline flex items-center gap-0.5">
+<span class="material-symbols-outlined text-[12px]" data-icon="add">add</span>
+<span>Pair new</span>
+</button>
+</div>
+<!-- Device Card: Galaxy S24 (Unreachable over Wi-Fi, waiting) -->
+<div class="fluent-card rounded-lg bg-surface-container/70 border border-outline-variant/30 p-2 flex items-center justify-between hover:bg-surface-container-high transition-colors">
+<div class="flex items-center gap-2">
+<div class="w-7 h-7 rounded bg-surface-variant/50 flex items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined text-[16px]" data-icon="phone_android">phone_android</span>
+</div>
+<div class="flex flex-col">
+<div class="flex items-center gap-1.5">
+<span class="font-body-md text-body-md font-medium text-on-surface">Galaxy S24</span>
+<span class="font-code-xs text-code-xs px-1 rounded bg-tertiary/15 text-tertiary border border-tertiary/30">Wi-Fi Paired</span>
+</div>
+<span class="font-code-xs text-code-xs text-on-surface-variant font-code-sm">192.168.1.184:41209</span>
+</div>
+</div>
+<div class="flex items-center gap-1">
+<button class="w-6 h-6 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors" title="Launch Scrcpy">
+<span class="material-symbols-outlined text-[14px]" data-icon="cast">cast</span>
+</button>
+<button class="w-6 h-6 rounded flex items-center justify-center text-on-surface-variant hover:bg-surface-variant hover:text-on-surface transition-colors" title="Device terminal">
+<span class="material-symbols-outlined text-[14px]" data-icon="terminal">terminal</span>
+</button>
+</div>
+</div>
+<!-- Quick Action: Direct IP Connect Input Bar -->
+<div class="fluent-card rounded-lg bg-surface-container-low/70 border border-outline-variant/30 p-1.5 flex items-center gap-1.5">
+<span class="material-symbols-outlined text-outline text-[16px] pl-1" data-icon="lan">lan</span>
+<input class="bg-transparent border-0 font-code-sm text-code-sm text-on-surface placeholder-on-surface-variant/50 focus:ring-0 w-full p-0 h-5" placeholder="Direct IP connect (192.168.x.x:port)" type="text" value="192.168.1.184:5555"/>
+<button class="h-5 px-2 bg-primary-container text-on-primary-container rounded font-label-sm text-label-sm font-medium hover:bg-primary transition-colors flex items-center shrink-0">
+            Connect
+          </button>
+</div>
+</div>
+</main>
+<!-- Bottom Daemon Status Bar -->
+<footer class="bg-surface-container-lowest border-t border-outline-variant/20 px-space-md py-2 flex items-center justify-between rounded-b-lg">
+<div class="flex items-center gap-1.5">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Daemon running</span>
+<span class="font-code-xs text-code-xs text-on-surface-variant/60">· :5037</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="font-label-sm text-label-sm text-error hover:bg-error-container/30 px-1.5 py-0.5 rounded transition-colors active:scale-[0.98] flex items-center gap-1">
+<span class="material-symbols-outlined text-[13px]" data-icon="power_settings_new">power_settings_new</span>
+<span>Kill server</span>
+</button>
+</div>
+</footer>
+</div>
+</body></html>
