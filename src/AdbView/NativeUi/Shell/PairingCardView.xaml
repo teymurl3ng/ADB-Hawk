@@ -44,7 +44,7 @@
             <!-- Header / identity region -->
             <StackPanel>
                 <!-- Offer -->
-                <StackPanel Visibility="{Binding IsOffer, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Visibility="{Binding IsOffer, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                     <StackPanel Orientation="Horizontal">
                         <Grid Width="32" Height="32" VerticalAlignment="Top">
                             <Border CornerRadius="6" Background="{DynamicResource Win.AccentSurface}"
@@ -80,7 +80,7 @@
                 </StackPanel>
 
                 <!-- Success -->
-                <StackPanel Visibility="{Binding IsSuccess, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Visibility="{Binding IsSuccess, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                     <StackPanel Orientation="Horizontal">
                         <Grid Width="32" Height="32" VerticalAlignment="Center">
                             <Border CornerRadius="16" Background="{DynamicResource Win.GreenSurface}"
@@ -99,7 +99,7 @@
                 </StackPanel>
 
                 <!-- Progress -->
-                <StackPanel Visibility="{Binding IsProgress, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Visibility="{Binding IsProgress, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                     <Ellipse Width="32" Height="32" HorizontalAlignment="Center" Margin="0,0,0,12"
                              StrokeThickness="2" Stroke="{DynamicResource Win.AccentBorder}"/>
                     <TextBlock Text="{Binding HeaderText}" FontSize="14" FontWeight="SemiBold"
@@ -110,7 +110,7 @@
                 </StackPanel>
 
                 <!-- Failure -->
-                <StackPanel Visibility="{Binding IsFailure, Converter={StaticResource BoolToVisibility}}"
+                <StackPanel Visibility="{Binding IsFailure, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
                             Margin="0,0,0,10">
                     <StackPanel Orientation="Horizontal">
                         <Grid Width="28" Height="28" VerticalAlignment="Top">
@@ -131,7 +131,7 @@
                 </StackPanel>
 
                 <!-- Code-entry title (code phases except failure) -->
-                <StackPanel Visibility="{Binding ShowCodeEntryTitle, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Visibility="{Binding ShowCodeEntryTitle, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                     <Grid>
                         <TextBlock Text="{Binding DeviceNameDisplay}" FontSize="14.5" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Win.TextPrimary}" HorizontalAlignment="Left"/>
@@ -145,7 +145,7 @@
             </StackPanel>
 
             <!-- Content region: six code slots with an invisible digit input on top -->
-            <Grid Visibility="{Binding IsCodeEntry, Converter={StaticResource BoolToVisibility}}">
+            <Grid Visibility="{Binding IsCodeEntry, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="8"/>
@@ -181,7 +181,7 @@
                 <TextBox Grid.Column="0" Grid.ColumnSpan="11" x:Name="CodeInputBox"
                          Text="{Binding CodeInput, UpdateSourceTrigger=PropertyChanged}"
                          Opacity="0" Background="Transparent" BorderThickness="0"
-                         CaretBrush="Transparent" SelectionBrush="Transparent"
+                         CaretBrush="Transparent" SelectionBrush="Transparent" MinWidth="0" MinHeight="0"
                          MaxLength="32" FontSize="1" Height="36"
                          IsVisibleChanged="OnCodeInputVisibleChanged"/>
             </Grid>
@@ -189,7 +189,7 @@
             <!-- Action region -->
             <StackPanel>
                 <!-- Progress: full-width quiet cancel -->
-                <Button Visibility="{Binding IsProgress, Converter={StaticResource BoolToVisibility}}"
+                <Button Visibility="{Binding IsProgress, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
                         HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0"
                         Cursor="Hand" FocusVisualStyle="{x:Null}" Padding="0" Margin="0,12,0,0"
                         Command="{Binding CancelCommand}">
@@ -201,7 +201,7 @@
                 </Button>
 
                 <!-- Code entry: Cancel + Pair/Retry over a subtle top rule -->
-                <Grid Visibility="{Binding IsCodeEntry, Converter={StaticResource BoolToVisibility}}"
+                <Grid Visibility="{Binding IsCodeEntry, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
                       Margin="0,12,0,0">
                     <Border BorderBrush="{DynamicResource Win.BorderSubtle}" BorderThickness="0,1,0,0"
                             Padding="0,8,0,0"/>

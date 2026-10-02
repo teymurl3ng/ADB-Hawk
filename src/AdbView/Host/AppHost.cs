@@ -349,6 +349,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             onPairQrStart: () => _qrPairingSession?.Start(),
             onPairQrCancel: () => _qrPairingSession?.Cancel());
 
+        if (_nativeUi) {
+            // No WebView handshake exists in native mode; declare readiness so snapshots
+            // start flowing to the shell instead of queuing in UpdateSnapshot.
+            _coordinator.MarkReady();
+        }
+
         if (_networkDiagnosticsSource is not null && _stateEngine is not null) {
             // Decision 0008 amendment: repair actions only exist where diagnostics exist.
             _repairCoordinator = new RepairCoordinator(
@@ -1086,6 +1092,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         if (_nativeUi) {
             // Native shell binds the AppSnapshot record directly (no JSON hop).
+            Log.Debug("NativeUi snapshot: rev={Rev} devices={Devices} pairing={Pairing}", envelope.Snapshot.Revision, envelope.Snapshot.Devices.Length, envelope.Snapshot.Pairing is not null);
             _shellViewModel?.ApplySnapshot(envelope.Snapshot);
             return;
         }
@@ -1100,6 +1107,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         if (_nativeUi && _nativeWindow is not null) {
+            if (_nativeWindow.IsPinned == isPinned) {
+                return;
+            }
+
             _nativeWindow.IsPinned = isPinned;
             Log.Information("AppHost.SetPinned: native IsPinned={IsPinned}", isPinned);
             return;
@@ -1372,7 +1383,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         ShowFlyout();
 
         // Clear the request only after the flyout is actually visible.
-        if (FlyoutInteractionPolicy.ShouldClearInitialShowRequest(_flyoutWindow is { Visible: true })) {
+        bool visibleNow = _nativeUi
+            ? (_nativeWindow?.ShellVisible ?? false)
+            : _flyoutWindow is { Visible: true };
+        if (FlyoutInteractionPolicy.ShouldClearInitialShowRequest(visibleNow)) {
             _pendingInitialShow = false;
             _initialShowCompleted = true;
             Log.Information("AppHost: initial show completed (visible=true)");

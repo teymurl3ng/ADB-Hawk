@@ -154,6 +154,21 @@ internal sealed class BridgeCoordinator {
         ResendCurrentSnapshot();
     }
 
+    /// <summary>
+    /// Declares the presentation surface ready without the WebView handshake. The native shell
+    /// has no JS bridge to post <c>ready</c>; without this every snapshot would queue in
+    /// <see cref="UpdateSnapshot"/> and the flyout would render nothing (decision 0015).
+    /// One-shot: a later <c>ready</c> action still resends (frontend reconnect contract).
+    /// </summary>
+    public void MarkReady() {
+        if (_isReady) {
+            return;
+        }
+
+        _isReady = true;
+        ResendCurrentSnapshot();
+    }
+
     public void SetPinned(bool pinned) {
         HandlePin(pinned);
     }

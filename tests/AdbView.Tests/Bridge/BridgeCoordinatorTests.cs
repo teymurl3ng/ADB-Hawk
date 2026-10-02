@@ -74,6 +74,44 @@ public sealed class BridgeCoordinatorTests {
     }
 
     [Fact]
+    public void MarkReadyStartsSnapshotFlowWithoutHandshake() {
+        var host = new TestBridgeHost();
+        var coordinator = new BridgeCoordinator(host);
+
+        // Native shell path: no ready action arrives; snapshots queue until MarkReady.
+        coordinator.UpdateSnapshot(StateEngine.CreateDefaultSnapshot(isPinned: false, revision: 7));
+        Assert.Empty(host.SentSnapshots);
+
+        coordinator.MarkReady();
+
+        Assert.True(coordinator.IsReady);
+        Assert.Single(host.SentSnapshots);
+        Assert.Equal(7, host.SentSnapshots[0].Snapshot.Revision);
+    }
+
+    [Fact]
+    public void MarkReadyTwiceSendsOnce() {
+        var host = new TestBridgeHost();
+        var coordinator = new BridgeCoordinator(host);
+
+        coordinator.MarkReady();
+        coordinator.MarkReady();
+
+        Assert.Single(host.SentSnapshots);
+    }
+
+    [Fact]
+    public void MarkReadyThenReadyActionStillResends() {
+        var host = new TestBridgeHost();
+        var coordinator = new BridgeCoordinator(host);
+
+        coordinator.MarkReady();
+        coordinator.HandleAction(new ReadyAction { Protocol = BridgeProtocol.Version });
+
+        Assert.Equal(2, host.SentSnapshots.Count);
+    }
+
+    [Fact]
     public void PinWhenUnpinnedUpdatesSnapshotAndNotifiesHost() {
         var host = new TestBridgeHost();
         BridgeCoordinator coordinator = null!;

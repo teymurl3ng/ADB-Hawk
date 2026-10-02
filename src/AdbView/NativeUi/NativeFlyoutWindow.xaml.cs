@@ -95,7 +95,22 @@ public sealed partial class NativeFlyoutWindow : Window {
         }
     }
 
-    internal double DpiScale => _source is null ? 1.0 : _source.CompositionTarget!.TransformToDevice.M11;
+    /// <summary>
+    /// Placement scale for physical-pixel bounds. Before first Show the HwndSource does not
+    /// exist yet, and a 1.0 fallback sizes DIP numbers as physical pixels — undersizing the
+    /// window on scaled displays. Fall back to the system DPI from a screen DC instead.
+    /// </summary>
+    internal double DpiScale {
+        get {
+            var source = _source;
+            if (source is not null) {
+                return source.CompositionTarget!.TransformToDevice.M11;
+            }
+
+            using var screen = System.Drawing.Graphics.FromHwnd(IntPtr.Zero);
+            return screen.DpiX / 96.0;
+        }
+    }
 
     internal IntPtr Handle => _source?.Handle ?? IntPtr.Zero;
 

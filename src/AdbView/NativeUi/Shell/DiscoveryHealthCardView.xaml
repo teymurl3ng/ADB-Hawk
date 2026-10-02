@@ -53,7 +53,7 @@
 
             <!-- Evidence findings -->
             <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,10,0,0"
-                          Visibility="{Binding HasEvidence, Converter={StaticResource BoolToVisibility}}">
+                          Visibility="{Binding HasEvidence, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
@@ -69,11 +69,11 @@
             <!-- Momentary post-action outcome (0008 amendment) -->
             <TextBlock Text="{Binding ResultLine}" FontSize="12"
                        Foreground="{DynamicResource Win.TextSecondary}" Margin="0,8,0,0" TextWrapping="Wrap"
-                       Visibility="{Binding HasResultLine, Converter={StaticResource BoolToVisibility}}"/>
+                       Visibility="{Binding HasResultLine, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"/>
 
             <!-- Repair actions: labels from the backend; ids forwarded opaquely -->
             <ItemsControl ItemsSource="{Binding Repairs}" Margin="0,12,0,0"
-                          Visibility="{Binding HasRepairs, Converter={StaticResource BoolToVisibility}}">
+                          Visibility="{Binding HasRepairs, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate>
                         <WrapPanel Orientation="Horizontal"/>

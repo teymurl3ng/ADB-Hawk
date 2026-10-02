@@ -80,15 +80,19 @@
                     </Button>
                 </Border>
 
-                <!-- Pairing QR session card -->
-                <cards:PairingQrCardView Margin="0,12,0,0"
-                                         Visibility="{Binding ShowPairingQr, Converter={StaticResource BoolToVisibility}}"
-                                         DataContext="{Binding PairingQr}"/>
+                <!-- Pairing QR session card. The wrapper owns visibility so the binding never
+                     detaches when the card's own DataContext goes null (a null DataContext would
+                     re-evaluate the Visibility binding to UnsetValue, i.e. visible). -->
+                <Border Margin="0,12,0,0"
+                        Visibility="{Binding ShowPairingQr, Converter={StaticResource BoolToVisibility}}">
+                    <cards:PairingQrCardView DataContext="{Binding PairingQr}"/>
+                </Border>
 
                 <!-- Pairing operation card (phase-morphing; offer/code/progress/success/failure) -->
-                <shell:PairingCardView Margin="0,12,0,0"
-                                       Visibility="{Binding ShowPairingCard, Converter={StaticResource BoolToVisibility}}"
-                                       DataContext="{Binding PairingCard}"/>
+                <Border Margin="0,12,0,0"
+                        Visibility="{Binding ShowPairingCard, Converter={StaticResource BoolToVisibility}}">
+                    <shell:PairingCardView DataContext="{Binding PairingCard}"/>
+                </Border>
 
                 <!-- Device cards -->
                 <ItemsControl ItemsSource="{Binding Devices}" Margin="0,0,0,0">
@@ -100,9 +104,10 @@
                 </ItemsControl>
 
                 <!-- Discovery-health warning card (decision 0008): after devices, per DESIGN order -->
-                <shell:DiscoveryHealthCardView Margin="0,12,0,0"
-                                               Visibility="{Binding ShowDiscoveryHealth, Converter={StaticResource BoolToVisibility}}"
-                                               DataContext="{Binding DiscoveryHealth}"/>
+                <Border Margin="0,12,0,0"
+                        Visibility="{Binding ShowDiscoveryHealth, Converter={StaticResource BoolToVisibility}}">
+                    <shell:DiscoveryHealthCardView DataContext="{Binding DiscoveryHealth}"/>
+                </Border>
             </StackPanel>
         </ScrollViewer>
     </Grid>

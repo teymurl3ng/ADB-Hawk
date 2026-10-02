@@ -3,6 +3,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              >
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/NativeUi/Themes/FluentDark.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <!-- StaticResource inside card XAML resolves before the card is attached to the
+                 shell tree, so the converter (and theme tokens) must be merged locally. -->
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+        </ResourceDictionary>
+    </UserControl.Resources>
     <!-- Device card: collapsed header+footer always visible; details expand in place (decision 0014-consistency). -->
     <Border CornerRadius="8" Background="{DynamicResource Win.Card}"
             BorderBrush="{DynamicResource Win.CardBorder}" BorderThickness="1"
