@@ -625,8 +625,17 @@ internal static class StateReducer {
         GraceCommand pairingWait = GraceCommand.None;
         var nextPairingState = deviceState;
 
-        if (pairing is not null && !bindings.ContainsKey(pairing.OfferId)) {
-            // Offer withdrawal clears the operation (ENGINEERING.md §6.8).
+        // Decision 0014: Android closes the _adb-tls-pairing._tcp advertisement the moment
+        // pairing completes — withdrawal during an in-flight (Pairing) or successful
+        // (PairedWaitingForDevice) operation is expected phone behavior and must NOT clear the
+        // operation, the preserved pairing host, or the wait (host:connect still needs to fire
+        // from the preserved host; the in-flight host:pair result lands within its 30 s bound
+        // and self-cleans the phase). Pre-success withdrawal while merely AWAITING the code
+        // (phone left pairing mode, stale offer) cancels as before.
+        bool operationActive = pairing is { Phase: PairingPhase.Pairing or PairingPhase.PairedWaitingForDevice };
+        if (pairing is not null
+            && !operationActive
+            && !bindings.ContainsKey(pairing.OfferId)) {
             pairing = null;
             nextPairingState = nextPairingState with {
                 ActivePairingWaitGeneration = 0,

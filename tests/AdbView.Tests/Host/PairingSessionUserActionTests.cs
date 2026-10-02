@@ -169,7 +169,11 @@ public sealed class PairingSessionUserActionTests {
     }
 
     [Fact]
-    public async Task CancelIfOfferWithdrawn_DuringInFlightPair_ReleasesAndDropsLateSuccess() {
+    public async Task CancelIfOfferWithdrawn_DuringInFlightPair_Tolerated_LateSuccessLands() {
+        // Decision 0014 reverses the old pin: Android closes the pairing advertisement the
+        // moment pairing completes, so a withdrawal during the in-flight host:pair is EXPECTED.
+        // The coordinator must survive it — attempt 3 in the live session lost its SUCCESS
+        // result to exactly this cancel.
         var fake = new FakePairClient();
         var coordinator = new PairingCoordinator(pairClient: fake);
         var binding = new PairingOfferBinding("o1", "192.168.1.2", 37101, null, "Phone");
@@ -185,13 +189,40 @@ public sealed class PairingSessionUserActionTests {
 
         bindings.Remove("o1");
         session.CancelIfOfferWithdrawn();
-        Assert.Equal(DomainPhase.Cleared, coordinator.CurrentPhase);
 
-        // Late success must not resurrect the cleared operation.
+        // The coordinator survived: phase still Pairing, offer id retained.
+        Assert.Equal(DomainPhase.Pairing, coordinator.CurrentPhase);
+        Assert.Equal("o1", coordinator.ActiveOfferId);
+
+        // The in-flight result lands and shows (no longer dropped as stale).
         fake.Gate.SetResult(new HostPairResult(true, PairingFailureKind.None, null));
         await submit;
-        Assert.Equal(DomainPhase.Cleared, coordinator.CurrentPhase);
-        Assert.DoesNotContain(events, e => e is PairingProgressedEvent p
+        Assert.Equal(DomainPhase.PairedWaitingForDevice, coordinator.CurrentPhase);
+        Assert.Contains(events, e => e is PairingProgressedEvent p
             && p.Phase == DomainPhase.PairedWaitingForDevice);
+    }
+
+    [Fact]
+    public async Task CancelIfOfferWithdrawn_WhileWaitingForDevice_Tolerated() {
+        // Post-success withdrawal (Android closed the pairing advertisement) must not free the
+        // coordinator — the post-pair connect still needs the preserved pairing host.
+        var fake = new FakePairClient();
+        var coordinator = new PairingCoordinator(pairClient: fake);
+        var binding = new PairingOfferBinding("o1", "192.168.1.2", 37101, null, "Phone");
+        var events = new List<AdbViewEvent>();
+        var bindings = new Dictionary<string, PairingOfferBinding> { ["o1"] = binding };
+        using var session = new PairingSession(events.Add, id => bindings.GetValueOrDefault(id), coordinator);
+        session.Start("o1");
+        var submit = coordinator.SubmitAsync("o1", "123456");
+        fake.Gate.SetResult(new HostPairResult(true, PairingFailureKind.None, null));
+        await submit;
+        events.Clear();
+
+        bindings.Remove("o1");
+        session.CancelIfOfferWithdrawn();
+
+        Assert.Equal(DomainPhase.PairedWaitingForDevice, coordinator.CurrentPhase);
+        Assert.Equal("o1", coordinator.ActiveOfferId);
+        Assert.Empty(events);
     }
 }

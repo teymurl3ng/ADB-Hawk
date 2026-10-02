@@ -381,3 +381,15 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Live: growth animates when devices connect / card expands; open slides out; close slides into tray on light-dismiss/Esc/toggle | **NOT EXERCISED** | Owner feel-validation; rollback = revert to 0012 instant steps |
 | Reduced motion (OS client-area animation off) reduces all animation to instant | **NOT EXERCISED** | `SystemTheme.ReadClientAreaAnimation` wired through ShellAppearance |
 | WM_DPICHANGED mid-animation | **NOT EXERCISED** | Cancels animation, adopts OS bounds |
+
+## Pairing wait survival (2026-10-02, decision 0014)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Withdrawal while PairedWaitingForDevice → card/host/wait preserved | **AUTOMATED PASS** | `PairingWithdrawalTests` |
+| Withdrawal during in-flight Pairing → card/host preserved (attempt-3 shape) | **AUTOMATED PASS** | In-flight result lands; coordinator survives; self-cleans after result |
+| Withdrawal while AwaitingCode → still cancels | **AUTOMATED PASS** | Pre-success behavior unchanged |
+| Withdrawal → connect row appears → ActivePairingHost + Connect row valid for post-pair connect | **AUTOMATED PASS** | `WithdrawalWhileWaiting_ThenConnectRowAppears…` |
+| Live: QR pair on the A06 → `Post-pair connect: connecting to 192.168.0.53:45533` → card appears | **NOT EXERCISED** | The fix's live acceptance; the phone is still advertising this endpoint |

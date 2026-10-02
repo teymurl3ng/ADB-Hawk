@@ -102,9 +102,18 @@ internal sealed class PairingSession : IDisposable {
     /// (the offer was withdrawn from discovery). The reducer already clears the
     /// snapshot card on withdrawal; without this the coordinator stays parked on
     /// the dead offer and every later pairStart is rejected (ENGINEERING.md §6.8).
+    /// Decision 0014: withdrawal AFTER pairing success is expected phone behavior
+    /// (Android closes the pairing advertisement on completion) — the coordinator
+    /// must survive it so the in-flight result lands and the post-pair connect
+    /// can fire from the preserved host.
     /// </summary>
     public void CancelIfOfferWithdrawn() {
         if (Volatile.Read(ref _disposed) != 0) {
+            return;
+        }
+
+        if (_coordinator.CurrentPhase is DomainPhase.Pairing or DomainPhase.PairedWaitingForDevice) {
+            Log.Information("pairing offer withdrawn while pairing/waiting; operation kept in flight");
             return;
         }
 
