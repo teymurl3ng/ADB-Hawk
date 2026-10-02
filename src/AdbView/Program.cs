@@ -11,8 +11,11 @@ internal static class Program {
         using var host = new AppHost(
             System.Diagnostics.Process.GetCurrentProcess().SessionId,
             options.FixtureSuffix,
+            supervisorFactory: null,
+            bridgeHost: null,
             headless: false,
-            startupSilent: options.StartupSilent);
+            startupSilent: options.StartupSilent,
+            nativeUi: options.NativeUi);
         host.Run();
         return 0;
     }

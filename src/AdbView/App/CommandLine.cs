@@ -8,7 +8,8 @@ using System;
 internal sealed record LaunchOptions(
     bool StartupSilent,
     string FixtureSuffix,
-    bool HeadlessSelfTest);
+    bool HeadlessSelfTest,
+    bool NativeUi);
 
 internal static class CommandLine {
     public static LaunchOptions Parse(string[] args) {
@@ -17,6 +18,7 @@ internal static class CommandLine {
         bool startupSilent = false;
         string fixtureSuffix = "";
         bool headlessSelfTest = false;
+        bool nativeUi = false;
 
         foreach (string arg in args) {
             if (string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase)) {
@@ -29,11 +31,16 @@ internal static class CommandLine {
                 continue;
             }
 
+            if (string.Equals(arg, "--ui=native", StringComparison.OrdinalIgnoreCase)) {
+                nativeUi = true;
+                continue;
+            }
+
             if (arg.StartsWith("--test-fixture=", StringComparison.OrdinalIgnoreCase)) {
                 fixtureSuffix = string.Concat("?fixture=", arg.AsSpan("--test-fixture=".Length));
             }
         }
 
-        return new LaunchOptions(startupSilent, fixtureSuffix, headlessSelfTest);
+        return new LaunchOptions(startupSilent, fixtureSuffix, headlessSelfTest, nativeUi);
     }
 }

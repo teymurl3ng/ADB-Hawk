@@ -31,6 +31,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private FlyoutRevealAnimator? _presenter;
     private bool _animationsEnabled = true;
     private bool _animationsEverLogged;
+    private readonly bool _nativeUi;
+    private NativeUi.NativeFlyoutWindow? _nativeWindow;
+    private NativeUi.Shell.NativeShellViewModel? _shellViewModel;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly NotificationCoordinator? _notificationCoordinator;
     private readonly INotificationSink? _notificationSink;
@@ -120,9 +123,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         bool startupSilent = false,
         INetworkDiagnosticsSource? networkDiagnosticsSource = null,
         IElevatedProcessLauncher? processLauncher = null,
-        IServiceStateSource? serviceStateSource = null) {
+        IServiceStateSource? serviceStateSource = null,
+        bool nativeUi = false) {
         _fixtureSuffix = fixtureSuffix;
         _headless = headless;
+        _nativeUi = nativeUi;
         _isFixtureMode = !string.IsNullOrEmpty(fixtureSuffix);
         _startupSilent = startupSilent;
         // Decision 0008: real diagnostics only for headed production; fixtures/tests stay hermetic.
@@ -172,7 +177,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _trayIcon = new TrayIcon(_userPreferences, new StartupRegistration());
             _trayIcon.OnToggleRequested += (s, e) => OnToggleFlyout();
             _trayIcon.OnOpenRequested += (s, e) => ShowFlyoutOnly();
-            _trayIcon.OnExitRequested += (s, e) => Application.Exit();
+            _trayIcon.OnExitRequested += (s, e) => {
+                if (_nativeUi) {
+                    // Dispatcher.Run keeps the STA loop alive; Application.Exit would not.
+                    _nativeWindow?.Dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Normal);
+                    return;
+                }
+
+                Application.Exit();
+            };
             _trayIcon.PreferencesChanged += OnTrayPreferencesChanged;
 
             _powerAndSession = new PowerAndSession();
@@ -181,8 +194,18 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _powerAndSession.Resume += OnPowerResume;
             _powerAndSession.SessionSwitch += OnSessionSwitch;
 
-            _flyoutWindow = new FlyoutWindow();
-            _flyoutWindow.Deactivate += OnFlyoutDeactivate;
+            if (_nativeUi) {
+                // Decision 0015 Phase I1: native WPF shell. Tray stays WinForms interop.
+                _nativeWindow = new NativeUi.NativeFlyoutWindow();
+                _nativeWindow.Deactivated95 += OnFlyoutDeactivate;
+                _shellViewModel = (NativeUi.Shell.NativeShellViewModel)((NativeUi.Shell.ShellView)_nativeWindow.Content).DataContext;
+                _shellViewModel.StartQrRequested += () => _qrPairingSession?.Start();
+                _shellViewModel.PinChangeRequested += pinned => SetPinned(pinned);
+            }
+            else {
+                _flyoutWindow = new FlyoutWindow();
+                _flyoutWindow.Deactivate += OnFlyoutDeactivate;
+            }
         }
         else {
             _singleInstance = null;
@@ -256,10 +279,14 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 submitCode: (offerId, code) => _pairingSession.Submit(offerId, code));
 
             // Decision 0013: graceful presentation (mode-B growth + open/close slides).
+            // Native shell: DispatcherTimer tick + physical SetWindowPos on the WPF hwnd.
             _presenter = new FlyoutRevealAnimator(
-                new FormsTimerTickSource(),
+                _nativeUi ? new NativeUi.DispatcherTimerTickSource() : new FormsTimerTickSource(),
                 bounds => {
-                    if (_flyoutWindow is { IsDisposed: false } window) {
+                    if (_nativeUi) {
+                        _nativeWindow?.SetPhysicalBounds(bounds);
+                    }
+                    else if (_flyoutWindow is { IsDisposed: false } window) {
                         window.Bounds = bounds;
                     }
                 });
@@ -301,8 +328,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 runDiscoveryCheck: RunDiscoveryCheckAsync);
         }
 
-        if (!headless) {
+        if (!headless && !_nativeUi) {
             _webViewHost = new WebViewHost(_flyoutWindow!, _coordinator);
+        }
+
+        if (!headless) {
             _trayIcon?.Apply(initialSnapshot.Health.Tray, initialSnapshot.Health.TrayTooltip);
         }
 
@@ -346,6 +376,18 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void MarshalNotificationToUi(Action work) {
+        if (_nativeUi) {
+            // Native shell: notifications deliver on the WPF Dispatcher.
+            var dispatcher = _nativeWindow?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
+            if (!dispatcher.CheckAccess()) {
+                _ = dispatcher.BeginInvoke(work);
+                return;
+            }
+
+            work();
+            return;
+        }
+
         if (_flyoutWindow is null) {
             work();
             return;
@@ -374,6 +416,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     /// Balloon click: show-only. Never toggles a visible flyout closed; never deep-links.
     /// </summary>
     private void ShowFlyoutOnly() {
+        if (_nativeUi) {
+            if (TryMarshalToFlyoutUi(new Action(ShowFlyoutOnly))) {
+                return;
+            }
+
+            ShowNativeFlyout();
+            return;
+        }
+
         if (_flyoutWindow is null || _trayIcon is null) {
             return;
         }
@@ -492,6 +543,17 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         ThemeKind theme = ResolveEffectiveTheme();
         _lastAppliedTheme = theme;
         _lastAppliedTransparency = transparency;
+
+        if (_nativeUi) {
+            // Decision 0015 Phase I1: native shell boots on the WPF dispatcher. No WebView,
+            // no measurement priming — the window self-sizes from XAML layout.
+            _nativeWindow!.ApplyShellAppearance(theme, transparency);
+            _webViewReadyForShow = true;
+            Log.Information("AppHost.Run: native UI mode (dispatcher loop).");
+            System.Windows.Threading.Dispatcher.Run();
+            return;
+        }
+
         _flyoutWindow!.ApplyShellAppearance(theme, transparency);
 
         // Force handle creation so OnHandleCreated/ApplyBackdrop runs before WebView2 init
@@ -527,6 +589,21 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void OnToggleFlyout() {
+        if (_nativeUi) {
+            if (TryMarshalToFlyoutUi(new Action(OnToggleFlyout))) {
+                return;
+            }
+
+            if (_isVisible) {
+                HideNativeFlyout();
+            }
+            else {
+                ShowNativeFlyout();
+            }
+
+            return;
+        }
+
         if (_flyoutWindow == null) return;
         if (TryMarshalToFlyoutUi(new Action(OnToggleFlyout))) {
             return;
@@ -538,6 +615,126 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         else {
             ShowFlyout();
         }
+    }
+
+    private void ShowNativeFlyout() {
+        var window = _nativeWindow;
+        if (window is null || _trayIcon is null) {
+            return;
+        }
+
+        RefreshAnimationPreference();
+
+        var placement = _trayIcon.GetPlacementInfo();
+        var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
+            ? Screen.FromRectangle(placement.Rect)
+            : TrayIcon.GetTaskbarScreen();
+
+        var physicalBounds = FlyoutPlacement.CalculatePlacement(
+            FlyoutPlacement.ResolveAnchor(
+                placement.Rect,
+                monitor.WorkingArea,
+                monitor.Bounds,
+                placement.Edge,
+                window.DpiScale),
+            placement.Edge,
+            monitor.WorkingArea,
+            window.DpiScale,
+            new Size(376, _currentEffectiveHeight));
+
+        _suppressLightDismiss = true;
+        _lightDismissArmed = false;
+        int showGen = ++_showGeneration;
+
+        _presenter?.Cancel();
+        bool reducedMotion = !_animationsEnabled;
+        window.SetPhysicalBounds(reducedMotion
+            ? physicalBounds
+            : SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea, intoTray: true));
+        window.TopMost = window.IsPinned;
+        window.Show();
+
+        if (!window.IsPinned) {
+            Windows.Win32.PInvoke.SetForegroundWindow(new Windows.Win32.Foundation.HWND(window.Handle));
+        }
+
+        _isVisible = window.ShellVisible;
+
+        if (reducedMotion) {
+            _suppressLightDismiss = false;
+        }
+
+        if (!reducedMotion) {
+            _presenter?.AnimateBounds(
+                window.GetPhysicalBounds(),
+                physicalBounds,
+                FlyoutRevealAnimator.OpenDuration,
+                completed: () => {
+                    if (showGen != _showGeneration) {
+                        return;
+                    }
+
+                    _suppressLightDismiss = false;
+                    _lightDismissArmed = true;
+                    Log.Information("ShowNativeFlyout: open slide completed.");
+                });
+        }
+        else {
+            _lightDismissArmed = true;
+        }
+
+        NotifyMetadataPresentation();
+        MaybeStartDiscoveryCheck();
+
+        if (FlyoutInteractionPolicy.ShouldClearPendingInitialShowOnManualShow(_pendingInitialShow, _initialShowCompleted)) {
+            _pendingInitialShow = false;
+            _initialShowCompleted = true;
+        }
+    }
+
+    private void HideNativeFlyout() {
+        var window = _nativeWindow;
+        if (window is null) {
+            return;
+        }
+
+        _showGeneration++;
+        _lightDismissArmed = false;
+        _isVisible = false;
+        NotifyMetadataPresentation();
+
+        if (!_animationsEnabled) {
+            _presenter?.Cancel();
+            window.Hide();
+            return;
+        }
+
+        if (_trayIcon is null) {
+            window.Hide();
+            return;
+        }
+
+        var placement = _trayIcon.GetPlacementInfo();
+        var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
+            ? Screen.FromRectangle(placement.Rect)
+            : TrayIcon.GetTaskbarScreen();
+        int closeGen = _showGeneration;
+        _closeAnimating = true;
+
+        _presenter?.Cancel();
+        _presenter?.AnimateBounds(
+            window.GetPhysicalBounds(),
+            SlideTarget(window.GetPhysicalBounds(), placement.Edge, monitor.WorkingArea, intoTray: true),
+            FlyoutRevealAnimator.CloseDuration,
+            completed: () => {
+                _closeAnimating = false;
+                if (closeGen != _showGeneration) {
+                    return; // a show superseded this close mid-slide
+                }
+
+                window.Hide();
+                Log.Information("HideNativeFlyout: close slide completed.");
+            });
     }
 
     private void ShowFlyout() {
@@ -809,6 +1006,17 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     /// exists so work runs once the loop starts; otherwise skip.
     /// </summary>
     private bool TryMarshalToFlyoutUi(Delegate method, params object[] args) {
+        if (_nativeUi) {
+            var dispatcher = _nativeWindow?.Dispatcher;
+            if (dispatcher is null || dispatcher.CheckAccess()) {
+                method.DynamicInvoke(args);
+                return false; // already on the shell thread; caller continues inline
+            }
+
+            _ = dispatcher.BeginInvoke(method, args);
+            return true;
+        }
+
         if (_flyoutWindow == null || !_flyoutWindow.InvokeRequired) {
             return false;
         }
@@ -832,12 +1040,24 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             return;
         }
 
+        if (_nativeUi) {
+            // Native shell binds the AppSnapshot record directly (no JSON hop).
+            _shellViewModel?.ApplySnapshot(envelope.Snapshot);
+            return;
+        }
+
         var json = BridgeSerializer.SerializeSnapshotEnvelope(envelope);
         _webViewHost?.PostWebMessageAsJson(json);
     }
 
     public void SetPinned(bool isPinned) {
         if (TryMarshalToFlyoutUi(new Action<bool>(SetPinned), isPinned)) {
+            return;
+        }
+
+        if (_nativeUi && _nativeWindow is not null) {
+            _nativeWindow.IsPinned = isPinned;
+            Log.Information("AppHost.SetPinned: native IsPinned={IsPinned}", isPinned);
             return;
         }
 
@@ -852,6 +1072,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
     public void HideFlyout() {
         if (TryMarshalToFlyoutUi(new Action(HideFlyout))) {
+            return;
+        }
+
+        if (_nativeUi) {
+            HideNativeFlyout();
             return;
         }
 
@@ -920,6 +1145,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         long seq = ++_contentSizeSeq;
+
+        // Decision 0015 Phase I1: native shell self-sizes — no report-driven sizing.
+        if (_nativeUi) {
+            return;
+        }
+
         _lastReportedContentHeight = clampedEffectiveHeight;
 
         bool visible = _isVisible && _flyoutWindow is { Visible: true };
@@ -1204,7 +1435,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void OnFlyoutDeactivate(object? sender, EventArgs e) {
-        bool pinned = _flyoutWindow?.IsPinned ?? false;
+        bool pinned = _nativeUi
+            ? _nativeWindow?.IsPinned ?? false
+            : _flyoutWindow?.IsPinned ?? false;
         if (!FlyoutInteractionPolicy.ShouldHonorLightDismiss(_suppressLightDismiss, _lightDismissArmed, pinned)) {
             Log.Information(
                 "OnFlyoutDeactivate ignored: suppress={Suppress} armed={Armed} pinned={Pinned}",

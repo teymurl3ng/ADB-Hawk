@@ -1,0 +1,48 @@
+<UserControl x:Class="AdbView.NativeUi.Cards.PairingQrCardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             >
+    <!-- Pairing QR session card (decision 0010): backend renders the code; frontend displays only. -->
+    <Border CornerRadius="8" Background="{DynamicResource Win.Card}"
+            BorderBrush="{DynamicResource Win.CardBorder}" BorderThickness="1" Padding="14">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Grid Width="32" Height="32" VerticalAlignment="Center">
+                    <Border CornerRadius="6" Background="{DynamicResource Win.AccentSurface}"
+                            BorderBrush="{DynamicResource Win.AccentBorder}" BorderThickness="1"/>
+                    <Path Data="{StaticResource Icon.Waves}" Width="16" Height="16" Stretch="Uniform"
+                          Stroke="{DynamicResource Win.Accent}" StrokeThickness="2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                </Grid>
+                <StackPanel VerticalAlignment="Center" Margin="10,0,0,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="6" Height="6" Fill="{DynamicResource Win.Accent}" VerticalAlignment="Center"/>
+                        <TextBlock Text="Pair a device over Wi-Fi" FontSize="13.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Win.TextPrimary}" Margin="6,0,0,0"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+
+            <Border CornerRadius="6" Background="White" Padding="8" HorizontalAlignment="Center" Margin="0,12,0,0">
+                <Image Source="{Binding QrImageSource}" Width="204" Height="204" Stretch="Fill"/>
+            </Border>
+
+            <StackPanel Margin="0,12,0,0">
+                <TextBlock Text="{Binding InstructionLine1}" FontSize="12" Foreground="{DynamicResource Win.TextSecondary}"
+                           TextWrapping="Wrap" LineHeight="18"/>
+                <TextBlock Text="{Binding InstructionLine2}" FontSize="12" Foreground="{DynamicResource Win.TextSecondary}"
+                           TextWrapping="Wrap" LineHeight="18" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <Button HorizontalAlignment="Right" Margin="0,12,0,0" Cursor="Hand" FocusVisualStyle="{x:Null}"
+                    Command="{Binding CancelCommand}">
+                <Border CornerRadius="4" Background="{DynamicResource Win.BtnHover}"
+                        BorderBrush="{DynamicResource Win.BorderSubtle}" BorderThickness="1" Padding="10,4">
+                    <TextBlock Text="{Binding CancelLabel}" FontSize="12" FontWeight="Medium"
+                               Foreground="{DynamicResource Win.TextPrimary}"/>
+                </Border>
+            </Button>
+        </StackPanel>
+    </Border>
+</UserControl>
