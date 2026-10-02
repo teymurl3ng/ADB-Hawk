@@ -1,0 +1,124 @@
+<UserControl x:Class="AdbView.NativeUi.Shell.DiscoveryHealthCardView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/NativeUi/Themes/FluentDark.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+            <Style x:Key="QuietButton" TargetType="Button">
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+            </Style>
+            <Style x:Key="ChipButton" TargetType="Button">
+                <Setter Property="Cursor" Value="Hand"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="BorderThickness" Value="0"/>
+                <Style.Triggers>
+                    <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                        <Setter Property="IsEnabled" Value="False"/>
+                    </DataTrigger>
+                </Style.Triggers>
+            </Style>
+        </ResourceDictionary>
+    </UserControl.Resources>
+    <!-- Discovery-health surface (decision 0008 + amendment): all copy arrives rendered from the
+         backend (Vocabulary); the card displays it and forwards opaque repair ids only (R-07). -->
+    <Border CornerRadius="8" Background="{DynamicResource Win.Card}"
+            BorderBrush="{DynamicResource Win.CardBorder}" BorderThickness="1" Padding="14">
+        <StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Grid Width="32" Height="32" VerticalAlignment="Top">
+                    <Border CornerRadius="16" Background="{DynamicResource Win.AmberSurface}"
+                            BorderBrush="{DynamicResource Win.AmberBorder}" BorderThickness="1"/>
+                    <Path Data="{DynamicResource Icon.Signal}" Width="16" Height="16" Stretch="Uniform"
+                          Stroke="{DynamicResource Win.AmberText}" StrokeThickness="2"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                </Grid>
+                <StackPanel VerticalAlignment="Top" Margin="10,0,0,0">
+                    <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold"
+                               Foreground="{DynamicResource Win.TextPrimary}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Detail}" FontSize="12"
+                               Foreground="{DynamicResource Win.TextSecondary}" Margin="0,4,0,0"
+                               TextWrapping="Wrap"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Evidence findings -->
+            <ItemsControl ItemsSource="{Binding Evidence}" Margin="0,10,0,0"
+                          Visibility="{Binding HasEvidence, Converter={StaticResource BoolToVisibility}}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <TextBlock Text="•" FontSize="12" Foreground="{DynamicResource Win.TextMuted}"
+                                       VerticalAlignment="Top" Margin="0,0,6,0"/>
+                            <TextBlock Text="{Binding}" FontSize="12"
+                                       Foreground="{DynamicResource Win.TextSecondary}" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Momentary post-action outcome (0008 amendment) -->
+            <TextBlock Text="{Binding ResultLine}" FontSize="12"
+                       Foreground="{DynamicResource Win.TextSecondary}" Margin="0,8,0,0" TextWrapping="Wrap"
+                       Visibility="{Binding HasResultLine, Converter={StaticResource BoolToVisibility}}"/>
+
+            <!-- Repair actions: labels from the backend; ids forwarded opaquely -->
+            <ItemsControl ItemsSource="{Binding Repairs}" Margin="0,12,0,0"
+                          Visibility="{Binding HasRepairs, Converter={StaticResource BoolToVisibility}}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Button Style="{StaticResource ChipButton}" Margin="0,0,8,8"
+                                Command="{Binding DataContext.RepairCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                CommandParameter="{Binding}">
+                            <Border CornerRadius="6" Background="{DynamicResource Win.BtnHover}"
+                                    BorderBrush="{DynamicResource Win.BorderSubtle}" BorderThickness="1"
+                                    Height="26" Padding="10,0">
+                                <TextBlock VerticalAlignment="Center" FontSize="12" FontWeight="Medium"
+                                           Foreground="{DynamicResource Win.TextPrimary}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{Binding Label}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                                    <Setter Property="Text" Value="{Binding RunningLabel}"/>
+                                                    <Setter Property="Opacity" Value="0.4"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                           </TextBlock>
+                            </Border>
+                        </Button>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Check again, right-aligned; gated while a measurement or repair runs -->
+            <Grid Margin="0,4,0,0">
+                <Button HorizontalAlignment="Right" Style="{StaticResource ChipButton}"
+                        Command="{Binding CheckAgainCommand}">
+                    <Border CornerRadius="6" Background="{DynamicResource Win.BtnHover}"
+                            BorderBrush="{DynamicResource Win.BorderSubtle}" BorderThickness="1"
+                            Height="26" Padding="10,0">
+                        <TextBlock Text="{Binding ActionLabel}" FontSize="12" FontWeight="Medium"
+                                   Foreground="{DynamicResource Win.TextPrimary}" VerticalAlignment="Center"/>
+                    </Border>
+                </Button>
+            </Grid>
+        </StackPanel>
+    </Border>
+</UserControl>

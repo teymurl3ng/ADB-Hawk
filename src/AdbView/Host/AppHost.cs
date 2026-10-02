@@ -212,7 +212,28 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 _nativeWindow.Deactivated95 += OnFlyoutDeactivate;
                 _shellViewModel = (NativeUi.Shell.NativeShellViewModel)((NativeUi.Shell.ShellView)_nativeWindow.Content).DataContext;
                 _shellViewModel.StartQrRequested += () => _qrPairingSession?.Start();
+                _shellViewModel.QrCancelRequested += () => _qrPairingSession?.Cancel();
                 _shellViewModel.PinChangeRequested += pinned => SetPinned(pinned);
+                // Native surface forwards the exact action verbs the bridge contract defines
+                // (WebActions.cs); the same coordinators serve both UIs.
+                _shellViewModel.PairingActionRequested += (action, offerId, code) => {
+                    switch (action) {
+                        case "pairStart":
+                            _pairingSession?.Start(offerId);
+                            break;
+                        case "pairSubmit":
+                            _pairingSession?.Submit(offerId, code ?? string.Empty);
+                            break;
+                        case "pairCancel":
+                            _pairingSession?.Cancel(offerId);
+                            break;
+                        default:
+                            Log.Warning("NativeUi: unknown pairing action {Action}", action);
+                            break;
+                    }
+                };
+                _shellViewModel.DiscoveryRepairRequested += repairId => _ = RunDiscoveryRepairAsync(repairId);
+                _shellViewModel.DiscoveryRecheckRequested += () => _ = RunDiscoveryCheckAsync();
             }
             else {
                 _flyoutWindow = new FlyoutWindow();

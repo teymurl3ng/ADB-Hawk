@@ -32,7 +32,8 @@
             </StackPanel>
 
             <Border CornerRadius="6" Background="White" Padding="8" HorizontalAlignment="Center" Margin="0,12,0,0">
-                <Image Source="{Binding QrImageSource}" Width="204" Height="204" Stretch="Fill"/>
+                <!-- QrImage is a frozen DrawingImage rasterized from the snapshot's SVG (QrSvgRenderer). -->
+                <Image Source="{Binding QrImage}" Width="204" Height="204" Stretch="Uniform"/>
             </Border>
 
             <StackPanel Margin="0,12,0,0">

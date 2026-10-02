@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:cards="clr-namespace:AdbView.NativeUi.Cards"
+             xmlns:shell="clr-namespace:AdbView.NativeUi.Shell"
              mc:Ignorable="d"
              d:DesignHeight="500" d:DesignWidth="376">
     <UserControl.Resources>
@@ -80,8 +81,14 @@
                 </Border>
 
                 <!-- Pairing QR session card -->
-                <cards:PairingQrCardView Visibility="{Binding ShowPairingQr, Converter={StaticResource BoolToVisibility}}"
+                <cards:PairingQrCardView Margin="0,12,0,0"
+                                         Visibility="{Binding ShowPairingQr, Converter={StaticResource BoolToVisibility}}"
                                          DataContext="{Binding PairingQr}"/>
+
+                <!-- Pairing operation card (phase-morphing; offer/code/progress/success/failure) -->
+                <shell:PairingCardView Margin="0,12,0,0"
+                                       Visibility="{Binding ShowPairingCard, Converter={StaticResource BoolToVisibility}}"
+                                       DataContext="{Binding PairingCard}"/>
 
                 <!-- Device cards -->
                 <ItemsControl ItemsSource="{Binding Devices}" Margin="0,0,0,0">
@@ -91,6 +98,11 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <!-- Discovery-health warning card (decision 0008): after devices, per DESIGN order -->
+                <shell:DiscoveryHealthCardView Margin="0,12,0,0"
+                                               Visibility="{Binding ShowDiscoveryHealth, Converter={StaticResource BoolToVisibility}}"
+                                               DataContext="{Binding DiscoveryHealth}"/>
             </StackPanel>
         </ScrollViewer>
     </Grid>

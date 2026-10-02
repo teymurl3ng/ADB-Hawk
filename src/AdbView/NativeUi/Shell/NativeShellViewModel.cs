@@ -6,6 +6,7 @@ using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -15,21 +16,31 @@ using AdbView.State;
 /// <summary>
 /// Stable-shell view model (decision 0015): the layout never rebuilds — regions appear/disappear
 /// and device cards update in place. Snapshots arrive via <see cref="ApplySnapshot"/> (marshaled
-/// to the shell Dispatcher by AppHost).
+/// to the shell Dispatcher by AppHost). Pairing/discovery-health actions surface as events that
+/// AppHost routes to the existing backend coordinators.
 /// </summary>
 internal sealed class NativeShellViewModel : INotifyPropertyChanged {
     private readonly Dispatcher _dispatcher;
     private readonly DispatcherTimer _ageTicker;
+    private readonly ObservableCollection<DeviceCardViewModel> _devices;
     private string? _expandedDeviceId;
     private bool _pinned;
+    private PairingCardViewModel? _pairingCard;
+    private DiscoveryHealthCardViewModel? _discoveryHealth;
+    private PairingQrCardViewModel? _pairingQr;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action? StartQrRequested;
+    public event Action? QrCancelRequested;
     public event Action<bool>? PinChangeRequested;
+    public event Action<string, string, string?>? PairingActionRequested;
+    public event Action<string>? DiscoveryRepairRequested;
+    public event Action? DiscoveryRecheckRequested;
 
     public NativeShellViewModel() {
         _dispatcher = Dispatcher.CurrentDispatcher;
-        Devices = new ObservableCollection<DeviceCardViewModel>();
+        _devices = new ObservableCollection<DeviceCardViewModel>();
+        Devices = new ReadOnlyObservableCollection<DeviceCardViewModel>(_devices);
         _ageTicker = new DispatcherTimer(DispatcherPriority.Background) {
             Interval = TimeSpan.FromSeconds(1),
         };
@@ -40,7 +51,7 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
         TogglePinCommand = new RelayCommand(_ => PinChangeRequested?.Invoke(!Pinned));
     }
 
-    public ObservableCollection<DeviceCardViewModel> Devices { get; }
+    public ReadOnlyObservableCollection<DeviceCardViewModel> Devices { get; }
 
     public ICommand StartQrCommand { get; }
 
@@ -56,32 +67,159 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
             _pinned = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(PinIconGeometry));
+            OnPropertyChanged(nameof(PinForeground));
             OnPropertyChanged(nameof(PinToolTip));
         }
     }
 
     public Geometry PinIconGeometry => (Geometry)Application.Current.Resources[Pinned ? "Icon.Pin" : "Icon.PinOff"];
 
+    public SolidColorBrush PinForeground =>
+        (SolidColorBrush)Application.Current.Resources[Pinned ? "Win.Accent" : "Win.TextSecondary"];
+
     public string PinToolTip => Pinned ? "Unpin flyout" : "Pin flyout";
 
-    public bool HasDevices => Devices.Count > 0;
+    public bool HasDevices => _devices.Count > 0;
 
-    public bool ShowEmptyState => Devices.Count == 0;
+    public bool ShowEmptyState => _devices.Count == 0 && PairingCard is null && PairingQr is null;
 
-    /// <summary>I1 scope: the QR entry row is always visible when the flyout has content
-    /// (the QR session card itself lands in Phase I2).</summary>
-#pragma warning disable CA1822 // Constant in I1 by design; becomes instance-driven in I2.
-    public bool ShowQrEntry => true;
-#pragma warning restore CA1822
+    /// <summary>Entry row visible whenever no pairing operation or QR session is active
+    /// (decision 0010 "always when idle").</summary>
+    public bool ShowQrEntry => PairingCard is null && PairingQr is null;
+
+    public PairingCardViewModel? PairingCard {
+        get => _pairingCard;
+        private set {
+            _pairingCard = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowPairingCard));
+            OnPropertyChanged(nameof(ShowQrEntry));
+            OnPropertyChanged(nameof(ShowEmptyState));
+        }
+    }
+
+    public bool ShowPairingCard => PairingCard is not null;
+
+    public DiscoveryHealthCardViewModel? DiscoveryHealth {
+        get => _discoveryHealth;
+        private set {
+            _discoveryHealth = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowDiscoveryHealth));
+        }
+    }
+
+    public bool ShowDiscoveryHealth => DiscoveryHealth is not null;
+
+    public PairingQrCardViewModel? PairingQr {
+        get => _pairingQr;
+        private set {
+            _pairingQr = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowPairingQr));
+            OnPropertyChanged(nameof(ShowQrEntry));
+            OnPropertyChanged(nameof(ShowEmptyState));
+        }
+    }
+
+    public bool ShowPairingQr => PairingQr is not null;
 
     /// <summary>Applies an authoritative snapshot. Must be called on the shell Dispatcher.</summary>
     public void ApplySnapshot(AppSnapshot snapshot) {
         ApplyDevices(snapshot.Devices, snapshot.GeneratedAt);
+        ApplyPairing(snapshot);
+        ApplyPairingQr(snapshot.PairingQr);
+        ApplyDiscoveryHealth(snapshot.DiscoveryHealth);
     }
 
+    private void ApplyPairing(AppSnapshot snapshot) {
+        var op = snapshot.Pairing;
+
+        if (op is null) {
+            if (PairingCard is not null) {
+                PairingCard = null;
+            }
+
+            return;
+        }
+
+        var state = op.Phase switch {
+            State.PairingPhase.AwaitingCode => PairingCardState.CodeEntry,
+            State.PairingPhase.Pairing => PairingCardState.Progress,
+            State.PairingPhase.PairedWaitingForDevice => PairingCardState.Success,
+            State.PairingPhase.Failed => PairingCardState.Failure,
+            _ => PairingCardState.CodeEntry,
+        };
+
+        var offerName = !snapshot.PairingOffers.IsDefaultOrEmpty
+            ? snapshot.PairingOffers[0].DisplayName
+            : op.DisplayName;
+
+        if (PairingCard is null) {
+            PairingCard = new PairingCardViewModel(op.OfferId, offerName, state, op.Detail, RaisePairingAction);
+            return;
+        }
+
+        PairingCard.Update(state, op.Detail);
+    }
+
+    private void ApplyPairingQr(State.PairingQrView? qr) {
+        if (qr is null) {
+            if (PairingQr is not null) {
+                PairingQr = null;
+            }
+
+            return;
+        }
+
+        // Snapshots repeat while a session is live; rebuilding would re-rasterize the QR each
+        // time. Same payload => keep the current card (display-only, so equality is the payload).
+        if (PairingQr is not null && PairingQr.SourceSvgDataUri == qr.SvgDataUri) {
+            return;
+        }
+
+        var lines = qr.Instructions;
+        PairingQr = new PairingQrCardViewModel(
+            qr.SvgDataUri,
+            lines.Length > 0 ? lines[0] : string.Empty,
+            lines.Length > 1 ? lines[1] : string.Empty,
+            qr.CancelLabel,
+            () => QrCancelRequested?.Invoke());
+    }
+
+    private void ApplyDiscoveryHealth(DiscoveryHealthView? health) {
+        if (health is null) {
+            if (DiscoveryHealth is not null) {
+                DiscoveryHealth = null;
+            }
+
+            return;
+        }
+
+        var repairs = health.Repairs
+            .Select(static r => DiscoveryHealthCardViewModel.RepairButtonFactory(r.Id, r.Label, r.IsAdmin, r.IsRunning, r.RunningLabel))
+            .ToImmutableArray();
+        var vm = DiscoveryHealthCardViewModel.Create(
+            health.Title,
+            health.Detail,
+            health.Evidence,
+            health.ResultLine,
+            health.ActionLabel,
+            health.CanCheckAgain,
+            repairs,
+            RaiseRepairAction,
+            () => DiscoveryRecheckRequested?.Invoke());
+        if (DiscoveryHealth is null || !DiscoveryHealthCardViewModel.SameConfiguration(DiscoveryHealth, vm)) {
+            DiscoveryHealth = vm;
+        }
+    }
+
+    private void RaisePairingAction(string action, string offerId, string? code) =>
+        PairingActionRequested?.Invoke(action, offerId, code);
+
+    private void RaiseRepairAction(string repairId) => DiscoveryRepairRequested?.Invoke(repairId);
+
     private void ApplyDevices(ImmutableArray<DeviceView> devices, DateTimeOffset generatedAt) {
-        // Update in place by Id (stable identity): existing cards mutate, new ones append,
-        // vanished ones leave. No collection rebuild — the list never resets.
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var view in devices) {
@@ -92,19 +230,19 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
                 continue;
             }
 
-            var vm = new DeviceCardViewModel(
+            var vm = DeviceCardViewModel.Create(
                 view,
                 generatedAt,
                 _expandedDeviceId == view.Id,
                 OnDeviceExpandRequested);
-            Devices.Add(vm);
+            _devices.Add(vm);
         }
 
-        for (var i = Devices.Count - 1; i >= 0; i--) {
-            if (!seen.Contains(Devices[i].Id)) {
-                var removed = Devices[i];
+        for (var i = _devices.Count - 1; i >= 0; i--) {
+            if (!seen.Contains(_devices[i].Id)) {
+                var removed = _devices[i];
                 removed.PropertyChanged -= OnDeviceCardPropertyChanged;
-                Devices.RemoveAt(i);
+                _devices.RemoveAt(i);
                 if (_expandedDeviceId == removed.Id) {
                     _expandedDeviceId = null;
                 }
@@ -116,9 +254,8 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
     }
 
     private void OnDeviceExpandRequested(DeviceCardViewModel card) {
-        // Single-expand policy: expanding one card collapses the rest (latest click wins).
         _expandedDeviceId = card.IsExpanded ? card.Id : null;
-        foreach (var other in Devices) {
+        foreach (var other in _devices) {
             if (other.Id != card.Id && other.IsExpanded) {
                 other.Collapse();
             }
@@ -130,7 +267,7 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
     }
 
     private DeviceCardViewModel? FindById(string id) {
-        foreach (var vm in Devices) {
+        foreach (var vm in _devices) {
             if (vm.Id == id) {
                 return vm;
             }
@@ -141,7 +278,7 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
 
     private void RefreshAges() {
         var now = DateTimeOffset.Now;
-        foreach (var device in Devices) {
+        foreach (var device in _devices) {
             device.RefreshAge(now);
         }
     }
@@ -154,17 +291,17 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
 internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
     private readonly Action<DeviceCardViewModel> _notifyExpand;
     private string _copiedField = string.Empty;
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
     private string _metaTemplate = string.Empty;
     private DateTimeOffset _stateSince;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 
     public DeviceCardViewModel(
         DeviceView view,
         DateTimeOffset generatedAt,
         bool isExpanded,
         Action<DeviceCardViewModel> notifyExpand) {
+        Id = view.Id;
         _notifyExpand = notifyExpand;
         IsExpanded = isExpanded;
         ApplyView(view, generatedAt);
@@ -177,7 +314,7 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
             _ => !string.IsNullOrEmpty(Serial));
     }
 
-    public string Id { get; } = string.Empty;
+    public string Id { get; }
 
     public string DisplayName { get; private set; } = string.Empty;
 
@@ -209,6 +346,33 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
 
     public ICommand CopySerialCommand { get; }
 
+    public static DeviceCardViewModel Create(
+        DeviceView view,
+        DateTimeOffset generatedAt,
+        bool isExpanded,
+        Action<DeviceCardViewModel> notifyExpand) {
+        return new DeviceCardViewModel(view, generatedAt, isExpanded, notifyExpand);
+    }
+
+    public void UpdateFrom(DeviceView view, DateTimeOffset generatedAt) => ApplyView(view, generatedAt);
+
+    private void ApplyView(DeviceView view, DateTimeOffset generatedAt) {
+        DisplayName = view.DisplayName;
+        _metaTemplate = view.MetaTemplate;
+        _stateSince = view.StateSince;
+        State = view.State;
+        Severity = view.Severity;
+        Transport = view.Transport;
+        TransportLabel = view.TransportLabel;
+        BatteryPercent = view.BatteryPercent;
+        Model = view.Detail.ExactModel;
+        AndroidVersion = view.Detail.AndroidVersion;
+        Address = view.Transport == TransportKind.WiFi ? view.Detail.Address : null;
+        Serial = view.Detail.Serial;
+        RefreshAge(generatedAt);
+        RaiseChanged();
+    }
+
     public void NotifyExpand() {
         IsExpanded = !IsExpanded;
         OnPropertyChanged(nameof(IsExpanded));
@@ -230,25 +394,6 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
         OnPropertyChanged(nameof(ChevronIconGeometry));
         OnPropertyChanged(nameof(ChevronToolTip));
         OnPropertyChanged(nameof(CardCursor));
-    }
-
-    public void UpdateFrom(DeviceView view, DateTimeOffset generatedAt) => ApplyView(view, generatedAt);
-
-    private void ApplyView(DeviceView view, DateTimeOffset generatedAt) {
-        DisplayName = view.DisplayName;
-        _metaTemplate = view.MetaTemplate;
-        _stateSince = view.StateSince;
-        State = view.State;
-        Severity = view.Severity;
-        Transport = view.Transport;
-        TransportLabel = view.TransportLabel;
-        BatteryPercent = view.BatteryPercent;
-        Model = view.Detail.ExactModel;
-        AndroidVersion = view.Detail.AndroidVersion;
-        Address = view.Transport == TransportKind.WiFi ? view.Detail.Address : null;
-        Serial = view.Detail.Serial;
-        RefreshAge(generatedAt);
-        RaiseChanged();
     }
 
     public void RefreshAge(DateTimeOffset now) => RefreshAge(_metaTemplate, _stateSince, now);
@@ -307,7 +452,9 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
 
     public bool HasBattery => BatteryPercent is not null;
 
-    public string BatteryText => BatteryPercent is null ? string.Empty : BatteryPercent.Value.ToString(CultureInfo.InvariantCulture) + "%";
+    public string BatteryText => BatteryPercent is null
+        ? string.Empty
+        : BatteryPercent.Value.ToString(CultureInfo.InvariantCulture) + "%";
 
     public bool ShowDetails => IsExpanded;
 
@@ -327,8 +474,11 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
     public bool HasSerial => !string.IsNullOrEmpty(Serial);
 
     public bool ShowAddressCopy => _copiedField != "address";
+
     public bool ShowSerialCopy => _copiedField != "serial";
+
     public bool ShowAddressCopied => _copiedField == "address";
+
     public bool ShowSerialCopied => _copiedField == "serial";
 
     private void Copy(string value) {

@@ -56,7 +56,11 @@ public sealed class BoundaryTests {
             // without weakening the rule against actual WinForms Control type usage.
             var scrubbedText = text.Replace("\"AdbView.Control.", "\"AdbView.IPC_CONTRACT.", StringComparison.Ordinal)
                 .Replace("string Label", "string FIELD_LABEL", StringComparison.Ordinal)
-                .Replace("Label =", "FIELD_LABEL =", StringComparison.Ordinal);
+                .Replace("Label =", "FIELD_LABEL =", StringComparison.Ordinal)
+                // Member access (.Label) reads our own contract records (DiscoveryRepairCardAction,
+                // CopyFieldView), never a WinForms control; type usage (new Label(), : Label) is
+                // untouched by this replace and still flagged.
+                .Replace(".Label", ".MEMBER_LABEL", StringComparison.Ordinal);
 
             foreach (Match match in pattern.Matches(scrubbedText)) {
                 violations.Add($"{Path.GetRelativePath(Root, file)}: WinForms type '{match.Value}' outside Host/");
@@ -91,6 +95,20 @@ public sealed class BoundaryTests {
 
         var scrubbedAllowed = textAllowed.Replace("string Label", "string FIELD_LABEL", StringComparison.Ordinal);
         var scrubbedRejected = textRejected.Replace("string Label", "string FIELD_LABEL", StringComparison.Ordinal);
+
+        var pattern = new Regex(@"\b(Label)\b");
+
+        Assert.Empty(pattern.Matches(scrubbedAllowed));
+        Assert.Single(pattern.Matches(scrubbedRejected));
+    }
+
+    [Fact]
+    public void BoundaryTestAllowsLabelMemberAccessButRejectsWinFormsLabelConstruction() {
+        var textAllowed = "var text = action.Label;";
+        var textRejected = "var control = new Label();";
+
+        var scrubbedAllowed = textAllowed.Replace(".Label", ".MEMBER_LABEL", StringComparison.Ordinal);
+        var scrubbedRejected = textRejected.Replace(".Label", ".MEMBER_LABEL", StringComparison.Ordinal);
 
         var pattern = new Regex(@"\b(Label)\b");
 
