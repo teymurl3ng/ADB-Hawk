@@ -30,7 +30,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly PostPairConnectCoordinator? _postPairConnect;
     private FlyoutRevealAnimator? _presenter;
     private bool _animationsEnabled = true;
-    private bool _lastAnimationsEnabledLogged;
+    private bool _animationsEverLogged;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly NotificationCoordinator? _notificationCoordinator;
     private readonly INotificationSink? _notificationSink;
@@ -543,6 +543,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private void ShowFlyout() {
         if (_flyoutWindow == null || _trayIcon == null) return;
 
+        // Decision 0013: re-read the OS animation preference at every open — the Win11
+        // "Animation effects" toggle does not raise a preference category we handle, so this
+        // is the reliable moment to pick up a flip (one probe per user-initiated open).
+        RefreshAnimationPreference();
+
         // Presentation height = latest measured natural content (clamped by caller / prior Apply).
         if (_lastReportedContentHeight > 0) {
             _currentEffectiveHeight = _lastReportedContentHeight;
@@ -656,6 +661,23 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             Log.Information("AppHost: pending initial show satisfied by manual show.");
         }
     }
+
+    /// <summary>Decision 0013: re-reads the OS client-area-animation preference; when it
+    /// changed, updates the native gate and posts a shell-appearance event so the web layer's
+    /// reduced-motion CSS follows. No timer — one probe per user-initiated open.</summary>
+    private void RefreshAnimationPreference() {
+        bool osAnimations = SystemTheme.ReadClientAreaAnimation();
+        if (osAnimations == _animationsEnabled) {
+            return;
+        }
+
+        Log.Information(
+            "Shell animations {State} (re-read at flyout open).",
+            osAnimations ? "ENABLED" : "DISABLED (OS reduced motion)");
+        _animationsEverLogged = true;
+        PostCurrentShellAppearance();
+    }
+
 
     /// <summary>Decision 0008: measure when the flyout opens while the health card is visible.</summary>
     private void MaybeStartDiscoveryCheck() {
@@ -1107,9 +1129,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e) {
-        if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color or UserPreferenceCategory.VisualStyle) {
-            PostCurrentShellAppearance();
-        }
+        // Decision 0013: any preference change re-evaluates shell appearance — the Win11
+        // "Animation effects" toggle proved not to arrive under the previously-handled
+        // categories, and the reducer dedupes no-op updates anyway.
+        PostCurrentShellAppearance();
     }
 
     private void ApplyNativeShellFromSnapshot(AppSnapshot snapshot) {
@@ -1118,14 +1141,18 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         // Decision 0013: OS reduced-motion turns every presentation animation into the 0012
-        // instant steps. Logged so "is it animating?" is a one-grep answer.
-        _animationsEnabled = !snapshot.Shell.ReducedMotion;
-        if (_animationsEnabled != _lastAnimationsEnabledLogged) {
-            _lastAnimationsEnabledLogged = _animationsEnabled;
+        // instant steps. Logged on first evaluation and on change — a session that STARTS
+        // disabled must log too (forensics 2026-10-02 #2: the change-only guard was silent
+        // in exactly the case it was built to diagnose).
+        bool animationsEnabled = !snapshot.Shell.ReducedMotion;
+        if (animationsEnabled != _animationsEnabled || !_animationsEverLogged) {
             Log.Information(
                 "Shell animations {State} (OS client-area animation preference).",
-                _animationsEnabled ? "ENABLED" : "DISABLED (OS reduced motion)");
+                animationsEnabled ? "ENABLED" : "DISABLED (OS reduced motion)");
+            _animationsEverLogged = true;
         }
+
+        _animationsEnabled = animationsEnabled;
 
         var theme = snapshot.Shell.Theme;
         // v1 always opaque; ForcedColors still disables any residual transparency path.
