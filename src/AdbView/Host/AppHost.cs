@@ -1121,11 +1121,19 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void PostCurrentShellAppearance() {
+        // Decision 0013 follow-up (forensics 2026-10-02 #3): the ctor-context probe of
+        // SPI_GETCLIENTAREAANIMATION returns OFF on this machine class while the OS value is
+        // verifiably ON (PowerShell probe: 4/4 TRUE; app ctor probe: DISABLED seconds later in
+        // the same session, then ENABLED at every flyout open). The startup post therefore
+        // ASSUMES animations on; RefreshAnimationPreference re-probes at every flyout open —
+        // which has been reliable in 6/6 sessions — and corrects the gate (and the web layer's
+        // reduced-motion snapshot flag) before any meaningful interaction. The web layer's
+        // @media (prefers-reduced-motion) CSS is independent of this value either way.
         _stateEngine?.Post(new ShellAppearanceChangedEvent(
             ResolveEffectiveTheme(),
             ShellMaterialPolicy.ResolveTransparencyEnabled(),
             SystemTheme.ReadForcedColors(),
-            SystemTheme.ReadClientAreaAnimation()));
+            false));
     }
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e) {
