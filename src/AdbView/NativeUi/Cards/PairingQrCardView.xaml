@@ -3,6 +3,13 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              >
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/NativeUi/Themes/FluentDark.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </UserControl.Resources>
     <!-- Pairing QR session card (decision 0010): backend renders the code; frontend displays only. -->
     <Border CornerRadius="8" Background="{DynamicResource Win.Card}"
             BorderBrush="{DynamicResource Win.CardBorder}" BorderThickness="1" Padding="14">
@@ -11,7 +18,7 @@
                 <Grid Width="32" Height="32" VerticalAlignment="Center">
                     <Border CornerRadius="6" Background="{DynamicResource Win.AccentSurface}"
                             BorderBrush="{DynamicResource Win.AccentBorder}" BorderThickness="1"/>
-                    <Path Data="{StaticResource Icon.Waves}" Width="16" Height="16" Stretch="Uniform"
+                    <Path Data="{DynamicResource Icon.Waves}" Width="16" Height="16" Stretch="Uniform"
                           Stroke="{DynamicResource Win.Accent}" StrokeThickness="2"
                           StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                 </Grid>

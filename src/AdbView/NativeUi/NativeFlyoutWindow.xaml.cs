@@ -46,6 +46,12 @@ public sealed partial class NativeFlyoutWindow : Window {
     public event EventHandler? Deactivated95;
 
     public NativeFlyoutWindow() {
+        // ShellView XAML resolves StaticResource icon/token lookups during InitializeComponent —
+        // the dark dictionary must be merged BEFORE the content tree parses.
+        Resources.MergedDictionaries.Add(new ResourceDictionary {
+            Source = new Uri("pack://application:,,,/NativeUi/Themes/FluentDark.xaml", UriKind.Absolute),
+        });
+
         Title = "ADB View";
         Width = 376;
         Height = 500;

@@ -196,6 +196,18 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
             if (_nativeUi) {
                 // Decision 0015 Phase I1: native WPF shell. Tray stays WinForms interop.
+                // The WPF Application object must exist before any card view-model reads
+                // Application.Current.Resources (theme tokens) — it is null otherwise, and a
+                // device-list render would NRE the dispatcher and kill the process silently.
+                if (System.Windows.Application.Current is null) {
+                    var app = new System.Windows.Application {
+                        ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown,
+                    };
+                    app.Resources.MergedDictionaries.Add(new System.Windows.ResourceDictionary {
+                        Source = new Uri("pack://application:,,,/NativeUi/Themes/FluentDark.xaml", UriKind.Absolute),
+                    });
+                }
+
                 _nativeWindow = new NativeUi.NativeFlyoutWindow();
                 _nativeWindow.Deactivated95 += OnFlyoutDeactivate;
                 _shellViewModel = (NativeUi.Shell.NativeShellViewModel)((NativeUi.Shell.ShellView)_nativeWindow.Content).DataContext;
@@ -546,10 +558,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         if (_nativeUi) {
             // Decision 0015 Phase I1: native shell boots on the WPF dispatcher. No WebView,
-            // no measurement priming — the window self-sizes from XAML layout.
+            // no measurement priming — the window self-sizes from XAML layout (full self-
+            // sizing + growth anchoring lands in Phase I3). I1 presents at the 500 epx
+            // placeholder so the initial show fires; device content updates in place.
             _nativeWindow!.ApplyShellAppearance(theme, transparency);
             _webViewReadyForShow = true;
             Log.Information("AppHost.Run: native UI mode (dispatcher loop).");
+            _currentEffectiveHeight = 500;
+            _lastAppliedHeight = 500;
+            TryCompletePendingInitialShow();
             System.Windows.Threading.Dispatcher.Run();
             return;
         }
@@ -738,6 +755,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void ShowFlyout() {
+        if (_nativeUi) {
+            ShowNativeFlyout();
+            return;
+        }
+
         if (_flyoutWindow == null || _trayIcon == null) return;
 
         // Decision 0013: re-read the OS animation preference at every open — the Win11
@@ -1007,10 +1029,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     /// </summary>
     private bool TryMarshalToFlyoutUi(Delegate method, params object[] args) {
         if (_nativeUi) {
+            // WinForms contract parity: return false = "caller proceeds inline". Only marshal
+            // when actually off the shell thread.
             var dispatcher = _nativeWindow?.Dispatcher;
             if (dispatcher is null || dispatcher.CheckAccess()) {
-                method.DynamicInvoke(args);
-                return false; // already on the shell thread; caller continues inline
+                return false;
             }
 
             _ = dispatcher.BeginInvoke(method, args);

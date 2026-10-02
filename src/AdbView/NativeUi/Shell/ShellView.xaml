@@ -6,6 +6,14 @@
              xmlns:cards="clr-namespace:AdbView.NativeUi.Cards"
              mc:Ignorable="d"
              d:DesignHeight="500" d:DesignWidth="376">
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/NativeUi/Themes/FluentDark.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+            <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+        </ResourceDictionary>
+    </UserControl.Resources>
     <!-- Stable shell (decision 0014-consistency): the layout never rebuilds — regions appear/disappear. -->
     <Grid>
         <Grid.RowDefinitions>
@@ -62,7 +70,7 @@
                     <Button Background="Transparent" BorderThickness="0" Cursor="Hand" FocusVisualStyle="{x:Null}"
                             Command="{Binding StartQrCommand}" HorizontalContentAlignment="Stretch">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Path Data="{StaticResource Icon.Waves}" Width="13" Height="13" Stretch="Uniform"
+                            <Path Data="{DynamicResource Icon.Waves}" Width="13" Height="13" Stretch="Uniform"
                                   Stroke="{DynamicResource Win.TextSecondary}" StrokeThickness="2"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Center"/>
                             <TextBlock Text="Pair a device over Wi-Fi" FontSize="12.5" FontWeight="Medium"
