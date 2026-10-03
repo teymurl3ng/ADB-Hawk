@@ -439,3 +439,25 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | No toast while the flyout is visible | **AUTOMATED PASS** | `N_SuppressedWhileTheFlyoutIsVisible` |
 | A suppressed notification consumes no episode latch or burst slot (the next transition still notifies) | **AUTOMATED PASS** | `O_SuppressionConsumesNoBookkeepingSoTheNextTransitionStillEmits` |
 | Live: unplug the phone while the flyout is open → no toast; close it and unplug → toast in ~0.5 s | **NOT EXERCISED** | Owner's device |
+
+## Status bubble (2026-10-04, decision 0020 — phases N1/N2)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Contract amendment applied (DESIGN §4/§30/§33 + regenerated authority hash) | **AUTOMATED PASS** | `DesignAuthorityHashMatches`; menu arrays updated in three places |
+| `StatusBubbleEnabled` preference defaults OFF and round-trips | **AUTOMATED PASS** | `StatusBubble_Defaults_Off_And_RoundTrips` |
+| Tray menu exposes the checkable "Status bubble" item | **AUTOMATED PASS** | `TrayContextMenuTests`, `BalloonNotificationSinkTests` |
+| Aggregate → colour/lifetime mapping (green/amber/blue permanent; red/blue transient; idle hidden) | **AUTOMATED PASS** | `StatusBubblePresenterTests` (11 cases) |
+| Transient states arm ONE 60 s expiry, retarget on a new state, are cancelled by a permanent one | **AUTOMATED PASS** | Same suite — includes a retargeting case and a "superseded wait must not hide" case |
+| "Just disconnected" episode shows red using the last connected detail | **AUTOMATED PASS** | The aggregate collapses to idle, so this state exists only in the presenter |
+| Window is created only when the preference is on; disposed on toggle-off and shutdown | **AUTOMATED PARTIAL** | Live: created with the preference on; the off path is code-verified only |
+| Window never activates: `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST` all present | **LIVE PASS** | Probed via `GetWindowLong(GWL_EXSTYLE)` on the running bubble |
+| Tiny size: exactly 22x22 DIP (frameless; a captioned window floors at 133x38) | **LIVE PASS** | Measured `GetWindowRect`; see research note addendum |
+| Position: bottom-right of the work area, 12 DIP margin, above the taskbar | **LIVE PASS** | Measured against the taskbar screen's working area at 125 % DPI |
+| Bubble colour follows the aggregate (green while connected) | **NOT EXERCISED** | Needs a visual look; the window is up but its fill was not eyeballed |
+| DWM corner rounding on the frameless bubble | **NOT EXERCISED** | "If appropriate" per docs; frameless may skip it — `SetWindowRgn` is the fallback; needs a look |
+| Hover shows device detail; click opens the flyout (phase N3) | **NOT IMPLEMENTED** | Next phase |
+| Bubble hides over a full-screen app / lock screen (phase N3) | **NOT IMPLEMENTED** | Next phase |
+| Live: unplug the phone → red for 60 s → bubble disappears | **NOT EXERCISED** | Owner's device; the presenter behaviour is unit-tested |

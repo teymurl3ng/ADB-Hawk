@@ -117,6 +117,17 @@ retrying.
 **Flicker.** Position and resize before showing, in one `SetWindowPos(..., SWP_SHOWWINDOW |
 SWP_NOACTIVATE)` call, and keep the HWND alive across hide/show instead of recreating it.
 
+**Measured on this machine — a CAPTIONED window has a shell-enforced minimum size.**
+`WindowStyle=SingleBorderWindow` (kept for DWM, the flyout's recipe) could not be made smaller
+than **133x38 DIP**: `SetWindowPos` with a 28x28 px rect was accepted for position but the size
+stayed at the minimum, stretching the 22 px capsule into a bar. `WindowStyle=None` (WS_POPUP) has
+no such floor and produced an exact **22x22 DIP** window. Consequence for this feature: the bubble
+must be frameless, which in turn puts DWM corner rounding (`ROUNDSMALL`) in doubt — the docs only
+promise rounding "if appropriate" and this repo already found frameless windows ignore some DWM
+attributes. Rounding must therefore be verified visually, with `SetWindowRgn` as the fallback
+shaper for a non-layered window. (Not documented by Microsoft: the minimum size is a shell/UxTheme
+behaviour, observed here rather than cited.)
+
 ## Alternatives considered
 
 | Option | Pros | Cons |

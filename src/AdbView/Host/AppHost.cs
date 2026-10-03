@@ -34,6 +34,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly bool _nativeUi;
     private NativeUi.NativeFlyoutWindow? _nativeWindow;
     private NativeUi.Shell.NativeShellViewModel? _shellViewModel;
+    private NativeUi.StatusBubbleWindow? _statusBubble;
+    private NativeUi.StatusBubblePresenter? _statusBubblePresenter;
     private readonly DeviceMetadataLifecycle? _metadataLifecycle;
     private readonly NotificationCoordinator? _notificationCoordinator;
     private readonly INotificationSink? _notificationSink;
@@ -365,6 +367,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             // No WebView handshake exists in native mode; declare readiness so snapshots
             // start flowing to the shell instead of queuing in UpdateSnapshot.
             _coordinator.MarkReady();
+
+            // Decision 0020: the status bubble is opt-in, so nothing is constructed until the
+            // preference says so.
+            if (_userPreferences?.StatusBubbleEnabled == true) {
+                EnsureStatusBubble();
+            }
         }
 
         if (_networkDiagnosticsSource is not null && _stateEngine is not null) {
@@ -547,6 +555,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         // Decision 0017: the reducer clears a fulfilled pairing wait but cannot release the
         // coordinator's single-operation slot — a parked slot rejects every later pairStart.
         _pairingSession?.ReconcileWithSnapshot(snapshot);
+        // Decision 0020: the bubble mirrors the tray aggregate, so it can never disagree with
+        // the tray icon. The tray's own tooltip is the bubble's status text.
+        _statusBubblePresenter?.Accept(snapshot.Health.Tray, snapshot.Health.TrayTooltip);
         if (_repairCoordinator is not null && _stateEngine is not null) {
             _repairCoordinator.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
             if (_lastSeenDiscoveryCard && snapshot.DiscoveryHealth is null) {
@@ -1427,9 +1438,115 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
     }
 
+    /// <summary>Decision 0020: creates the bubble on first use. Off by default, so an owner who
+    /// never enables the toggle pays nothing.</summary>
+    private void EnsureStatusBubble() {
+        if (_nativeUi == false || _statusBubble is not null) {
+            return;
+        }
+
+        try {
+            _statusBubblePresenter = new NativeUi.StatusBubblePresenter(
+                () => App.SystemClock.UtcNow,
+                static (span, ct) => Task.Delay(span, ct));
+            _statusBubble = new NativeUi.StatusBubbleWindow();
+            _statusBubble.ApplyTheme(_lastAppliedTheme);
+            _statusBubblePresenter.Changed += OnStatusBubbleChanged;
+
+            // Seed with the current truth so the toggle shows something immediately.
+            var current = _stateEngine?.CurrentSnapshot;
+            if (current is not null) {
+                _statusBubblePresenter.Accept(current.Health.Tray, current.Health.TrayTooltip);
+            }
+        }
+#pragma warning disable CA1031 // R-08: construction failure is logged; the toggle simply has no effect.
+        catch (Exception ex) {
+            Log.Warning(ex, "StatusBubble: construction failed; the bubble stays off");
+            DisposeStatusBubble();
+        }
+#pragma warning restore CA1031
+    }
+
+    private void DisposeStatusBubble() {
+        _statusBubblePresenter?.Dispose();
+        _statusBubblePresenter = null;
+
+        var window = _statusBubble;
+        _statusBubble = null;
+        if (window is null) {
+            return;
+        }
+
+        try {
+            window.Hide();
+        }
+        catch (Exception ex) when (ex is not ObjectDisposedException) {
+            Log.Warning(ex, "StatusBubble: hide on teardown failed");
+        }
+    }
+
+    private void OnStatusBubbleChanged(NativeUi.BubbleState? state) {
+        var window = _statusBubble;
+        if (window is null) {
+            return;
+        }
+
+        void Deliver() {
+            if (state is null) {
+                window.Apply(null);
+                return;
+            }
+
+            // Place in DIP *before* the first Show: the HWND does not exist until Show, so a
+            // SetWindowPos-style path would silently do nothing on the first appearance.
+            window.ApplyTheme(_lastAppliedTheme);
+            window.Apply(state);
+
+            // Show first (the HWND only exists then), then pin the exact physical bounds.
+            window.SetPhysicalBounds(ComputeStatusBubbleBounds(window));
+        }
+
+        if (window.Dispatcher.CheckAccess()) {
+            Deliver();
+        }
+        else {
+            _ = window.Dispatcher.BeginInvoke((Action)Deliver);
+        }
+    }
+
+    /// <summary>
+    /// Bottom-right of the taskbar monitor's work area — the work area already excludes the
+    /// taskbar on any edge, so this does not chase the taskbar rect (research
+    /// 2026-10-03-status-bubble-native-approaches.md). WinForms returns that rect in physical
+    /// pixels, so it is divided back into DIP for WPF.
+    /// </summary>
+    private static Rectangle ComputeStatusBubbleBounds(NativeUi.StatusBubbleWindow window) {
+        var work = TrayIcon.GetTaskbarScreen().WorkingArea;
+        double scale = window.DpiScale <= 0 ? 1.0 : window.DpiScale;
+
+        // Measure what the window actually became: the shell imposes a minimum window size, so the
+        // capsule's design size is a floor, not a guarantee. Positioning by the real size keeps the
+        // right and bottom edges inside the work area either way.
+        double widthDip = window.ActualWidth > 0 ? window.ActualWidth : NativeUi.StatusBubbleWindow.BubbleSizeDip;
+        double heightDip = window.ActualHeight > 0 ? window.ActualHeight : NativeUi.StatusBubbleWindow.BubbleSizeDip;
+        int width = (int)Math.Round(widthDip * scale);
+        int height = (int)Math.Round(heightDip * scale);
+        int margin = (int)Math.Round(12 * scale);
+
+        return new Rectangle(work.Right - width - margin, work.Bottom - height - margin, width, height);
+    }
+
     private void OnTrayPreferencesChanged(object? sender, EventArgs e) {
         if (_userPreferences is not null) {
             _notificationCoordinator?.SetNotificationsEnabled(_userPreferences.NotificationsEnabled);
+        }
+
+        // Decision 0020: the tray toggle takes effect immediately.
+        if (_userPreferences?.StatusBubbleEnabled == true) {
+            EnsureStatusBubble();
+        }
+        else {
+            DisposeStatusBubble();
         }
 
         PostCurrentShellAppearance();
@@ -1623,6 +1740,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             // Clean shutdown
         }
 
+        DisposeStatusBubble();
         _pairingSession?.Dispose();
         _metadataLifecycle?.Dispose();
         _mdnsTrackerLifecycle?.Dispose();
