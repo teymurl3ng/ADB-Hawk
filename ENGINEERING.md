@@ -37,7 +37,7 @@ Single .NET 10 process (net10.0-windows, WinForms message loop, no WinForms UI c
 7. **Native window, native drag, v1 opaque surface.** The flyout keeps `WS_CAPTION` while collapsing its non-client area via `WM_NCCALCSIZE`, plus `WM_NCACTIVATE(TRUE)` for pinned focus behavior. **v1 does not use live Desktop Acrylic** (`DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_TRANSIENTWINDOW`) under WebView2: measured diagnosis showed multi-second stale presentation with a transparent WebView child, and composition hosting is unavailable on the frozen WinForms stack (`docs/decisions/0004-…`). v1 always paints the intentional opaque dark/light surfaces (`DESIGN.md` §22), with matching WebView2 `DefaultBackgroundColor` and frontend `data-opaque`. Rounded corners (`DWMWCP_ROUNDSMALL`) remain. No CSS `backdrop-filter` in production. Live Acrylic is deferred architecture work.
 8. **Notifications are derived, debounced, and vocabulary-shared.** A pure function over (previous snapshot, next snapshot, notifier state, clock) produces notification intents; a policy layer applies startup suppression, flap debounce, and per-device/kind cooldowns. v1 delivers them through the tray icon's own shell balloon channel — zero added dependency, and the tooltip remains a second channel that survives WebView failure.
 9. **Self-healing by explicit supervision, never by blanket timers.** Each of the three long-lived streams (device tracker, mDNS tracker, server probe) has its own owner, its own failure detection, and its own jittered exponential backoff. A dead mDNS tracker degrades exactly one local warning card; it never turns the app red.
-10. **v1 ships no updater, no telemetry, and no settings screen.** Pin resets to unpinned each launch (deterministic without storage). A minimal typed preference store under `HKCU\Software\ADBView` holds NotificationsEnabled and Theme only. Start-with-Windows is the shared `HKCU\...\Run` value `ADB View` (installer checkbox and tray toggle; quoted path + `--startup`).
+10. **v1 ships no updater, no telemetry, and no settings screen.** Pin resets to unpinned each launch (deterministic without storage). A minimal typed preference store under `HKCU\Software\ADBView` holds NotificationsEnabled, Theme and StatusBubbleEnabled only. Start-with-Windows is the shared `HKCU\...\Run` value `ADB View` (installer checkbox and tray toggle; quoted path + `--startup`).
 
 **Deliberately excluded** (each was considered and rejected; see §15): AdvancedSharpAdbClient, Google.Protobuf, Windows App SDK, a DI container, Redux/Zustand, a router, an animation library, an icon package, a tray-icon library, a mocking library, a second process, an IPC service, SQLite/history, auto-update, telemetry, CSS acrylic.
 
@@ -178,6 +178,7 @@ Every entry: choice · status as of 2026-09-16 · alternatives · reason · risk
 | `NotificationPolicy` | Transition detection, debounce, dedup, suppression | Read raw ADB events |
 | `TrayIcon` | Icon state, tooltip, context menu, balloon delivery | Know ADB protocol details |
 | `FlyoutWindow` | Window lifecycle, placement, backdrop, pin, drag, dismiss | Manipulate DOM or hold product state |
+| `StatusBubbleWindow` | Bubble window lifecycle, non-activation, placement, transient expiry | Hold product state; duplicate the flyout's detail |
 | `WebViewHost` | WebView2 creation, hardening, recovery, message transport | Parse ADB output; compute health |
 | `Frontend` | Rendering the latest snapshot, local interaction state, motion | Execute adb, map enums to text, compute health, or recover anything |
 
@@ -847,7 +848,7 @@ Never notified: metadata refresh (battery, model, version), `AdbRestoring`, wire
 ### 9.1 Tray icon
 
 - WinForms `NotifyIcon` with a GUID-stable identity, a multi-resolution `.ico` per tray state (16/20/24/32/48/256 px, pre-rendered from Pass F — no runtime GDI compositing, so markers stay crisp at every DPI).
-- Left click → toggle flyout. Right click → context menu with **Exit** only (`DESIGN.md §33`).
+- Left click → toggle flyout. Right click → context menu with **Open ADB View**, **Start with Windows**, **Notifications**, **Status bubble**, **Theme**, and **Exit** (`DESIGN.md §33`, decision 0006, decision 0020).
 - Tooltip from `health.trayTooltip`, updated with each snapshot.
 - Explorer restart: `NotifyIcon` re-adds itself on the `TaskbarCreated` broadcast; an integration test kills and restarts Explorer and asserts the icon returns.
 - Note: current Windows 11 no longer re-broadcasts `TaskbarCreated` on primary-DPI change, so per-DPI crispness comes from the multi-resolution icons, not from re-registration.
@@ -1052,6 +1053,8 @@ Failure / detection / response matrix. Every response is *owned* — no global "
 | 28 | Pairing (QR, decision 0010) | Unscanned QR session lingers with a live single-use credential | 2-minute session window (design authority) | StateEngine timer command quietly clears the card; a new session regenerates secret + instance name | 2 min | No stale scannable credentials; quiet surface return |
 | 29 | Shell (flyout sizing, decision 0012) | Content height changes while visible (device arrival, card expansion, font reflow) | ResizeObserver + snapshot commits (event-driven; no timers) | One instant native step to the clamped reported height when it differs from the applied height; equal heights suppressed; overflow past 560 epx scrolls in the stable container | 0 ms step | Window always matches content; no animation, no oscillation |
 | 30 | Shell (presentation animation, decision 0013) | Same triggers as row 29, plus open/close | FlyoutRevealAnimator UI-thread tick (~16 ms; decision-sanctioned animation clock) | Growth: animated mode-B retarget 167 ms (child pinned to final size once, tray-adjacent edge frozen); open/close: tray-axis slide 167/83 ms; reduced motion ⇒ instant | 167 ms growth/open, 83 ms close | Graceful presentation; zero per-frame Chromium work |
+
+| 31 | Shell (status bubble, decision 0020) | A transient state (drop / offline / special mode) would linger forever as if current | The transient's own 60 s window, then the bubble hides (no periodic polling; a one-shot, generation-guarded expiry retargeted by the next state) | 60 s | Ambient truth without a stale badge; R-05 sanction per `research/2026-10-03-status-bubble-native-approaches.md` |
 
 Chaos tests (Phase 9) automate rows 1, 3, 5, 8, 11, 16, 17, 19, 24, 26 against the fake ADB server and a real Explorer restart.
 

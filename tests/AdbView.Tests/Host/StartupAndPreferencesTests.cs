@@ -163,6 +163,25 @@ public sealed class UserPreferencesTests {
     }
 
     [Fact]
+    public void StatusBubble_Defaults_Off_And_RoundTrips() {
+        // Decision 0020: an extra ambient surface is opt-in, unlike notifications.
+        var store = new FakeStore();
+        var prefs = new UserPreferences(store);
+        Assert.False(prefs.StatusBubbleEnabled);
+        Assert.False(new UserPreferences(new FakeStore()).StatusBubbleEnabled);
+
+        Assert.True(prefs.SetStatusBubbleEnabled(true));
+        Assert.True(prefs.StatusBubbleEnabled);
+        Assert.True(prefs.SetStatusBubbleEnabled(false));
+        Assert.False(prefs.StatusBubbleEnabled);
+
+        // Corruption falls back to the safe default rather than throwing.
+        var corrupt = new FakeStore();
+        corrupt.SetValue(UserPreferences.StatusBubbleValueName, "yes-please", RegistryValueKind.String);
+        Assert.False(new UserPreferences(corrupt).StatusBubbleEnabled);
+    }
+
+    [Fact]
     public void Notifications_Persist_RoundTrip() {
         var store = new FakeStore();
         var prefs = new UserPreferences(store);

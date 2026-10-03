@@ -10,14 +10,17 @@ using Serilog;
 /// </summary>
 internal interface IUserPreferences {
     bool NotificationsEnabled { get; }
+    bool StatusBubbleEnabled { get; }
     ThemePreference ThemePreference { get; }
     bool SetNotificationsEnabled(bool enabled);
+    bool SetStatusBubbleEnabled(bool enabled);
     bool SetThemePreference(ThemePreference preference);
 }
 
 internal sealed class UserPreferences : IUserPreferences {
     internal const string KeyPath = @"Software\ADBView";
     internal const string NotificationsValueName = "NotificationsEnabled";
+    internal const string StatusBubbleValueName = "StatusBubbleEnabled";
     internal const string ThemeValueName = "Theme";
 
     private readonly IPreferenceStore _store;
@@ -60,6 +63,38 @@ internal sealed class UserPreferences : IUserPreferences {
         }
     }
 
+    /// <summary>Decision 0020: the always-on-top status bubble. Default OFF — an ambient extra
+    /// surface is opt-in, unlike notifications which were already on.</summary>
+    public bool StatusBubbleEnabled {
+        get {
+            try {
+                object? raw = _store.GetValue(StatusBubbleValueName);
+                if (raw is null) {
+                    return false;
+                }
+
+                if (raw is int i) {
+                    return i != 0;
+                }
+
+                if (raw is long l) {
+                    return l != 0;
+                }
+
+                if (raw is string s && int.TryParse(s, out int parsed)) {
+                    return parsed != 0;
+                }
+            }
+#pragma warning disable CA1031
+            catch (Exception ex) {
+                Log.Warning(ex, "UserPreferences: failed to read StatusBubbleEnabled; defaulting false");
+            }
+#pragma warning restore CA1031
+
+            return false;
+        }
+    }
+
     public ThemePreference ThemePreference {
         get {
             try {
@@ -86,6 +121,19 @@ internal sealed class UserPreferences : IUserPreferences {
 #pragma warning disable CA1031
         catch (Exception ex) {
             Log.Warning(ex, "UserPreferences: failed to write NotificationsEnabled={Enabled}", enabled);
+            return false;
+        }
+#pragma warning restore CA1031
+    }
+
+    public bool SetStatusBubbleEnabled(bool enabled) {
+        try {
+            _store.SetValue(StatusBubbleValueName, enabled ? 1 : 0, RegistryValueKind.DWord);
+            return StatusBubbleEnabled == enabled;
+        }
+#pragma warning disable CA1031
+        catch (Exception ex) {
+            Log.Warning(ex, "UserPreferences: failed to write StatusBubbleEnabled={Enabled}", enabled);
             return false;
         }
 #pragma warning restore CA1031

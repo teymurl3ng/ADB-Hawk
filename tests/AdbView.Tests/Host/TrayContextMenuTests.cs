@@ -11,10 +11,16 @@ using Xunit;
 public sealed class TrayContextMenuTests {
     private sealed class FakePrefs : IUserPreferences {
         public bool NotificationsEnabled { get; set; } = true;
+        public bool StatusBubbleEnabled { get; set; }
         public ThemePreference ThemePreference { get; set; } = ThemePreference.System;
 
         public bool SetNotificationsEnabled(bool enabled) {
             NotificationsEnabled = enabled;
+            return true;
+        }
+
+        public bool SetStatusBubbleEnabled(bool enabled) {
+            StatusBubbleEnabled = enabled;
             return true;
         }
 
@@ -46,6 +52,7 @@ public sealed class TrayContextMenuTests {
         "",
         "Start with Windows",
         "Notifications",
+        "Status bubble",
         "Theme",
         "",
         "Exit",

@@ -168,6 +168,13 @@ ADB View has one primary application surface:
 
 **a compact flyout anchored to the Windows notification area.**
 
+It also has exactly one optional secondary surface:
+
+**a very small always-on-top status bubble** (off by default; toggled from the tray
+menu). It is an ambient echo of the tray icon — the same aggregate state and the same
+marker colours, no controls of its own. It is not a second device list, and it never
+duplicates the flyout's detail.
+
 There is no:
 
 - sidebar
@@ -1149,6 +1156,25 @@ Exact meaning is supplied by:
 
 Do not depend on a microscopic icon distinction.
 
+### Status Bubble
+
+An optional, very small always-on-top bubble sits in the bottom-right of the working
+area, above the taskbar. It mirrors the tray's aggregate state and reuses the marker
+colours above:
+
+- Connected: green, while connected
+- Attention required: amber, while attention is required
+- Pairing available: blue/cyan, while a phone is discoverable and ready to pair
+- Global ADB failure: red, for 60 seconds
+- Special ADB mode: blue, for 60 seconds
+- Just disconnected: red, for 60 seconds
+- Idle / nothing to report: hidden
+
+The first three are permanent: they persist while their condition holds. The transient
+states appear for 60 seconds and then the bubble hides itself. Hovering reveals the
+exact status text; clicking opens the flyout. The bubble never takes focus and never
+appears over a full-screen application.
+
 ---
 
 ## 31. Tray Tooltip
@@ -1207,6 +1233,8 @@ For v1 the tray context menu is:
 **Start with Windows** (check — registers/unregisters the product `HKCU` Run entry)
 
 **Notifications** (check — enables/disables ADB View balloons; default on)
+
+**Status bubble** (check — shows/hides the always-on-top status bubble; default off)
 
 **Theme** ▸ **System** / **Light** / **Dark** (exactly one checked; default System)
 

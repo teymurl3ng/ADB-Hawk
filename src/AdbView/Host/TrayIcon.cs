@@ -70,6 +70,7 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
 
         var startupItem = new ToolStripMenuItem("Start with Windows", null, OnStartupClicked);
         var notificationsItem = new ToolStripMenuItem("Notifications", null, OnNotificationsClicked);
+        var statusBubbleItem = new ToolStripMenuItem("Status bubble", null, OnStatusBubbleClicked);
         var themeSystemItem = new ToolStripMenuItem("System", null, (_, _) => OnThemeClicked(ThemePreference.System));
         var themeLightItem = new ToolStripMenuItem("Light", null, (_, _) => OnThemeClicked(ThemePreference.Light));
         var themeDarkItem = new ToolStripMenuItem("Dark", null, (_, _) => OnThemeClicked(ThemePreference.Dark));
@@ -84,6 +85,7 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
         _contextMenu.Items.Add(new ToolStripSeparator());
         _contextMenu.Items.Add(startupItem);
         _contextMenu.Items.Add(notificationsItem);
+        _contextMenu.Items.Add(statusBubbleItem);
         _contextMenu.Items.Add(themeItem);
         _contextMenu.Items.Add(new ToolStripSeparator());
         _contextMenu.Items.Add(exitItem);
@@ -125,6 +127,7 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
 
     internal bool StartupChecked => RequireItem("Start with Windows").Checked;
     internal bool NotificationsChecked => RequireItem("Notifications").Checked;
+    internal bool StatusBubbleChecked => RequireItem("Status bubble").Checked;
     internal bool ThemeSystemChecked => RequireThemeChild("System").Checked;
     internal bool ThemeLightChecked => RequireThemeChild("Light").Checked;
     internal bool ThemeDarkChecked => RequireThemeChild("Dark").Checked;
@@ -161,6 +164,7 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
         try {
             RequireItem("Start with Windows").Checked = _startup.GetState().IsRegistered;
             RequireItem("Notifications").Checked = _preferences.NotificationsEnabled;
+            RequireItem("Status bubble").Checked = _preferences.StatusBubbleEnabled;
             ThemePreference theme = _preferences.ThemePreference;
             RequireThemeChild("System").Checked = theme == ThemePreference.System;
             RequireThemeChild("Light").Checked = theme == ThemePreference.Light;
@@ -207,6 +211,21 @@ internal sealed class TrayIcon : ITrayBalloonHost, IDisposable {
 #pragma warning disable CA1031
         catch (Exception ex) {
             Log.Warning(ex, "TrayIcon: Notifications toggle failed");
+        }
+#pragma warning restore CA1031
+
+        RefreshMenuChecks();
+        PreferencesChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnStatusBubbleClicked(object? sender, EventArgs e) {
+        try {
+            bool next = !_preferences.StatusBubbleEnabled;
+            _ = _preferences.SetStatusBubbleEnabled(next);
+        }
+#pragma warning disable CA1031
+        catch (Exception ex) {
+            Log.Warning(ex, "TrayIcon: Status bubble toggle failed");
         }
 #pragma warning restore CA1031
 
