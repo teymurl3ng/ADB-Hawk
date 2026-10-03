@@ -216,6 +216,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
                 _nativeWindow = new NativeUi.NativeFlyoutWindow();
                 _nativeWindow.Deactivated95 += OnFlyoutDeactivate;
+                // Keep the visibility flag in step with the window itself. It is assigned from
+                // ShellVisible immediately after Show, before the window has loaded, so it could
+                // read false while the flyout was on screen — which silently defeated decision
+                // 0019's "no toast while the flyout is visible" suppression. IsVisibleChanged
+                // fires on the UI thread; readers use a volatile read.
+                _nativeWindow.IsVisibleChanged += (_, e) => _isVisible = (bool)e.NewValue;
                 _shellViewModel = (NativeUi.Shell.NativeShellViewModel)((NativeUi.Shell.ShellView)_nativeWindow.Content).DataContext;
                 _shellViewModel.StartQrRequested += StartQrPairingSession;
                 _shellViewModel.QrCancelRequested += () => _qrPairingSession?.Cancel();
