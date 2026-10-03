@@ -118,11 +118,10 @@ internal sealed class QrPairingSession {
             return;
         }
 
-        // Effective set: adb source wins, fallback fills the gap (same rule as the reducer).
-        ImmutableArray<RawMdnsService> effective =
-            !deviceState.LatestMdnsServices.IsDefaultOrEmpty
-                ? deviceState.LatestMdnsServices
-                : deviceState.LatestFallbackServices;
+        // Effective set: instance-level union (decision 0016, same rule as the reducer).
+        ImmutableArray<RawMdnsService> effective = State.MdnsEffectiveSet.Merge(
+            deviceState.LatestMdnsServices,
+            deviceState.LatestFallbackServices);
 
         RawMdnsService? match = effective.FirstOrDefault(service =>
             service.Kind == MdnsServiceKind.Pairing

@@ -535,16 +535,12 @@ internal static class StateReducer {
             now);
     }
 
-    /// <summary>ADB source wins; fallback rows fill only the empty gap (decision 0008 follow-through).</summary>
+    /// <summary>Instance-level union (decision 0016): adb rows win per DiscoveryKey; fallback
+    /// rows fill keys adb does not report (supersedes the whole-set rule of 0008/0011).</summary>
     private static ImmutableArray<RawMdnsService> EffectiveServices(
         ImmutableArray<RawMdnsService> adbServices,
-        ImmutableArray<RawMdnsService> fallbackServices) {
-        if (!adbServices.IsDefaultOrEmpty) {
-            return adbServices;
-        }
-
-        return fallbackServices.IsDefault ? ImmutableArray<RawMdnsService>.Empty : fallbackServices;
-    }
+        ImmutableArray<RawMdnsService> fallbackServices) =>
+        MdnsEffectiveSet.Merge(adbServices, fallbackServices);
 
     internal enum MdnsSourceKind { Adb, Fallback }
 

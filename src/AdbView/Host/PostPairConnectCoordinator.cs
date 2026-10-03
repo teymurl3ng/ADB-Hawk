@@ -55,10 +55,9 @@ internal sealed class PostPairConnectCoordinator {
             }
         }
 
-        ImmutableArray<RawMdnsService> effective =
-            !deviceState.LatestMdnsServices.IsDefaultOrEmpty
-                ? deviceState.LatestMdnsServices
-                : deviceState.LatestFallbackServices;
+        ImmutableArray<RawMdnsService> effective = State.MdnsEffectiveSet.Merge(
+            deviceState.LatestMdnsServices,
+            deviceState.LatestFallbackServices);
 
         // Decision 0011 guard: if the tracker already shows a Connected Wi-Fi device for this
         // host (any port), the phone is already reachable — a second transport is the exact

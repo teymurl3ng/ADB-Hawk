@@ -72,12 +72,14 @@ public sealed class NativeShellViewModelTests {
     private static AppSnapshot Snapshot(
         PairingOperationView? pairing = null,
         PairingQrView? qr = null,
-        DiscoveryHealthView? health = null) =>
+        DiscoveryHealthView? health = null,
+        ImmutableArray<PairingOfferView>? offers = null) =>
         StateEngine.CreateDefaultSnapshot() with {
             GeneratedAt = T0,
-            PairingOffers = pairing is null
-                ? ImmutableArray<PairingOfferView>.Empty
-                : ImmutableArray.Create(Offer()),
+            PairingOffers = offers
+                ?? (pairing is null
+                    ? ImmutableArray<PairingOfferView>.Empty
+                    : ImmutableArray.Create(Offer())),
             Pairing = pairing,
             PairingQr = qr,
             DiscoveryHealth = health,
@@ -265,6 +267,75 @@ public sealed class NativeShellViewModelTests {
         vm.ApplySnapshot(Snapshot(health: HealthView(repairs: ImmutableArray.Create(Repair("r", isRunning: true)))));
         Assert.False(vm.DiscoveryHealth!.CheckAgainCommand.CanExecute(null));
         Assert.False(raised);
+    }
+
+    // ---------- offer-phase card (decision 0016 web parity) ----------
+
+    [Fact]
+    public void OfferCardAppearsWhenNoOperationIsActive() {
+        var vm = new NativeShellViewModel();
+
+        vm.ApplySnapshot(Snapshot());
+        vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
+
+        Assert.NotNull(vm.PairingCard);
+        Assert.Equal(PairingCardState.Offer, vm.PairingCard!.State);
+        Assert.Equal(DeviceName, vm.PairingCard.DeviceNameDisplay);
+        Assert.True(vm.ShowPairingCard);
+        Assert.False(vm.ShowQrEntry);
+        Assert.False(vm.ShowEmptyState);
+    }
+
+    [Fact]
+    public void OfferPairButtonRaisesPairStartWithOfferId() {
+        var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
+
+        string? action = null;
+        string? offerId = null;
+        vm.PairingActionRequested += (a, o, _) => {
+            action = a;
+            offerId = o;
+        };
+
+        vm.PairingCard!.StartCommand.Execute(null);
+
+        Assert.Equal("pairStart", action);
+        Assert.Equal(OfferId, offerId);
+    }
+
+    [Fact]
+    public void OfferWithdrawalClearsTheCard() {
+        var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
+        Assert.NotNull(vm.PairingCard);
+
+        vm.ApplySnapshot(Snapshot());
+
+        Assert.Null(vm.PairingCard);
+        Assert.True(vm.ShowQrEntry);
+    }
+
+    [Fact]
+    public void DifferentOfferIdRecreatesTheCard() {
+        var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
+        var first = vm.PairingCard!;
+
+        var secondOffer = Offer() with { Id = "offer-2", DisplayName = "Other Phone" };
+        vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(secondOffer)));
+
+        Assert.NotSame(first, vm.PairingCard);
+        Assert.Equal("offer-2", vm.PairingCard!.OfferId);
+        Assert.Equal("Other Phone", vm.PairingCard.DeviceNameDisplay);
+    }
+
+    [Fact]
+    public void OperationDisplayNameIsAuthoritativeOverOfferRows() {
+        var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
+
+        Assert.Equal(DeviceName, vm.PairingCard!.DeviceNameDisplay);
     }
 
     // ---------- shell state round-trip ----------

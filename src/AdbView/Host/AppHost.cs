@@ -211,7 +211,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 _nativeWindow = new NativeUi.NativeFlyoutWindow();
                 _nativeWindow.Deactivated95 += OnFlyoutDeactivate;
                 _shellViewModel = (NativeUi.Shell.NativeShellViewModel)((NativeUi.Shell.ShellView)_nativeWindow.Content).DataContext;
-                _shellViewModel.StartQrRequested += () => _qrPairingSession?.Start();
+                _shellViewModel.StartQrRequested += StartQrPairingSession;
                 _shellViewModel.QrCancelRequested += () => _qrPairingSession?.Cancel();
                 _shellViewModel.PinChangeRequested += OnPinChangeRequestedFromShell;
                 // Native surface forwards the exact action verbs the bridge contract defines
@@ -346,10 +346,13 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             onPairCancel: offerId => _pairingSession?.Cancel(offerId),
             onDiscoveryRecheck: () => _ = RunDiscoveryCheckAsync(),
             onDiscoveryRepair: repairId => _ = RunDiscoveryRepairAsync(repairId),
-            onPairQrStart: () => _qrPairingSession?.Start(),
+            onPairQrStart: StartQrPairingSession,
             onPairQrCancel: () => _qrPairingSession?.Cancel());
 
         if (_nativeUi) {
+            // Snapshots published before the coordinator existed (PostCurrentShellAppearance's
+            // async post) never reached it — seed its baseline before declaring readiness.
+            _coordinator.UpdateSnapshot(_stateEngine.CurrentSnapshot);
             // No WebView handshake exists in native mode; declare readiness so snapshots
             // start flowing to the shell instead of queuing in UpdateSnapshot.
             _coordinator.MarkReady();
@@ -582,6 +585,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         ThemeKind theme = ResolveEffectiveTheme();
         _lastAppliedTheme = theme;
         _lastAppliedTransparency = transparency;
+        // Forensics 2026-10-03: stale binaries masqueraded as unfixed bugs (pin/theme fixes
+        // absent from every user session). Identity + resolved theme are logged at startup so
+        // one log glance answers "which build, which theme".
+        Log.Information(
+            "AppHost identity: version={Version} native={Native} theme={Theme} transparency={Transparency}",
+            typeof(AppHost).Assembly.GetName().Version?.ToString() ?? "unknown",
+            _nativeUi,
+            theme,
+            transparency);
 
         if (_nativeUi) {
             // Decision 0015 Phase I1: native shell boots on the WPF dispatcher. No WebView,
@@ -1113,6 +1125,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
             _nativeWindow.IsPinned = isPinned;
             Log.Information("AppHost.SetPinned: native IsPinned={IsPinned}", isPinned);
+            // The metadata tick gates on pinned AND visible; skip-starved probes after pinning
+            // were a native-only gap (the WinForms branch falls through to this call).
+            NotifyMetadataPresentation();
             return;
         }
 
@@ -1483,6 +1498,13 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _webViewHost?.ApplyOpaqueBackground(theme);
     }
 
+    private void StartQrPairingSession() {
+        // Decision 0016: the phone advertises only while its pairing dialog is open — a query
+        // burst now is what lets the fallback bridge the deaf-adb window (R-05: event, not timer).
+        _qrPairingSession?.Start();
+        _mdnsFallbackLifecycle?.TriggerQuery();
+    }
+
     private void OnPinChangeRequestedFromShell(bool pinned) {
         // The StateEngine is the single pin authority (identical to the bridge 'pin' action).
         // The earlier direct SetPinned bypass let every following snapshot silently un-pin —
@@ -1514,11 +1536,13 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         for (var i = 0; i < merged.Count; i++) {
             if (merged[i].Source?.OriginalString.Contains("Fluent", StringComparison.Ordinal) == true) {
                 merged[i] = new System.Windows.ResourceDictionary { Source = uri };
+                Log.Information("App theme dictionary swapped to {Theme}", theme);
                 return;
             }
         }
 
         merged.Add(new System.Windows.ResourceDictionary { Source = uri });
+        Log.Information("App theme dictionary added: {Theme}", theme);
     }
 
     private void UpdateFlyoutBounds() {

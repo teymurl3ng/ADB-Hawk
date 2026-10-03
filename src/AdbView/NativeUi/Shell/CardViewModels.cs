@@ -73,6 +73,9 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
 
     private string _offerName;
 
+    /// <summary>The offer this card acts on (identity check for shell-side recreation).</summary>
+    public string OfferId => _offerId;
+
     public string OfferName {
         get => _offerName;
         private set {

@@ -581,10 +581,36 @@ public sealed class DiscoveryHealthReducerTests {
     }
 
     [Fact]
-    public void AdbNonEmptyListWinsOverFallbackRows() {
+    public void AdbRowsWinPerKeyAndNovelFallbackKeysFillIn() {
+        // Decision 0016 (supersedes the whole-set rule): adb rows win per DiscoveryKey; a
+        // fallback row with a key adb does not report fills in instead of being masked.
         var current = SnapshotWith(MakeDevice(TransportKind.Usb, DeviceStateKind.Connected));
         var adbServices = ImmutableArray.Create(FallbackService("adb-from-adb", MdnsServiceKind.Pairing));
-        var fallback = ImmutableArray.Create(FallbackService("adb-from-fallback", MdnsServiceKind.Pairing));
+        var fallback = ImmutableArray.Create(
+            FallbackService("adb-from-adb", MdnsServiceKind.Pairing),      // same key: adb row wins
+            FallbackService("adb-from-fallback", MdnsServiceKind.Pairing)); // novel key: fills in
+        var now = T0 + TimeSpan.FromSeconds(1);
+
+        var withAdb = StateReducer.ReduceWithDeviceState(
+            current, HostState(), new MdnsServicesReceivedEvent(adbServices, now), now);
+        var result = StateReducer.ReduceWithDeviceState(
+            withAdb.Snapshot,
+            withAdb.DeviceState,
+            new MdnsFallbackReceivedEvent(fallback, now + TimeSpan.FromSeconds(1)),
+            now + TimeSpan.FromSeconds(1));
+
+        Assert.Equal(2, result.Snapshot.PairingOffers.Length);
+        Assert.Contains(result.DeviceState.OfferBindings.Keys, key => key.EndsWith("adb-from-adb", StringComparison.Ordinal));
+        Assert.Contains(result.DeviceState.OfferBindings.Keys, key => key.EndsWith("adb-from-fallback", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void IdenticalFallbackKeysNeverDuplicateAdbRows() {
+        // The merge is keyed on DiscoveryKey (decision 0016): the same instance reported by
+        // both sources produces exactly one row/offer.
+        var current = SnapshotWith(MakeDevice(TransportKind.Usb, DeviceStateKind.Connected));
+        var adbServices = ImmutableArray.Create(FallbackService("adb-shared", MdnsServiceKind.Pairing));
+        var fallback = ImmutableArray.Create(FallbackService("adb-shared", MdnsServiceKind.Pairing));
         var now = T0 + TimeSpan.FromSeconds(1);
 
         var withAdb = StateReducer.ReduceWithDeviceState(
@@ -596,9 +622,7 @@ public sealed class DiscoveryHealthReducerTests {
             now + TimeSpan.FromSeconds(1));
 
         Assert.Single(result.Snapshot.PairingOffers);
-        // Offer ids are DiscoveryKeys: "<service-type><instance>" (ENGINEERING §6.6).
-        string adbOfferId = "_adb-tls-pairing._tcpadb-from-adb";
-        Assert.Equal(adbOfferId, result.DeviceState.OfferBindings.Keys.Single());
+        Assert.Single(result.DeviceState.OfferBindings.Keys);
     }
 
     [Fact]

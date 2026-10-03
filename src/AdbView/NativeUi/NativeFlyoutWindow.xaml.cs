@@ -181,11 +181,13 @@ public sealed partial class NativeFlyoutWindow : Window {
         for (var i = 0; i < merged.Count; i++) {
             if (merged[i].Source?.OriginalString.Contains("Fluent", StringComparison.Ordinal) == true) {
                 merged[i] = dictionary;
+                Log.Information("Window theme dictionary swapped to {Theme}", theme);
                 return;
             }
         }
 
         merged.Add(dictionary);
+        Log.Information("Window theme dictionary added: {Theme}", theme);
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e) {
@@ -201,6 +203,9 @@ public sealed partial class NativeFlyoutWindow : Window {
         _source.AddHook(WndProc);
         ApplyBackdrop(_theme, _transparencyEnabled);
         RecalcNonClientFrame();
+        // ApplyShellAppearance early-returns while _source is null, so a theme that changed
+        // before first show left this dictionary stale (mixed-theme render). Re-sync now.
+        ApplyThemeDictionary(_theme);
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled) {

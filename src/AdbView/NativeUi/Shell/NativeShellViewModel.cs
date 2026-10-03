@@ -74,7 +74,16 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
 
     /// <summary>Applies the authoritative pin state from the snapshot (single source of truth:
     /// user clicks post a SetPinnedEvent; the snapshot round-trip updates this view model).</summary>
-    internal void ApplyPinned(bool pinned) => Pinned = pinned;
+    internal void ApplyPinned(bool pinned) {
+        if (Pinned == pinned) {
+            return;
+        }
+
+        // Forensics 2026-10-03: without this line a stale binary was indistinguishable from a
+        // silent reflection failure.
+        Serilog.Log.Information("Shell pin applied from snapshot: pinned={Pinned}", pinned);
+        Pinned = pinned;
+    }
 
     /// <summary>
     /// Re-raises every theme-derived bindable after the app-level token dictionary was swapped
@@ -83,6 +92,8 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
     /// </summary>
     internal void RefreshThemeResources() {
         OnPropertyChanged(nameof(PinForeground));
+        OnPropertyChanged(nameof(PinIconGeometry));
+        OnPropertyChanged(nameof(PinToolTip));
         foreach (var device in _devices) {
             device.RefreshThemeResources();
         }
@@ -157,6 +168,23 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
         var op = snapshot.Pairing;
 
         if (op is null) {
+            // Web parity (adapters.ts): an offer with no active operation renders the
+            // offer-phase card; its Pair button raises pairStart with the offer id.
+            if (!snapshot.PairingOffers.IsDefaultOrEmpty) {
+                var offer = snapshot.PairingOffers[0];
+                if (PairingCard is null
+                    || PairingCard.OfferId != offer.Id
+                    || PairingCard.OfferName != offer.DisplayName) {
+                    PairingCard = new PairingCardViewModel(
+                        offer.Id, offer.DisplayName, PairingCardState.Offer, offer.Detail, RaisePairingAction);
+                }
+                else {
+                    PairingCard.Update(PairingCardState.Offer, offer.Detail);
+                }
+
+                return;
+            }
+
             if (PairingCard is not null) {
                 PairingCard = null;
             }
@@ -172,12 +200,10 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
             _ => PairingCardState.CodeEntry,
         };
 
-        var offerName = !snapshot.PairingOffers.IsDefaultOrEmpty
-            ? snapshot.PairingOffers[0].DisplayName
-            : op.DisplayName;
-
+        // Web parity: the operation's display name is authoritative (adapters.ts uses
+        // snapshot.pairing.displayName), not an unrelated offer row.
         if (PairingCard is null) {
-            PairingCard = new PairingCardViewModel(op.OfferId, offerName, state, op.Detail, RaisePairingAction);
+            PairingCard = new PairingCardViewModel(op.OfferId, op.DisplayName, state, op.Detail, RaisePairingAction);
             return;
         }
 

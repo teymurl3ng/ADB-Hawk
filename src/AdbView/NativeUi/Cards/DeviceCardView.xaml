@@ -63,7 +63,7 @@
                     <StackPanel Orientation="Horizontal">
                         <Ellipse Width="6" Height="6" Fill="{Binding StatePillDot}" VerticalAlignment="Center"/>
                         <TextBlock Text="{Binding StatePillText}" FontSize="12" FontWeight="Medium"
-                                   Foreground="{Binding StatePillText}" Margin="5,0,0,0" VerticalAlignment="Center"/>
+                                   Foreground="{Binding StatePillForeground}" Margin="5,0,0,0" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left" Margin="8,0,0,0"

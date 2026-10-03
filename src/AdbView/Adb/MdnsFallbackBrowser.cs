@@ -101,6 +101,11 @@ internal sealed class MdnsFallbackBrowser {
                 changed |= ReceiveInto(active, true, buffer, now);
                 changed |= SweepExpired(now);
 
+                if (Interlocked.Exchange(ref _triggerPending, 0) == 1) {
+                    Log.Information("Fallback browser: query burst triggered (QR session start).");
+                    SendQueryBurst(active);
+                }
+
                 if (_nextRequeryAt is null || now >= _nextRequeryAt) {
                     SendQueryBurst(active);
                 }
@@ -157,6 +162,14 @@ internal sealed class MdnsFallbackBrowser {
 
         return true;
     }
+
+    private int _triggerPending;
+
+    /// <summary>Schedules an immediate query burst (decision 0016, research
+    /// 2026-10-03-fallback-discovery-requery-and-merge): a QR-session start must not wait out
+    /// the empty-set requery floor while the phone advertises for only a short window.
+    /// User-initiated and human-rate-limited; not a timer (R-05).</summary>
+    public void TriggerQuery() => Interlocked.Exchange(ref _triggerPending, 1);
 
     private void SendQueryBurst(IUdpSocket active) {
         ushort messageId = (ushort)Environment.TickCount;

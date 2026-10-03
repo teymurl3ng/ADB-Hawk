@@ -1,5 +1,8 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.MergedDictionaries>
+        <ResourceDictionary Source="pack://application:,,,/NativeUi/Themes/Controls.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
     <!-- Fluent dark tokens — 1:1 port of ui/src/styles/app.css :root (dark) palette. -->
 
     <SolidColorBrush x:Key="Win.Base" Color="#FF202329"/>

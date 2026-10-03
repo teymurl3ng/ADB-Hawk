@@ -99,6 +99,14 @@ internal sealed class MdnsFallbackLifecycle : IDisposable {
         }
     }
 
+    /// <summary>Asks the running browser for an immediate query burst (decision 0016);
+    /// a no-op when no browser session is running.</summary>
+    public void TriggerQuery() {
+        lock (_gate) {
+            _browser?.TriggerQuery();
+        }
+    }
+
     private void StartLocked(int generation) {
         var browser = _browserFactory();
         var cts = new CancellationTokenSource();
