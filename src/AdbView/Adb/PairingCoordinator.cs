@@ -60,6 +60,16 @@ internal sealed class PairingCoordinator {
         }
     }
 
+    /// <summary>The endpoint of the active operation (null when idle) — used to recognise the
+    /// paired device appearing so a fulfilled wait can be released (decision 0017).</summary>
+    public PairingEndpoint? ActiveEndpoint {
+        get {
+            lock (_gate) {
+                return _activeEndpoint;
+            }
+        }
+    }
+
     /// <summary>
     /// Begin awaiting a code for a pairing-kind endpoint. Ignored while another operation is active.
     /// </summary>
@@ -100,25 +110,44 @@ internal sealed class PairingCoordinator {
         return TryStart(offerId, endpoint);
     }
 
-    public void Cancel(string offerId) {
-        int gen;
+    public void Cancel(string offerId) => ClearOffer(offerId, "cancelled", PairingFailureKind.Cancelled);
+
+    /// <summary>
+    /// Decision 0017: user cancel clears whatever operation is active, even when the clicked
+    /// offer id no longer matches. The card can show one offer's operation while a parked
+    /// operation holds the slot, which previously made Cancel silently do nothing.
+    /// </summary>
+    public bool CancelActive() => ClearOffer(requiredOfferId: null, "cancelled", PairingFailureKind.Cancelled);
+
+    /// <summary>
+    /// Decision 0017: release a fulfilled operation — the pairing wait completed (the paired
+    /// device appeared, or the wait expired). Emits Cleared with no failure so the card simply
+    /// goes away; the slot must not stay parked, because it rejected every later pairStart.
+    /// </summary>
+    public bool ReleaseActive() => ClearOffer(requiredOfferId: null, reason: null, PairingFailureKind.None);
+
+    /// <summary>Clears the active operation. A null <paramref name="requiredOfferId"/> clears
+    /// whatever is active; otherwise the id must match. Returns false when nothing was cleared.</summary>
+    private bool ClearOffer(string? requiredOfferId, string? reason, PairingFailureKind kind) {
+        string? cleared;
         CancellationTokenSource? toCancel;
         lock (_gate) {
-            if (!string.Equals(_activeOfferId, offerId, StringComparison.Ordinal)) {
-                return;
+            if (_phase is PairingPhase.Cleared || _activeOfferId is null) {
+                return false;
             }
 
-            if (_phase is PairingPhase.Cleared) {
-                return;
+            if (requiredOfferId is not null
+                && !string.Equals(_activeOfferId, requiredOfferId, StringComparison.Ordinal)) {
+                return false;
             }
 
+            cleared = _activeOfferId;
             toCancel = _pairCts;
             _pairCts = null;
-            gen = ++_operationGeneration;
+            _operationGeneration++;
             _phase = PairingPhase.Cleared;
             _activeOfferId = null;
             _activeEndpoint = null;
-            _ = gen;
         }
 
         try {
@@ -128,7 +157,8 @@ internal sealed class PairingCoordinator {
         }
 
         toCancel?.Dispose();
-        Emit(offerId, PairingPhase.Cleared, "cancelled", PairingFailureKind.Cancelled);
+        Emit(cleared, PairingPhase.Cleared, reason, kind);
+        return true;
     }
 
     /// <summary>

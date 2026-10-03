@@ -225,4 +225,116 @@ public sealed class PairingSessionUserActionTests {
         Assert.Equal("o1", coordinator.ActiveOfferId);
         Assert.Empty(events);
     }
+
+    // ---------- decision 0017: the pairing slot must never stay parked ----------
+
+    private sealed class FailingPairClient : IHostPairClient {
+        public Task<HostPairResult> PairAsync(PairingEndpoint endpoint, string code, System.Threading.CancellationToken ct) =>
+            Task.FromResult(new HostPairResult(false, PairingFailureKind.Rejected, "rejected"));
+    }
+
+    private static PairingOfferBinding Binding(string id, string host, int port) =>
+        new(id, host, port, null, "Phone " + id);
+
+    private static async Task<PairingSession> PairSuccessfullyAsync(
+        List<AdbViewEvent> events,
+        PairingCoordinator coordinator,
+        FakePairClient fake) {
+        var session = new PairingSession(events.Add, id => Binding(id, "192.168.1.2", 37101), coordinator);
+        session.Start("o1");
+        var submit = coordinator.SubmitAsync("o1", "123456");
+        await Task.Delay(20);
+        fake.Gate.SetResult(new HostPairResult(true, PairingFailureKind.None, null));
+        await submit;
+        return session;
+    }
+
+    [Fact]
+    public async Task FulfilledWaitIsReleased_SoTheNextPairIsAccepted() {
+        // The live defect: a successful pair leaves the coordinator in PairedWaitingForDevice.
+        // The reducer clears the snapshot once the device appears, but only the coordinator knew
+        // the slot was still held — so every later pairStart was rejected "already active" and
+        // pairing was dead until an app restart. The QR attempt in the owner's session hit this.
+        var fake = new FakePairClient();
+        var coordinator = new PairingCoordinator(pairClient: fake);
+        var events = new List<AdbViewEvent>();
+        using var session = await PairSuccessfullyAsync(events, coordinator, fake);
+        Assert.Equal(DomainPhase.PairedWaitingForDevice, coordinator.CurrentPhase);
+
+        // The snapshot the reducer publishes once the paired device appears (Pairing cleared).
+        events.Clear();
+        session.ReconcileWithSnapshot(StateEngine.CreateDefaultSnapshot());
+
+        Assert.Equal(DomainPhase.Cleared, coordinator.CurrentPhase);
+        Assert.Null(coordinator.ActiveOfferId);
+        Assert.Contains(events, e => e is PairingProgressedEvent p
+            && p.OfferId == "o1"
+            && p.Phase == DomainPhase.Cleared);
+
+        // The slot is free: a new pairing is accepted instead of "already active".
+        session.Start("o2");
+        Assert.Equal(DomainPhase.AwaitingCode, coordinator.CurrentPhase);
+        Assert.Equal("o2", coordinator.ActiveOfferId);
+    }
+
+    [Fact]
+    public async Task ReconcileLeavesAGenuineInFlightOperationAlone() {
+        var fake = new FakePairClient();
+        var coordinator = new PairingCoordinator(pairClient: fake);
+        var events = new List<AdbViewEvent>();
+        using var session = new PairingSession(events.Add, id => Binding(id, "192.168.1.2", 37101), coordinator);
+        session.Start("o1");
+        var submit = coordinator.SubmitAsync("o1", "123456");
+        await Task.Delay(20);
+        Assert.Equal(DomainPhase.Pairing, coordinator.CurrentPhase);
+
+        session.ReconcileWithSnapshot(StateEngine.CreateDefaultSnapshot());
+
+        Assert.Equal(DomainPhase.Pairing, coordinator.CurrentPhase);
+
+        fake.Gate.SetResult(new HostPairResult(true, PairingFailureKind.None, null));
+        await submit;
+    }
+
+    [Fact]
+    public async Task NewPairStartPreemptsAFailedOperationForAnotherOffer() {
+        // QR sessions mint a fresh instance name each time, so TryRetry (same id) can never
+        // recover a Failed operation; without preemption the user is stuck for good.
+        var coordinator = new PairingCoordinator(pairClient: new FailingPairClient());
+        var bindings = new Dictionary<string, PairingOfferBinding> {
+            ["o1"] = Binding("o1", "192.168.1.2", 37101),
+            ["o2"] = Binding("o2", "192.168.1.3", 37102),
+        };
+        var events = new List<AdbViewEvent>();
+        using var session = new PairingSession(events.Add, id => bindings.GetValueOrDefault(id), coordinator);
+
+        session.Start("o1");
+        await coordinator.SubmitAsync("o1", "123456");
+        Assert.Equal(DomainPhase.Failed, coordinator.CurrentPhase);
+
+        events.Clear();
+        session.Start("o2");
+
+        Assert.Equal(DomainPhase.AwaitingCode, coordinator.CurrentPhase);
+        Assert.Equal("o2", coordinator.ActiveOfferId);
+        Assert.DoesNotContain(events, e => e is PairingProgressedEvent p
+            && p.OfferId == "o2"
+            && p.Phase == DomainPhase.Failed);
+    }
+
+    [Fact]
+    public async Task CancelClearsAParkedOperationEvenWhenTheClickedIdDiffers() {
+        // The card can show one offer's operation while a parked operation holds the slot; the
+        // old id-matching Cancel was then silently inert — "I can't cancel" in the live session.
+        var fake = new FakePairClient();
+        var coordinator = new PairingCoordinator(pairClient: fake);
+        var events = new List<AdbViewEvent>();
+        using var session = await PairSuccessfullyAsync(events, coordinator, fake);
+
+        events.Clear();
+        session.Cancel("some-other-offer");
+
+        Assert.Equal(DomainPhase.Cleared, coordinator.CurrentPhase);
+        Assert.Contains(events, e => e is PairingProgressedEvent p && p.Phase == DomainPhase.Cleared);
+    }
 }

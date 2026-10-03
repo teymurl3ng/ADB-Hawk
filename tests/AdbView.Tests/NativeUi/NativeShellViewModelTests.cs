@@ -435,4 +435,65 @@ public sealed class NativeShellViewModelTests {
         var notSvg = SvgDataUri("<html><body>hi</body></html>");
         Assert.Null(QrSvgRenderer.Render(notSvg));
     }
+
+    // ---------- decision 0017: QR operations have no typed-code affordances ----------
+
+    private const string QrOfferId = "_adb-tls-pairing._tcpadbview-f34ffd13";
+
+    [Fact]
+    public void QrOperationHidesSlotsAndShowsProgress() {
+        var vm = new NativeShellViewModel();
+
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Pairing) with { OfferId = QrOfferId }));
+
+        var card = vm.PairingCard!;
+        Assert.True(card.IsQrOriginated);
+        Assert.False(card.ShowSlots);        // the app holds the code; nothing to type
+        Assert.False(card.ShowCodeEntryTitle);
+        Assert.True(card.ShowProgress);
+        Assert.False(card.ShowPrimaryAction); // in flight: nothing for the user to press
+    }
+
+    [Fact]
+    public void QrFailureOffersScanAgain() {
+        var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Failed, "The code didn't match.")
+            with { OfferId = QrOfferId }));
+
+        var card = vm.PairingCard!;
+        Assert.True(card.IsQrOriginated);
+        Assert.True(card.ShowPrimaryAction);
+        Assert.Equal("Scan again", card.PrimaryLabel);
+        Assert.False(card.ShowSlots);
+
+        string? action = null;
+        vm.PairingActionRequested += (a, _, _) => action = a;
+        card.PrimaryCommand.Execute(null);
+        Assert.Equal("pairQrStart", action);
+    }
+
+    [Fact]
+    public void TypedCodeCardKeepsSlotsAndPair() {
+        var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
+
+        var card = vm.PairingCard!;
+        Assert.False(card.IsQrOriginated);
+        Assert.True(card.ShowSlots);
+        Assert.True(card.ShowCodeEntryTitle);
+        Assert.True(card.ShowCodeActionRow);
+        Assert.True(card.ShowPrimaryAction);
+        Assert.Equal("Pair", card.PrimaryLabel);
+    }
+
+    [Fact]
+    public void TypedCodeFailureOffersRetryNotScanAgain() {
+        var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Failed, "Wrong code.")));
+
+        var card = vm.PairingCard!;
+        Assert.False(card.IsQrOriginated);
+        Assert.True(card.ShowSlots);           // web parity: the failure card keeps the slots
+        Assert.Equal("Retry", card.PrimaryLabel);
+    }
 }

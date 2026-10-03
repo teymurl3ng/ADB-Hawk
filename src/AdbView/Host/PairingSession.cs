@@ -61,6 +61,21 @@ internal sealed class PairingSession : IDisposable {
             return;
         }
 
+        // Decision 0017: a parked operation must not block a new pairing forever.
+        //  - PairedWaitingForDevice has already achieved its purpose (the phone paired; the
+        //    wait only looks for the device to appear), and
+        //  - a Failed operation for a DIFFERENT offer can never be retried (TryRetry requires
+        //    the same id, and QR sessions mint a fresh instance name every time).
+        // A genuinely in-flight operation (AwaitingCode / Pairing) is never preempted.
+        DomainPhase phase = _coordinator.CurrentPhase;
+        bool parked = phase is DomainPhase.PairedWaitingForDevice
+            || (phase is DomainPhase.Failed
+                && !string.Equals(_coordinator.ActiveOfferId, offerId, StringComparison.Ordinal));
+        if (parked) {
+            Log.Information("pairStart preempting parked operation (phase={Phase})", phase);
+            _coordinator.ReleaseActive();
+        }
+
         bool started = _coordinator.TryStart(offerId, endpoint)
             || _coordinator.TryRetry(offerId, endpoint);
         if (!started) {
@@ -94,7 +109,71 @@ internal sealed class PairingSession : IDisposable {
             return;
         }
 
-        _coordinator.Cancel(offerId);
+        // Decision 0017: clear whatever is active rather than requiring the clicked id to match
+        // the parked operation. Cancel used to be silently inert in exactly that case.
+        if (!_coordinator.CancelActive()) {
+            _coordinator.Cancel(offerId);
+        }
+    }
+
+    /// <summary>True when the coordinator currently holds an operation for this offer
+    /// (used by the QR handoff to verify its start was accepted — decision 0017).</summary>
+    public bool IsActive(string offerId) {
+        ArgumentNullException.ThrowIfNull(offerId);
+
+        return string.Equals(_coordinator.ActiveOfferId, offerId, StringComparison.Ordinal)
+            && _coordinator.CurrentPhase != DomainPhase.Cleared;
+    }
+
+    /// <summary>
+    /// Decision 0017: the reducer clears the operation once the pairing wait is fulfilled (the
+    /// paired device appeared) or that wait expires — but only the coordinator knows the slot is
+    /// still held, and a held slot rejects every later pairStart ("already active"). Release it
+    /// on the snapshot that reflects completion.
+    /// </summary>
+    public void ReconcileWithSnapshot(AppSnapshot snapshot) {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        if (Volatile.Read(ref _disposed) != 0) {
+            return;
+        }
+
+        if (_coordinator.CurrentPhase is not DomainPhase.PairedWaitingForDevice) {
+            return;
+        }
+
+        // Wait fulfilled: the reducer no longer carries the operation (device matched or expired).
+        if (snapshot.Pairing is null) {
+            Log.Information("pairing operation released: pairing wait completed");
+            _coordinator.ReleaseActive();
+            return;
+        }
+
+        // Belt and braces: the paired device is already connected over Wi-Fi to that endpoint.
+        PairingEndpoint? endpoint = _coordinator.ActiveEndpoint;
+        if (endpoint is null) {
+            return;
+        }
+
+        foreach (DeviceView device in snapshot.Devices) {
+            if (device.Transport == TransportKind.WiFi
+                && device.State == DeviceStateKind.Connected
+                && HostMatches(device.Detail.Address, endpoint.Host)) {
+                Log.Information("pairing operation released: paired device connected");
+                _coordinator.ReleaseActive();
+                return;
+            }
+        }
+    }
+
+    private static bool HostMatches(string? address, string host) {
+        if (string.IsNullOrEmpty(address)) {
+            return false;
+        }
+
+        int colon = address.LastIndexOf(':');
+        string addressHost = colon > 0 ? address[..colon] : address;
+        return string.Equals(addressHost, host, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

@@ -227,6 +227,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                         case "pairCancel":
                             _pairingSession?.Cancel(offerId);
                             break;
+                        case "pairQrStart":
+                            // Decision 0017: QR failure offers "Scan again" - always a fresh code.
+                            StartQrPairingSession();
+                            break;
                         default:
                             Log.Warning("NativeUi: unknown pairing action {Action}", action);
                             break;
@@ -309,7 +313,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _qrPairingSession = new QrPairingSession(
                 post: evt => _stateEngine.Post(evt),
                 startOffer: offerId => _pairingSession.Start(offerId),
-                submitCode: (offerId, code) => _pairingSession.Submit(offerId, code));
+                submitCode: (offerId, code) => _pairingSession.Submit(offerId, code),
+                isStartActive: offerId => _pairingSession.IsActive(offerId));
 
             // Decision 0013: graceful presentation (mode-B growth + open/close slides).
             // Native shell: DispatcherTimer tick + physical SetWindowPos on the WPF hwnd.
@@ -531,6 +536,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         // Offer withdrawal clears the snapshot card in the reducer; release the
         // coordinator too so a later pairStart for any offer is accepted (§6.8).
         _pairingSession?.CancelIfOfferWithdrawn();
+        // Decision 0017: the reducer clears a fulfilled pairing wait but cannot release the
+        // coordinator's single-operation slot — a parked slot rejects every later pairStart.
+        _pairingSession?.ReconcileWithSnapshot(snapshot);
         if (_repairCoordinator is not null && _stateEngine is not null) {
             _repairCoordinator.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
             if (_lastSeenDiscoveryCard && snapshot.DiscoveryHealth is null) {

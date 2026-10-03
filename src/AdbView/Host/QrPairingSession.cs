@@ -23,17 +23,24 @@ internal sealed class QrPairingSession {
     private readonly Action<string> _startOffer;
     private readonly Action<string, string> _submitCode;
 
+    private readonly Func<string, bool>? _isStartActive;
     private readonly object _gate = new();
     private QrPairingRequest? _request;
     private bool _fired;
 
+    /// <param name="isStartActive">Reports whether a handoff start actually took hold for an
+    /// offer (the pair coordinator refuses while another operation is parked — decision 0017).
+    /// Optional; when omitted the handoff assumes the start took effect, which is appropriate
+    /// only for tests. Production (AppHost) always supplies it.</param>
     public QrPairingSession(
         Action<AdbViewEvent> post,
         Action<string> startOffer,
-        Action<string, string> submitCode) {
+        Action<string, string> submitCode,
+        Func<string, bool>? isStartActive = null) {
         _post = post;
         _startOffer = startOffer;
         _submitCode = submitCode;
+        _isStartActive = isStartActive;
     }
 
     public bool IsActive {
@@ -79,6 +86,22 @@ internal sealed class QrPairingSession {
         // The payload/secret never reaches the log — only the instance name does (R-13).
         Log.Information("QR pairing session started ({Instance}).", _request.InstanceName);
         _post(new PairingQrStartedEvent(view));
+    }
+
+    /// <summary>Starts the pairing operation for this offer and reports whether it took hold.
+    /// <paramref name="offerId"/> is opaque here; the pairing layer is asked through the same
+    /// start delegate every surface uses.</summary>
+    private bool TryStartPairing(string offerId) {
+        try {
+            _startOffer(offerId);
+            return _isStartActive?.Invoke(offerId) ?? true;
+        }
+#pragma warning disable CA1031 // R-08: a start failure is reported as "not started".
+        catch (Exception ex) {
+            Log.Warning(ex, "QR pairing: handoff start failed.");
+            return false;
+        }
+#pragma warning restore CA1031
     }
 
     /// <summary>User cancel: quiet clear (generation-guarded in the reducer).</summary>
@@ -149,9 +172,19 @@ internal sealed class QrPairingSession {
 
         string secret = request.Secret;
         Log.Information("QR pairing: phone scanned; starting pair for {Instance}.", request.InstanceName);
-        _startOffer(offerId);
-        // PairingSession.Submit is synchronous fire-and-forget into the pair coordinator; the
-        // standard pairing cards take over. The QR layer clears quietly (generation 0 = active).
+
+        // Decision 0017: the handoff used to clear the QR and log success unconditionally, even
+        // when the coordinator refused the start (e.g. "pairing operation already active"), which
+        // hid the real failure and removed the only affordance the user had. Verify the start
+        // took hold; otherwise keep the QR card so the code can be re-scanned.
+        if (!TryStartPairing(offerId)) {
+            _fired = false;
+            Log.Warning(
+                "QR pairing: handoff rejected for {Instance}; QR session kept for a rescan.",
+                request.InstanceName);
+            return;
+        }
+
         try {
             _submitCode(offerId, secret);
             _post(new PairingQrClearedEvent(0));

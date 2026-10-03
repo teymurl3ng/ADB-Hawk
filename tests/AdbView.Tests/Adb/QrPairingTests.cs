@@ -215,4 +215,42 @@ public sealed class QrPairingSessionTests {
             StateWith(PairingRow(request.InstanceName), "_adb-tls-pairing._tcp\u001f" + request.InstanceName));
         Assert.Single(actions.Started);
     }
+
+    [Fact]
+    public void RejectedHandoffKeepsTheQrSessionForARescan() {
+        // Decision 0017: the handoff used to clear the QR and log success unconditionally, even
+        // when the pair coordinator refused the start ("pairing operation already active") —
+        // which hid the failure and removed the only affordance the user had.
+        var sink = new EventSink();
+        var actions = new PairingActions();
+        bool startTakesEffect = false;
+        var session = new QrPairingSession(
+            sink.Post, actions.Start, actions.Submit, isStartActive: _ => startTakesEffect);
+        session.Start();
+        sink.Events.Clear();
+
+        var request = session.GetActiveRequestForTest();
+        string offerId = "_adb-tls-pairing._tcp" + request!.InstanceName;
+        session.OnSnapshotPublished(
+            SnapshotWithQr(),
+            StateWith(PairingRow(request.InstanceName), offerId));
+
+        // Refused: no submit, no clear, and the session stays live so the code can be re-scanned.
+        Assert.Single(actions.Started);
+        Assert.Empty(actions.Submitted);
+        Assert.DoesNotContain(sink.Events, e => e is PairingQrClearedEvent);
+        Assert.True(session.IsActive);
+
+        // A later scan (once the slot is free) still hands off exactly once.
+        startTakesEffect = true;
+        session.OnSnapshotPublished(
+            SnapshotWithQr(),
+            StateWith(PairingRow(request.InstanceName), offerId));
+
+        Assert.Equal(2, actions.Started.Count);
+        var submit = Assert.Single(actions.Submitted);
+        Assert.Equal(request.Secret, submit.Code);
+        Assert.Contains(sink.Events, e => e is PairingQrClearedEvent);
+        Assert.False(session.IsActive);
+    }
 }

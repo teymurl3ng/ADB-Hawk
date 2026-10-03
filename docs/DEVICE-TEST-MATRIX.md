@@ -410,3 +410,17 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Native offer-phase pairing card renders and raises pairStart (web parity) | **AUTOMATED PASS** | `NativeShellViewModelTests` offer cases |
 | Live: QR pair on a network where adb mDNS works | **NOT EXERCISED** | Blocked by environment 2026-10-03: `adb mdns services` empty; Chrome ×2 + svchost hold UDP 5353; Tailscale up. In-app health card reports the same. |
 | Live: synthetic click automation against the flyout | **NOT EXERCISED (harness)** | The unpinned flyout is non-topmost and light-dismisses on focus loss, so synthetic input is unreliable; owner manual test required. Root cause of the earlier misleading test: PowerShell reports virtualized coordinates — 1151 × 1.25 = 1439 matches the log's physical X. |
+
+## Pairing slot release + QR presentation (2026-10-03, decision 0017)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Parked pairing slot released once the pairing wait completes (device appeared / wait expired) | **AUTOMATED PASS** | `FulfilledWaitIsReleased_SoTheNextPairIsAccepted` — the live leak |
+| A genuine in-flight operation is undisturbed by reconciliation | **AUTOMATED PASS** | `ReconcileLeavesAGenuineInFlightOperationAlone` |
+| A parked Failed operation for another offer does not block a new pair | **AUTOMATED PASS** | `NewPairStartPreemptsAFailedOperationForAnotherOffer` (QR mints a fresh instance each time) |
+| Cancel clears a parked operation even when the clicked offer id differs | **AUTOMATED PASS** | `CancelClearsAParkedOperationEvenWhenTheClickedIdDiffers` |
+| Refused QR handoff keeps the QR session, submits nothing, allows a later rescan | **AUTOMATED PASS** | `RejectedHandoffKeepsTheQrSessionForARescan` |
+| QR-origin card hides the typed-code slots/title/Pair and offers "Scan again" on failure; typed cards keep Pair/Retry | **AUTOMATED PASS** | 4 cases in `NativeShellViewModelTests` |
+| Live: code-pair, then QR-pair in the SAME session without restarting | **NOT EXERCISED** | The exact failure mode (log 2026-10-03 15:13:55 → 15:14:16); requires the owner's phone on a network where mDNS works |

@@ -35,6 +35,11 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
         _raiseAction = raiseAction;
         _state = state;
         _detail = detail;
+        // QR sessions mint their own instance name (QrPairingRequest.InstancePrefix) and submit
+        // the per-session secret themselves, so the user never types a code: those operations
+        // must not present the typed-code affordances (decision 0017). Detected by prefix
+        // because the snapshot contract is frozen (BridgeProtocol 1) and carries no origin field.
+        IsQrOriginated = offerId.Contains(QrInstancePrefix, StringComparison.Ordinal);
         StartCommand = new RelayCommand(_ => _raiseAction("pairStart", _offerId, null));
         SubmitCommand = new RelayCommand(_ => Submit(), _ => CanSubmit);
         CancelCommand = new RelayCommand(_ => _raiseAction("pairCancel", _offerId, null));
@@ -47,7 +52,12 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
                 _raiseAction("pairStart", _offerId, null);
             }
         });
+        // QR failures are retried with a fresh code — each secret is single-use.
+        ScanAgainCommand = new RelayCommand(_ => _raiseAction("pairQrStart", _offerId, null));
     }
+
+    /// <summary>QrPairingRequest.InstancePrefix — instance names this app mints for QR sessions.</summary>
+    private const string QrInstancePrefix = "adbview-";
 
     public ICommand StartCommand { get; }
 
@@ -56,6 +66,48 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
     public ICommand CancelCommand { get; }
 
     public ICommand RetryCommand { get; }
+
+    public ICommand ScanAgainCommand { get; }
+
+    /// <summary>True for an operation started by scanning this app's QR code.</summary>
+    public bool IsQrOriginated { get; }
+
+    /// <summary>
+    /// The single action button the card renders. One button (not two overlapping ones) whose
+    /// label, command and tint the view model chooses — the same choice the web card makes with
+    /// an inline ternary (ui/src/components/PairingCard.tsx).
+    /// </summary>
+    public ICommand PrimaryCommand => IsFailure
+        ? (IsQrOriginated ? ScanAgainCommand : RetryCommand)
+        : SubmitCommand;
+
+    public string PrimaryLabel => IsFailure
+        ? (IsQrOriginated ? "Scan again" : "Retry")
+        : "Pair";
+
+    /// <summary>Primary action shows for typed-code pairing, retry, and QR rescan — hidden
+    /// while a QR operation is in progress or succeeded (nothing for the user to press).</summary>
+    public bool ShowPrimaryAction => IsFailure || (IsCodeEntry && !IsQrOriginated);
+
+    /// <summary>Digit slots belong to typed-code entry only; a QR operation has no code to type
+    /// (the "mixed up with code pairing" card the owner saw).</summary>
+    public bool ShowSlots => IsCodeEntry && !IsQrOriginated;
+
+    /// <summary>A QR operation awaiting the code it already holds is visually progress.</summary>
+    public bool ShowProgress => IsProgress || (IsCodeEntry && IsQrOriginated);
+
+    /// <summary>The typed-code action row (Cancel + Pair) — suppressed for QR operations, whose
+    /// progress row carries its own Cancel.</summary>
+    public bool ShowCodeActionRow => IsCodeEntry && !IsQrOriginated;
+
+    public string PrimaryBackgroundKey => IsFailure ? "Win.Red" : "Win.Accent";
+
+    public string PrimaryForegroundKey => IsFailure || CanSubmit ? "Win.BtnText" : "Win.TextMuted";
+
+    public SolidColorBrush PrimaryBackground => (SolidColorBrush)Application.Current.Resources[
+        IsFailure || CanSubmit ? PrimaryBackgroundKey : "Win.BtnHover"];
+
+    public SolidColorBrush PrimaryForeground => (SolidColorBrush)Application.Current.Resources[PrimaryForegroundKey];
 
     public void Update(PairingCardState state, string? detail) {
         var phaseChanged = State != state;
@@ -104,6 +156,15 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
             OnPropertyChanged(nameof(SuccessTitle));
             OnPropertyChanged(nameof(CardSurface));
             OnPropertyChanged(nameof(CardBorder));
+            OnPropertyChanged(nameof(ShowCodeEntryTitle));
+            OnPropertyChanged(nameof(ShowPrimaryAction));
+            OnPropertyChanged(nameof(ShowSlots));
+            OnPropertyChanged(nameof(ShowProgress));
+            OnPropertyChanged(nameof(ShowCodeActionRow));
+            OnPropertyChanged(nameof(PrimaryCommand));
+            OnPropertyChanged(nameof(PrimaryLabel));
+            OnPropertyChanged(nameof(PrimaryBackground));
+            OnPropertyChanged(nameof(PrimaryForeground));
         }
     }
 
@@ -172,8 +233,9 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
 
     public bool IsCodeEntry => State is PairingCardState.CodeEntry or PairingCardState.Failure;
 
-    /// <summary>Code-entry title block shows for code phases except failure (which shows its own header).</summary>
-    public bool ShowCodeEntryTitle => IsCodeEntry && !IsFailure;
+    /// <summary>Code-entry title block shows for typed code phases except failure (which shows
+    /// its own header) and never for a QR operation (no code is typed).</summary>
+    public bool ShowCodeEntryTitle => IsCodeEntry && !IsFailure && !IsQrOriginated;
 
     public bool IsProgress => State is PairingCardState.Progress;
 
@@ -195,6 +257,8 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
             OnPropertyChanged(nameof(CanSubmit));
             OnPropertyChanged(nameof(SubmitBackground));
             OnPropertyChanged(nameof(SubmitForeground));
+            OnPropertyChanged(nameof(PrimaryBackground));
+            OnPropertyChanged(nameof(PrimaryForeground));
             OnPropertyChanged(nameof(Digit1));
             OnPropertyChanged(nameof(Digit2));
             OnPropertyChanged(nameof(Digit3));

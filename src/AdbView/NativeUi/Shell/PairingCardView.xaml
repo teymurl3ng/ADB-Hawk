@@ -141,8 +141,10 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- Content region: six code slots with an invisible digit input on top -->
-            <Grid Visibility="{Binding IsCodeEntry, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+            <!-- Content region: six code slots with an invisible digit input on top.
+                 Typed-code entry only — a QR operation holds its own code, so it shows no slots
+                 (the "mixed up with code pairing" card). -->
+            <Grid Visibility="{Binding ShowSlots, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="8"/>
@@ -179,14 +181,15 @@
                          Text="{Binding CodeInput, UpdateSourceTrigger=PropertyChanged}"
                          Opacity="0" Background="Transparent" BorderThickness="0"
                          CaretBrush="Transparent" SelectionBrush="Transparent" MinWidth="0" MinHeight="0"
-                         MaxLength="32" FontSize="1" Height="36"
+                         MaxLength="6" FontSize="1" Height="36"
                          IsVisibleChanged="OnCodeInputVisibleChanged"/>
             </Grid>
 
             <!-- Action region -->
             <StackPanel>
-                <!-- Progress: full-width quiet cancel -->
-                <Button Visibility="{Binding IsProgress, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                <!-- Progress (and a QR operation awaiting the code it already holds): one quiet
+                     full-width cancel. -->
+                <Button Visibility="{Binding ShowProgress, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
                         HorizontalContentAlignment="Stretch" Background="Transparent" BorderThickness="0"
                         Cursor="Hand" FocusVisualStyle="{x:Null}" Padding="0" Margin="0,12,0,0"
                         Command="{Binding CancelCommand}">
@@ -197,8 +200,8 @@
                     </Border>
                 </Button>
 
-                <!-- Code entry: Cancel + Pair/Retry over a subtle top rule -->
-                <Grid Visibility="{Binding IsCodeEntry, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                <!-- Typed code entry: Cancel + Pair over a subtle top rule. -->
+                <Grid Visibility="{Binding ShowCodeActionRow, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
                       Margin="0,12,0,0">
                     <Border BorderBrush="{DynamicResource Win.BorderSubtle}" BorderThickness="0,1,0,0"
                             Padding="0,8,0,0"/>
@@ -209,37 +212,32 @@
                                    Foreground="{DynamicResource Win.TextSecondary}"/>
                     </Button>
                     <Button HorizontalAlignment="Right" Cursor="Hand" FocusVisualStyle="{x:Null}"
-                            Padding="0" Height="28" Command="{Binding SubmitCommand}">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Visibility" Value="Visible"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsFailure}" Value="True">
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <Border CornerRadius="4" Background="{Binding SubmitBackground}" Height="28" Padding="14,0">
-                            <TextBlock Text="Pair" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"
-                                       Foreground="{Binding SubmitForeground}"/>
+                            Padding="0" Height="28" Command="{Binding PrimaryCommand}">
+                        <Border CornerRadius="4" Background="{Binding PrimaryBackground}" Height="28" Padding="14,0">
+                            <TextBlock Text="{Binding PrimaryLabel}" FontSize="12" FontWeight="Medium"
+                                       VerticalAlignment="Center" Foreground="{Binding PrimaryForeground}"/>
                         </Border>
                     </Button>
+                </Grid>
+
+                <!-- Failure: Cancel + a single primary action (Retry for a typed-code pairing,
+                     Scan again for a QR pairing — each secret is single-use). One button, so the
+                     two can never stack on top of each other. -->
+                <Grid Visibility="{Binding IsFailure, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}"
+                      Margin="0,12,0,0">
+                    <Border BorderBrush="{DynamicResource Win.BorderSubtle}" BorderThickness="0,1,0,0"
+                            Padding="0,8,0,0"/>
+                    <Button HorizontalAlignment="Left" Background="Transparent" BorderThickness="0"
+                            Cursor="Hand" FocusVisualStyle="{x:Null}" Padding="10,0" Height="28"
+                            Command="{Binding CancelCommand}">
+                        <TextBlock Text="Cancel" FontSize="12" FontWeight="Medium"
+                                   Foreground="{DynamicResource Win.TextSecondary}"/>
+                    </Button>
                     <Button HorizontalAlignment="Right" Cursor="Hand" FocusVisualStyle="{x:Null}"
-                            Padding="0" Height="28" Command="{Binding RetryCommand}">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Visibility" Value="Collapsed"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsFailure}" Value="True">
-                                        <Setter Property="Visibility" Value="Visible"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                        <Border CornerRadius="4" Background="{DynamicResource Win.Red}" Height="28" Padding="14,0">
-                            <TextBlock Text="Retry" FontSize="12" FontWeight="Medium" VerticalAlignment="Center"
-                                       Foreground="White"/>
+                            Padding="0" Height="28" Command="{Binding PrimaryCommand}">
+                        <Border CornerRadius="4" Background="{Binding PrimaryBackground}" Height="28" Padding="14,0">
+                            <TextBlock Text="{Binding PrimaryLabel}" FontSize="12" FontWeight="Medium"
+                                       VerticalAlignment="Center" Foreground="{Binding PrimaryForeground}"/>
                         </Border>
                     </Button>
                 </Grid>
