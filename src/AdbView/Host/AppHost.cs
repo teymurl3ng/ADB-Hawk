@@ -221,7 +221,13 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 // read false while the flyout was on screen — which silently defeated decision
                 // 0019's "no toast while the flyout is visible" suppression. IsVisibleChanged
                 // fires on the UI thread; readers use a volatile read.
-                _nativeWindow.IsVisibleChanged += (_, e) => _isVisible = (bool)e.NewValue;
+                // ... and re-evaluate the bubble on the same transition. HideNativeFlyout refreshes
+                // it while the close slide is still running (the window is not hidden yet), so
+                // without this the bubble stayed hidden after the flyout had gone.
+                _nativeWindow.IsVisibleChanged += (_, e) => {
+                    _isVisible = (bool)e.NewValue;
+                    RefreshStatusBubble();
+                };
                 _shellViewModel = (NativeUi.Shell.NativeShellViewModel)((NativeUi.Shell.ShellView)_nativeWindow.Content).DataContext;
                 _shellViewModel.StartQrRequested += StartQrPairingSession;
                 _shellViewModel.QrCancelRequested += () => _qrPairingSession?.Cancel();
