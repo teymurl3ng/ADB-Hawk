@@ -267,6 +267,39 @@ public sealed class NativeShellViewModelTests {
         Assert.False(raised);
     }
 
+    // ---------- shell state round-trip ----------
+
+    [Fact]
+    public void SnapshotPinStateUpdatesTheViewModel() {
+        var vm = new NativeShellViewModel();
+        Assert.False(vm.Pinned);
+
+        // The reducer owns pin state; the snapshot is what the shell renders.
+        var pinnedSnapshot = Snapshot();
+        pinnedSnapshot = pinnedSnapshot with { Shell = pinnedSnapshot.Shell with { Pinned = true } };
+        vm.ApplySnapshot(pinnedSnapshot);
+
+        Assert.True(vm.Pinned);
+        Assert.Equal("Unpin flyout", vm.PinToolTip);
+    }
+
+    [Fact]
+    public void ThemeResourceRefreshRaisesBindableBrushes() {
+        var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
+        var card = vm.PairingCard!;
+
+        var raised = new HashSet<string>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+        card.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        vm.RefreshThemeResources();
+
+        Assert.Contains("PinForeground", raised);
+        Assert.Contains("CardSurface", raised);
+        Assert.Contains("CardBorder", raised);
+    }
+
     // ---------- pairing QR ----------
 
     [Fact]

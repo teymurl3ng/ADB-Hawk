@@ -213,7 +213,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 _shellViewModel = (NativeUi.Shell.NativeShellViewModel)((NativeUi.Shell.ShellView)_nativeWindow.Content).DataContext;
                 _shellViewModel.StartQrRequested += () => _qrPairingSession?.Start();
                 _shellViewModel.QrCancelRequested += () => _qrPairingSession?.Cancel();
-                _shellViewModel.PinChangeRequested += pinned => SetPinned(pinned);
+                _shellViewModel.PinChangeRequested += OnPinChangeRequestedFromShell;
                 // Native surface forwards the exact action verbs the bridge contract defines
                 // (WebActions.cs); the same coordinators serve both UIs.
                 _shellViewModel.PairingActionRequested += (action, offerId, code) => {
@@ -1433,7 +1433,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void ApplyNativeShellFromSnapshot(AppSnapshot snapshot) {
-        if (_flyoutWindow is null) {
+        if (!_nativeUi && _flyoutWindow is null) {
             return;
         }
 
@@ -1462,15 +1462,63 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         _lastAppliedTheme = theme;
         _lastAppliedTransparency = transparency;
+        if (_nativeUi) {
+            if (TryMarshalToFlyoutUi(new Action(() => ApplyNativeTheme(theme, transparency)))) {
+                return;
+            }
+
+            ApplyNativeTheme(theme, transparency);
+            return;
+        }
+
+        // WebView path (guarded above: !_nativeUi && _flyoutWindow is not null).
         if (TryMarshalToFlyoutUi(new Action(() => {
-            _flyoutWindow.ApplyShellAppearance(theme, transparency);
+            _flyoutWindow?.ApplyShellAppearance(theme, transparency);
             _webViewHost?.ApplyOpaqueBackground(theme);
         }))) {
             return;
         }
 
-        _flyoutWindow.ApplyShellAppearance(theme, transparency);
+        _flyoutWindow?.ApplyShellAppearance(theme, transparency);
         _webViewHost?.ApplyOpaqueBackground(theme);
+    }
+
+    private void OnPinChangeRequestedFromShell(bool pinned) {
+        // The StateEngine is the single pin authority (identical to the bridge 'pin' action).
+        // The earlier direct SetPinned bypass let every following snapshot silently un-pin —
+        // the round trip through the reducer is what makes the icon and the window agree.
+        // Headless constructs no engine; the shell only exists headed.
+        if (_stateEngine is not null) {
+            _stateEngine.Post(new SetPinnedEvent(pinned));
+        }
+    }
+
+    private void ApplyNativeTheme(ThemeKind theme, bool transparency) {
+        _nativeWindow?.ApplyShellAppearance(theme, transparency);
+        SwapAppThemeDictionary(theme);
+        _shellViewModel?.RefreshThemeResources();
+        Log.Information("Native shell theme applied: {Theme} (transparency={Transparency})", theme, transparency);
+    }
+
+    private static void SwapAppThemeDictionary(ThemeKind theme) {
+        if (System.Windows.Application.Current is null) {
+            return;
+        }
+
+        var uri = new Uri(
+            theme == ThemeKind.Light
+                ? "pack://application:,,,/NativeUi/Themes/FluentLight.xaml"
+                : "pack://application:,,,/NativeUi/Themes/FluentDark.xaml",
+            UriKind.Absolute);
+        var merged = System.Windows.Application.Current.Resources.MergedDictionaries;
+        for (var i = 0; i < merged.Count; i++) {
+            if (merged[i].Source?.OriginalString.Contains("Fluent", StringComparison.Ordinal) == true) {
+                merged[i] = new System.Windows.ResourceDictionary { Source = uri };
+                return;
+            }
+        }
+
+        merged.Add(new System.Windows.ResourceDictionary { Source = uri });
     }
 
     private void UpdateFlyoutBounds() {

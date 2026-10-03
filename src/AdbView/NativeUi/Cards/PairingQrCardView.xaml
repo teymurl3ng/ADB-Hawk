@@ -5,9 +5,6 @@
              >
     <UserControl.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="pack://application:,,,/NativeUi/Themes/FluentDark.xaml"/>
-            </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>
     </UserControl.Resources>
     <!-- Pairing QR session card (decision 0010): backend renders the code; frontend displays only. -->

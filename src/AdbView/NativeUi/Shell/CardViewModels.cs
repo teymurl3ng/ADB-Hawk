@@ -264,6 +264,14 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
 
     private void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+    /// <summary>Re-raises theme-derived brushes after a dark/light dictionary swap.</summary>
+    internal void RefreshThemeResources() {
+        OnPropertyChanged(nameof(CardSurface));
+        OnPropertyChanged(nameof(CardBorder));
+        OnPropertyChanged(nameof(SubmitBackground));
+        OnPropertyChanged(nameof(SubmitForeground));
+    }
 }
 
 /// <summary>Discovery-health warning card (decision 0008) — evidence, repairs, result line.</summary>

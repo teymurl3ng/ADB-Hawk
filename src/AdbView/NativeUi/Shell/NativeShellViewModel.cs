@@ -72,6 +72,24 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
         }
     }
 
+    /// <summary>Applies the authoritative pin state from the snapshot (single source of truth:
+    /// user clicks post a SetPinnedEvent; the snapshot round-trip updates this view model).</summary>
+    internal void ApplyPinned(bool pinned) => Pinned = pinned;
+
+    /// <summary>
+    /// Re-raises every theme-derived bindable after the app-level token dictionary was swapped
+    /// (dark/light). Brush getters read <see cref="Application.Current.Resources"/> at get time;
+    /// without this re-raise they would keep the previous theme's brushes.
+    /// </summary>
+    internal void RefreshThemeResources() {
+        OnPropertyChanged(nameof(PinForeground));
+        foreach (var device in _devices) {
+            device.RefreshThemeResources();
+        }
+
+        PairingCard?.RefreshThemeResources();
+    }
+
     public Geometry PinIconGeometry => (Geometry)Application.Current.Resources[Pinned ? "Icon.Pin" : "Icon.PinOff"];
 
     public SolidColorBrush PinForeground =>
@@ -126,6 +144,9 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
 
     /// <summary>Applies an authoritative snapshot. Must be called on the shell Dispatcher.</summary>
     public void ApplySnapshot(AppSnapshot snapshot) {
+        // Pin state is snapshot-derived like everything else: user clicks post a SetPinnedEvent,
+        // and this reflection is what updates the icon (the reducer is the single authority).
+        ApplyPinned(snapshot.Shell.Pinned);
         ApplyDevices(snapshot.Devices, snapshot.GeneratedAt);
         ApplyPairing(snapshot);
         ApplyPairingQr(snapshot.PairingQr);
@@ -492,6 +513,16 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
         OnPropertyChanged(nameof(ShowAddressCopied));
         OnPropertyChanged(nameof(ShowSerialCopy));
         OnPropertyChanged(nameof(ShowSerialCopied));
+    }
+
+    /// <summary>Re-raises theme-derived brushes after a dark/light dictionary swap.</summary>
+    internal void RefreshThemeResources() {
+        OnPropertyChanged(nameof(StatePillBackground));
+        OnPropertyChanged(nameof(StatePillBorder));
+        OnPropertyChanged(nameof(StatePillDot));
+        OnPropertyChanged(nameof(StatePillForeground));
+        OnPropertyChanged(nameof(TransportIconGeometry));
+        OnPropertyChanged(nameof(ChevronIconGeometry));
     }
 
     private void RaiseChanged() {

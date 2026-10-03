@@ -4,9 +4,6 @@
              Focusable="False">
     <UserControl.Resources>
         <ResourceDictionary>
-            <ResourceDictionary.MergedDictionaries>
-                <ResourceDictionary Source="pack://application:,,,/NativeUi/Themes/FluentDark.xaml"/>
-            </ResourceDictionary.MergedDictionaries>
             <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
             <Style x:Key="SlotBox" TargetType="Border">
                 <Setter Property="CornerRadius" Value="4"/>
