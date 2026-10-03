@@ -461,3 +461,23 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Hover shows device detail; click opens the flyout (phase N3) | **NOT IMPLEMENTED** | Next phase |
 | Bubble hides over a full-screen app / lock screen (phase N3) | **NOT IMPLEMENTED** | Next phase |
 | Live: unplug the phone → red for 60 s → bubble disappears | **NOT EXERCISED** | Owner's device; the presenter behaviour is unit-tested |
+
+## Status bubble — hover/click phase (2026-10-04, decision 0020 phase N3)
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Rounded corners confirmed by the owner (DWM rounding works on the frameless bubble) | **LIVE PASS** | Owner: "it's a rounded square" — `SetWindowRgn` fallback not needed |
+| Bubble colour follows the aggregate | **LIVE PASS** | Window capture pixel-sampled `#4ADE80` — the dark-theme Green token, while a phone was connected |
+| Bubble hides while the flyout is visible | **IMPLEMENTED** | Found live: the bubble sits INSIDE the flyout's rectangle, so the open flyout intercepted the mouse. Hiding it while the flyout shows is the same reasoning as decision 0019's toast suppression |
+| Hover reveals the status text (window grows left, bottom-right corner anchored) | **IMPLEMENTED, UNVERIFIED** | No mouse event reached the window in testing, even with the flyout dismissed — see the note below |
+| Click opens the flyout | **IMPLEMENTED, UNVERIFIED** | Wired to the same path as the tray's "Open ADB View" |
+| Hide over a full-screen app / lock screen | **NOT IMPLEMENTED** | Planned via `SHQueryUserNotificationState` |
+| Live: unplug the phone → red for 60 s → bubble disappears | **NOT EXERCISED** | Presenter behaviour is unit-tested; the physical unplug is the owner's |
+
+**Open question (hover):** a synthetic `SetCursorPos` over the bubble produced no `MouseEnter` (confirmed
+by the temporary `StatusBubble: SetHovered(...)` log line, which stayed empty) even after dismissing the
+flyout. Synthetic hover demonstrably works on the flyout itself (verified earlier by a pixel diff), so the
+difference is the bubble's non-activating window. The next step is to read that log line after a REAL
+mouse hover, which distinguishes "synthetic input does not reach a `WS_EX_NOACTIVATE` window" from "the
+window never receives mouse input at all"; if it is the latter, hover moves to the HWND (`WM_MOUSEMOVE` +
+`TrackMouseEvent`) instead of WPF's input pipeline.

@@ -768,6 +768,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         NotifyMetadataPresentation();
         MaybeStartDiscoveryCheck();
+        RefreshStatusBubble();
 
         if (FlyoutInteractionPolicy.ShouldClearPendingInitialShowOnManualShow(_pendingInitialShow, _initialShowCompleted)) {
             _pendingInitialShow = false;
@@ -784,6 +785,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _showGeneration++;
         _lightDismissArmed = false;
         _isVisible = false;
+        RefreshStatusBubble();
         NotifyMetadataPresentation();
 
         if (!_animationsEnabled) {
@@ -1451,6 +1453,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 static (span, ct) => Task.Delay(span, ct));
             _statusBubble = new NativeUi.StatusBubbleWindow();
             _statusBubble.ApplyTheme(_lastAppliedTheme);
+            // Clicking the bubble opens the flyout — the same path as the tray's "Open ADB View".
+            _statusBubble.OpenRequested += ShowFlyoutOnly;
             _statusBubblePresenter.Changed += OnStatusBubbleChanged;
 
             // Seed with the current truth so the toggle shows something immediately.
@@ -1486,10 +1490,25 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void OnStatusBubbleChanged(NativeUi.BubbleState? state) {
+        _ = state;
+        RefreshStatusBubble();
+    }
+
+    /// <summary>
+    /// Shows, hides or re-anchors the bubble from the presenter's current state.
+    ///
+    /// The bubble is hidden while the flyout is visible: the flyout occupies the same bottom-right
+    /// corner rectangle (it also intercepts the mouse over it), and it is already showing exactly
+    /// the truth the bubble would echo — the same reasoning as decision 0019's "no toast while the
+    /// flyout is on screen".
+    /// </summary>
+    private void RefreshStatusBubble() {
         var window = _statusBubble;
         if (window is null) {
             return;
         }
+
+        NativeUi.BubbleState? state = IsFlyoutVisible ? null : _statusBubblePresenter?.Current;
 
         void Deliver() {
             if (state is null) {
@@ -1497,13 +1516,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 return;
             }
 
-            // Place in DIP *before* the first Show: the HWND does not exist until Show, so a
-            // SetWindowPos-style path would silently do nothing on the first appearance.
             window.ApplyTheme(_lastAppliedTheme);
+            AnchorStatusBubble(window);
             window.Apply(state);
-
-            // Show first (the HWND only exists then), then pin the exact physical bounds.
-            window.SetPhysicalBounds(ComputeStatusBubbleBounds(window));
         }
 
         if (window.Dispatcher.CheckAccess()) {
@@ -1520,20 +1535,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     /// 2026-10-03-status-bubble-native-approaches.md). WinForms returns that rect in physical
     /// pixels, so it is divided back into DIP for WPF.
     /// </summary>
-    private static Rectangle ComputeStatusBubbleBounds(NativeUi.StatusBubbleWindow window) {
+    /// <summary>
+    /// Hands the bubble the bottom-right corner of the taskbar monitor's work area, in DIP. The
+    /// window positions itself from that, so hover growth extends leftwards and the corner holds.
+    /// WinForms reports the work area in physical pixels, hence the division by the scale.
+    /// </summary>
+    private static void AnchorStatusBubble(NativeUi.StatusBubbleWindow window) {
         var work = TrayIcon.GetTaskbarScreen().WorkingArea;
         double scale = window.DpiScale <= 0 ? 1.0 : window.DpiScale;
-
-        // Measure what the window actually became: the shell imposes a minimum window size, so the
-        // capsule's design size is a floor, not a guarantee. Positioning by the real size keeps the
-        // right and bottom edges inside the work area either way.
-        double widthDip = window.ActualWidth > 0 ? window.ActualWidth : NativeUi.StatusBubbleWindow.BubbleSizeDip;
-        double heightDip = window.ActualHeight > 0 ? window.ActualHeight : NativeUi.StatusBubbleWindow.BubbleSizeDip;
-        int width = (int)Math.Round(widthDip * scale);
-        int height = (int)Math.Round(heightDip * scale);
-        int margin = (int)Math.Round(12 * scale);
-
-        return new Rectangle(work.Right - width - margin, work.Bottom - height - margin, width, height);
+        window.SetAnchor(work.Right / scale, work.Bottom / scale);
     }
 
     private void OnTrayPreferencesChanged(object? sender, EventArgs e) {

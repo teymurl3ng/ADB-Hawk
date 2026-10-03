@@ -4,12 +4,17 @@
         Title="ADB View status"
         ShowInTaskbar="False"
         SizeToContent="WidthAndHeight"
-        MaxWidth="360">
-    <!-- The window IS the bubble: a small square the size of the status dot, filled with the
-         aggregate status colour and rounded by DWM (corner preference ROUNDSMALL). A true circle
-         would need AllowsTransparency, i.e. the layered render path, which decision 0020 and
-         research/2026-10-03 deliberately avoid. Hover expansion (phase N3) grows this window
-         horizontally; the root element below is what carries the colour. -->
-    <Border x:Name="Capsule" Width="22" Height="22" CornerRadius="4"
-            BorderThickness="1" BorderBrush="{DynamicResource Win.BorderSubtle}"/>
+        Background="{DynamicResource Win.Card}">
+    <!-- The window IS the bubble. Unhovered it is exactly the 22 DIP status dot; hovering reveals
+         the status text and the window grows towards the LEFT, keeping the bottom-right corner
+         anchored (the anchor is applied in code). DWM rounds the frame (confirmed live: the owner
+         sees a rounded square), so no AllowsTransparency / layered path is used. -->
+    <Border x:Name="Shell" CornerRadius="4" BorderThickness="1"
+            BorderBrush="{DynamicResource Win.CardBorder}" Background="{DynamicResource Win.Card}">
+        <StackPanel Orientation="Horizontal">
+            <Border x:Name="Dot" Width="22" Height="22" CornerRadius="3"/>
+            <TextBlock x:Name="Detail" Margin="7,0,9,0" VerticalAlignment="Center" FontSize="12"
+                       Foreground="{DynamicResource Win.TextPrimary}" Visibility="Collapsed"/>
+        </StackPanel>
+    </Border>
 </Window>

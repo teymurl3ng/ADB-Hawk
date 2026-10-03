@@ -68,7 +68,21 @@ public sealed partial class StatusBubbleWindow : Window {
         Height = BubbleSizeDip;
         WindowStartupLocation = WindowStartupLocation.Manual;
         SourceInitialized += OnSourceInitialized;
+        SizeChanged += OnSizeChanged;
+
+        // Hover reveals the status text; clicking opens the flyout. Both are wired here rather
+        // than in XAML so the behaviour stays testable and the XAML stays dumb.
+        Shell.MouseEnter += (_, _) => SetHovered(true);
+        Shell.MouseLeave += (_, _) => SetHovered(false);
+        Shell.MouseLeftButtonUp += (_, _) => OpenRequested?.Invoke();
     }
+
+    /// <summary>Raised when the user clicks the bubble (open the flyout).</summary>
+    internal event Action? OpenRequested;
+
+    /// <summary>Raised when the bubble's size changed (hover expansion) and the Host may need to
+    /// re-anchor it. The window re-anchors itself, so this is informational.</summary>
+    internal event Action? LayoutChanged;
 
     /// <summary>Applied theme (dark-mode DWM attribute follows it).</summary>
     internal ThemeKind AppliedTheme => _theme;
@@ -115,14 +129,19 @@ public sealed partial class StatusBubbleWindow : Window {
             return;
         }
 
-        if (Capsule is null) {
+        if (Dot is null) {
             // R-08: never let a presentation fault take the process down.
             Log.Warning("StatusBubble: capsule element missing; leaving the bubble hidden");
             Hide();
             return;
         }
 
-        Capsule.Background = ResolveBrush(state.Color);
+        _detail = state.Detail;
+        Dot.Background = ResolveBrush(state.Color);
+        if (_hovered) {
+            Detail.Text = _detail;
+            Detail.Visibility = Visibility.Visible;
+        }
 
         // Show without activating: never Activate/Focus/SetForegroundWindow on this window.
         Show();
@@ -137,29 +156,64 @@ public sealed partial class StatusBubbleWindow : Window {
         return Brushes.Transparent;
     }
 
+    private double _anchorRightDip;
+    private double _anchorBottomDip;
+    private bool _hovered;
+
+    /// <summary>Distance kept from the work area's right/bottom edges, in DIP.</summary>
+    internal const double AnchorMarginDip = 12;
+
     /// <summary>
-    /// Pins exact physical bounds without activation. Used AFTER Show, because the HWND does not
-    /// exist before then — and WPF's own sizing proved unreliable for this frame recipe (it laid
-    /// the window out far larger than its content).
+    /// Records the bottom-right corner (in DIP) the bubble hangs from. The window positions
+    /// itself from this, so growing on hover extends leftwards and the corner never moves.
     /// </summary>
-    internal void SetPhysicalBounds(Rectangle physicalBounds) {
-        var handle = new WindowInteropHelper(this).Handle;
-        if (handle == IntPtr.Zero) {
+    internal void SetAnchor(double rightDip, double bottomDip) {
+        _anchorRightDip = rightDip;
+        _anchorBottomDip = bottomDip;
+        Reanchor();
+    }
+
+    /// <summary>Its own desired size in DIP — what the Host needs to know for logging/verification.</summary>
+    internal Size DesiredSizeDip => new(ActualWidth, ActualHeight);
+
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e) => Reanchor();
+
+    private void Reanchor() {
+        if (_anchorRightDip <= 0 || _anchorBottomDip <= 0) {
             return;
         }
 
-        var ok = PInvoke.SetWindowPos(
-            new HWND(handle),
-            HWND.Null,
-            physicalBounds.X,
-            physicalBounds.Y,
-            physicalBounds.Width,
-            physicalBounds.Height,
-            SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
-        if (!ok) {
-            Log.Warning("StatusBubble: SetPhysicalBounds failed for {Bounds}", physicalBounds);
-        }
+        double width = ActualWidth > 0 ? ActualWidth : BubbleSizeDip;
+        double height = ActualHeight > 0 ? ActualHeight : BubbleSizeDip;
+        Left = _anchorRightDip - width - AnchorMarginDip;
+        Top = _anchorBottomDip - height - AnchorMarginDip;
     }
+
+    /// <summary>Shows or hides the status text; the window then grows or shrinks to fit.</summary>
+    internal void SetHovered(bool hovered) {
+        Log.Information(
+            "StatusBubble: SetHovered({Hovered}) detail-len={Len} current={W}x{H}",
+            hovered,
+            _detail.Length,
+            Math.Round(ActualWidth),
+            Math.Round(ActualHeight));
+        if (_hovered == hovered) {
+            return;
+        }
+
+        _hovered = hovered;
+        if (hovered && !string.IsNullOrEmpty(_detail)) {
+            Detail.Text = _detail;
+            Detail.Visibility = Visibility.Visible;
+        }
+        else {
+            Detail.Visibility = Visibility.Collapsed;
+        }
+
+        LayoutChanged?.Invoke();
+    }
+
+    private string _detail = string.Empty;
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = false)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
