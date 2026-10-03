@@ -11,10 +11,14 @@ using AdbView.State;
 /// Scheduling and re-check-at-due live in <see cref="NotificationCoordinator"/>.
 /// </summary>
 internal static class NotificationPolicy {
-    public static readonly TimeSpan HoldConnected = TimeSpan.FromSeconds(2.5);
-    public static readonly TimeSpan HoldDisconnected = TimeSpan.FromSeconds(2.5);
+    // Decision 0019: 0.5 s, not 2.5 s. The device state is already instant everywhere else (push
+    // tracker -> synchronous reduce -> immediate flyout/tray); only the toast waited, and 2.5 s
+    // read as "the app is slow". Half a second still swallows a sub-second cable blip, which is
+    // what the flap debounce exists for (ENGINEERING.md §8.2).
+    public static readonly TimeSpan HoldConnected = TimeSpan.FromSeconds(0.5);
+    public static readonly TimeSpan HoldDisconnected = TimeSpan.FromSeconds(0.5);
     public static readonly TimeSpan HoldAuthorization = TimeSpan.FromSeconds(1.5);
-    public static readonly TimeSpan HoldDeviceProblem = TimeSpan.FromSeconds(2.5);
+    public static readonly TimeSpan HoldDeviceProblem = TimeSpan.FromSeconds(0.5);
     public static readonly TimeSpan HoldPairingAvailable = TimeSpan.FromSeconds(1.5);
     public static readonly TimeSpan HoldAdbUnavailable = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan HoldDiscoveryBroken = TimeSpan.FromSeconds(1.5);

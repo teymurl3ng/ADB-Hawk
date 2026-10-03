@@ -20,7 +20,7 @@
         </Grid.RowDefinitions>
 
         <!-- Header: 40px, title + pin -->
-        <Grid Grid.Row="0" Margin="12,0,8,8" MouseLeftButtonDown="OnHeaderDrag">
+        <Grid Grid.Row="0" Margin="16,0,16,0" MouseLeftButtonDown="OnHeaderDrag">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <Path Data="{StaticResource Icon.Phone}" Width="18" Height="18" Stretch="Uniform"
                       Stroke="{DynamicResource Win.Accent}" StrokeThickness="2"
@@ -28,8 +28,10 @@
                 <TextBlock Text="ADB View" FontSize="13.5" FontWeight="SemiBold" FontFamily="Segoe UI Variable Text"
                            Foreground="{DynamicResource Win.TextPrimary}" VerticalAlignment="Center" Margin="6,0,0,0"/>
             </StackPanel>
+            <!-- DESIGN.md §5 asks for a ~40x40 interaction target; 36x36 is the largest that keeps
+                 breathing room inside the 40px header. The glyph stays 14px. -->
             <Button HorizontalAlignment="Right" VerticalAlignment="Center"
-                    Width="28" Height="28" Padding="0" BorderThickness="0" Background="Transparent"
+                    Width="36" Height="36" Padding="0" BorderThickness="0" Background="Transparent"
                     Cursor="Hand" Command="{Binding TogglePinCommand}"
                     ToolTip="{Binding PinToolTip}" FocusVisualStyle="{x:Null}">
                 <Path Data="{Binding PinIconGeometry}" Width="14" Height="14" Stretch="Uniform"
@@ -40,7 +42,7 @@
 
         <!-- Scroll region: content scrolls under the fixed header -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,0,8">
-            <StackPanel Margin="12,0,12,0">
+            <StackPanel Margin="16,4,16,0">
                 <!-- Empty state -->
                 <Border CornerRadius="8" Background="{DynamicResource Win.Card}"
                         BorderBrush="{DynamicResource Win.CardBorder}" BorderThickness="1"
@@ -61,21 +63,20 @@
                     </StackPanel>
                 </Border>
 
-                <!-- QR entry: quiet full-width card button, visible whenever no pairing operation is active -->
-                <Border CornerRadius="8" Background="{DynamicResource Win.Card}"
-                        BorderBrush="{DynamicResource Win.CardBorder}" BorderThickness="1"
-                        Padding="10,10" Visibility="{Binding ShowQrEntry, Converter={StaticResource BoolToVisibility}}">
-                    <Button Background="Transparent" BorderThickness="0" Cursor="Hand" FocusVisualStyle="{x:Null}"
-                            Command="{Binding StartQrCommand}" HorizontalContentAlignment="Stretch">
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                            <Path Data="{DynamicResource Icon.Waves}" Width="13" Height="13" Stretch="Uniform"
-                                  Stroke="{DynamicResource Win.TextSecondary}" StrokeThickness="2"
-                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Center"/>
-                            <TextBlock Text="Pair a device over Wi-Fi" FontSize="12.5" FontWeight="Medium"
-                                       Foreground="{DynamicResource Win.TextSecondary}" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                        </StackPanel>
-                    </Button>
-                </Border>
+                <!-- QR entry: quiet full-width card button, visible whenever no pairing operation is active.
+                     The card chrome belongs to the button itself (RowCardButton) so hover fills the whole
+                     row at the card radius instead of leaving an inset fill edge inside the card. -->
+                <Button Style="{StaticResource RowCardButton}"
+                        Command="{Binding StartQrCommand}"
+                        Visibility="{Binding ShowQrEntry, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="10,10">
+                        <Path Data="{DynamicResource Icon.Waves}" Width="13" Height="13" Stretch="Uniform"
+                              Stroke="{DynamicResource Win.TextSecondary}" StrokeThickness="2"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" VerticalAlignment="Center"/>
+                        <TextBlock Text="Pair a device over Wi-Fi" FontSize="12.5" FontWeight="Medium"
+                                   Foreground="{DynamicResource Win.TextSecondary}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    </StackPanel>
+                </Button>
 
                 <!-- Pairing QR session card. The wrapper owns visibility so the binding never
                      detaches when the card's own DataContext goes null (a null DataContext would

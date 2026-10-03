@@ -57,6 +57,10 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private bool _lastAppliedTransparency = true;
 
     private bool _isVisible;
+
+    /// <summary>Decision 0019: delivery-time predicate for the notification coordinator. Read from
+    /// the state/thread-pool threads, so it goes through Volatile rather than the plain field.</summary>
+    internal bool IsFlyoutVisible => System.Threading.Volatile.Read(ref _isVisible);
     private int _currentEffectiveHeight = 500;
     private int _lastAppliedHeight;
     private int _lastReportedContentHeight;
@@ -407,7 +411,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         // Explicit lambda: method-group Task.Delay can bind ambiguously across TFMs.
         Func<TimeSpan, CancellationToken, Task> delay = notificationDelay
             ?? ((TimeSpan d, CancellationToken ct) => Task.Delay(d, ct));
-        _notificationCoordinator = new NotificationCoordinator(clock, delay, _notificationSink);
+        _notificationCoordinator = new NotificationCoordinator(
+            clock,
+            delay,
+            _notificationSink,
+            suppressDelivery: () => IsFlyoutVisible);
         if (_userPreferences is not null) {
             _notificationCoordinator.SetNotificationsEnabled(_userPreferences.NotificationsEnabled);
         }

@@ -424,3 +424,18 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Refused QR handoff keeps the QR session, submits nothing, allows a later rescan | **AUTOMATED PASS** | `RejectedHandoffKeepsTheQrSessionForARescan` |
 | QR-origin card hides the typed-code slots/title/Pair and offers "Scan again" on failure; typed cards keep Pair/Retry | **AUTOMATED PASS** | 4 cases in `NativeShellViewModelTests` |
 | Live: code-pair, then QR-pair in the SAME session without restarting | **NOT EXERCISED** | The exact failure mode (log 2026-10-03 15:13:55 → 15:14:16); requires the owner's phone on a network where mDNS works |
+
+## Native shell chrome + notification timing (2026-10-03, decisions 0018/0019)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Hover on the "Pair a device over Wi-Fi" row fills the whole card with no interior hairline | **NOT EXERCISED** | Needs the owner's eyes; the cause was the inset hover fill inside the card (not a border) |
+| Repair chips ("Restart ADB", "Stop Tailscale service", "Check again") use the themed button template | **NOT EXERCISED** | They previously fell back to raw Aero2 chrome; visual check pending |
+| Header inset 16 px, pin centred in the 40 px header, pin hit area 36×36 | **NOT EXERCISED** | Visual check pending |
+| Connection toast appears ≈0.5 s after the transition (was 2.5 s) | **AUTOMATED PASS** | Timing tests retargeted to `NotificationPolicy.HoldConnected`; `C_D_*`, `E_*` (flap before the hold), `F_PostBaseline_*` |
+| Tracker-failure grace still holds 2 s (server restart must not flash cards) | **AUTOMATED PASS** | `X_Y_Z_AA_GraceRetentionAndStaleExpiry`, `Row5_Tracker_Grace_Retains_Then_Clears` |
+| No toast while the flyout is visible | **AUTOMATED PASS** | `N_SuppressedWhileTheFlyoutIsVisible` |
+| A suppressed notification consumes no episode latch or burst slot (the next transition still notifies) | **AUTOMATED PASS** | `O_SuppressionConsumesNoBookkeepingSoTheNextTransitionStillEmits` |
+| Live: unplug the phone while the flyout is open → no toast; close it and unplug → toast in ~0.5 s | **NOT EXERCISED** | Owner's device |

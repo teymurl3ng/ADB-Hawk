@@ -803,15 +803,20 @@ Transitions considered (and only these):
 
 | Kind | Trigger | Title / Body (from `Vocabulary`) |
 |---|---|---|
-| `DeviceConnected` | device absent/non-connected → `Connected`, held 2.5 s | `Galaxy S24 connected` / `Connected over Wi-Fi` |
-| `DeviceDisconnected` | `Connected` → absent, held 2.5 s | `Galaxy S24 disconnected` |
+| `DeviceConnected` | device absent/non-connected → `Connected`, held 0.5 s | `Galaxy S24 connected` / `Connected over Wi-Fi` |
+| `DeviceDisconnected` | `Connected` → absent, held 0.5 s | `Galaxy S24 disconnected` |
 | `AuthorizationRequired` | → `Unauthorized`, held 1.5 s | `Galaxy S24 needs authorization` / `Check the phone and allow USB debugging.` |
-| `DeviceProblem` | → `Offline`, held 2.5 s | `Galaxy S24 is offline` / `ADB can see this device, but the connection isn't responding.` |
+| `DeviceProblem` | → `Offline`, held 0.5 s | `Galaxy S24 is offline` / `ADB can see this device, but the connection isn't responding.` |
 | `PairingAvailable` | new offer id, held 1.5 s | `Wireless pairing available` / `<name> is waiting for a pairing code` |
 | `PairingResult` | pairing → `PairedWaitingForDevice` or `Failed` | `Paired with Galaxy S24` / `Waiting for ADB connection…` · `Pairing failed` / `Check the code and try again.` |
 | `AdbUnavailable` | global health → `AdbUnavailable`, held 10 s | `ADB unavailable` / `ADB View couldn't find or start ADB.` |
 
 Never notified: metadata refresh (battery, model, version), `AdbRestoring`, wireless-discovery degradation, recovery/bootloader/sideload (informational, visible in tray + flyout), pin/theme changes, revision churn.
+
+> **Decision 0019:** the connection holds are **0.5 s**, not 2.5 s. Detection is a push stream and the
+> flyout/tray already update instantly, so the hold is purely a flap guard on the toast; 2.5 s read as
+> the application being slow. Half a second still swallows a sub-second blip. Delivered notifications
+> are dropped (never deferred) while the flyout is visible.
 
 ### 8.2 Anti-spam rules
 
@@ -820,6 +825,7 @@ Never notified: metadata refresh (battery, model, version), `AdbRestoring`, wire
 | Startup suppression | First snapshot adopted as a silent baseline; no notifications in the first 5 s of process life | Launching must not announce five already-connected devices |
 | Resume suppression | 8 s after `PowerModeChanged(Resume)` / session unlock, plus baseline re-adoption | Wake-up reconnect storms |
 | Flap debounce | Transition must persist for its hold time (table above) before it notifies | USB cable jiggle produces nothing |
+| Visible-flyout suppression | No toast while the flyout is on screen (it already shows the state); evaluated **before** burst/episode bookkeeping, so nothing is latched or rate-limited by a notification the user never saw | Opening the tray is not answered with a toast about what it is displaying |
 | Dedup cooldown | Same `NotificationKey` suppressed for 60 s | Repeated offline/online bounce |
 | Global-failure once | `AdbUnavailable` notifies once per outage; recovery is silent | Design has no "ADB restored" notification |
 | Pairing-offer cooldown | Same offer id: once per 10 min | The phone's pairing screen re-advertises frequently |
@@ -1298,7 +1304,7 @@ Every version is exact (no `^`, no floating). `Directory.Packages.props` + `pack
 | Health aggregation | offline device stays local; mDNS failure never global; `AdbRestoring` vs `AdbUnavailable` boundary at 10 s; recovery paths |
 | Tray aggregation | all six priorities, ties, tooltip text and truncation |
 | Vocabulary | every dynamic semantic/shared string rendered exactly; golden-string tests cite the relevant `DESIGN.md` lines. Frozen static interface copy is tested in frontend component/visual tests. |
-| Notification policy | scripted timelines: startup baseline, 2.5 s flap, 60 s dedup, burst collapse, resume suppression, pairing exemption, global-failure-once |
+| Notification policy | scripted timelines: startup baseline, 0.5 s flap, 60 s dedup, burst collapse, resume suppression, pairing exemption, global-failure-once, visible-flyout suppression |
 | Backoff | sequence, jitter bounds, reset on success, cap |
 | Bridge validation | unknown type/member, bad protocol, non-numeric code, unknown offerId, height clamping, rate limits |
 | Placement math | four taskbar edges, work-area clamping, mixed DPI scale factors, 1366×768, anchor-source fallback (all pure functions over rect inputs) |

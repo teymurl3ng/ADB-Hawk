@@ -232,10 +232,11 @@ internal static class NotificationFixtures {
 
 public sealed class NotificationTimelineTests {
     private static async Task<(NotificationCoordinator Coord, FakeNotificationSink Sink, VirtualClock Clock)>
-        CreateAfterBaselineAsync(AppSnapshot? baseline = null) {
+        CreateAfterBaselineAsync(AppSnapshot? baseline = null, Func<bool>? suppressDelivery = null) {
         var clock = new VirtualClock(NotificationFixtures.T0);
         var sink = new FakeNotificationSink();
-        var coord = new NotificationCoordinator(() => clock.Now, clock.Delay, sink);
+        var coord = new NotificationCoordinator(
+            () => clock.Now, clock.Delay, sink, suppressDelivery);
         coord.AcceptSnapshot(baseline ?? NotificationFixtures.Empty());
         await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(5)); // exit startup suppress
         sink.Clear();
@@ -268,15 +269,15 @@ public sealed class NotificationTimelineTests {
     }
 
     [Fact]
-    public async Task C_D_Connected_Emits_After_2_5s_Without_Later_Snapshot() {
+    public async Task C_D_Connected_Emits_After_Hold_Without_Later_Snapshot() {
         var (coord, sink, clock) = await CreateAfterBaselineAsync();
         using (coord) {
             coord.AcceptSnapshot(NotificationFixtures.Empty(2).WithDevices(
                 NotificationFixtures.Device("usb:R8", "SM_A065F", DeviceStateKind.Connected)));
             Assert.Empty(sink.Emitted);
-            await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(2.4));
+            await clock.AdvanceAndFlushAsync(NotificationPolicy.HoldConnected - TimeSpan.FromMilliseconds(100));
             Assert.Empty(sink.Emitted);
-            await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(0.2));
+            await clock.AdvanceAndFlushAsync(TimeSpan.FromMilliseconds(200));
             await WaitUntilAsync(() => sink.Emitted.Count >= 1);
             Assert.Single(sink.Emitted);
             Assert.Equal(NotificationKind.DeviceConnected, sink.Emitted[0].Key.Kind);
@@ -292,7 +293,9 @@ public sealed class NotificationTimelineTests {
         using (coord) {
             coord.AcceptSnapshot(NotificationFixtures.Empty(2).WithDevices(
                 NotificationFixtures.Device("usb:R8", "Phone", DeviceStateKind.Connected)));
-            await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(1));
+            // Flap that resolves BEFORE the hold elapses: nothing is emitted (decision 0019 moved
+            // the hold to 0.5 s, so "before the hold" is now a sub-half-second window).
+            await clock.AdvanceAndFlushAsync(NotificationPolicy.HoldConnected - TimeSpan.FromMilliseconds(100));
             coord.AcceptSnapshot(NotificationFixtures.Empty(3)); // gone
             await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(5));
             Assert.DoesNotContain(sink.Emitted, i => i.Key.Kind == NotificationKind.DeviceConnected);
@@ -300,7 +303,39 @@ public sealed class NotificationTimelineTests {
     }
 
     [Fact]
-    public async Task F_Disconnect_After_2_5s() {
+    public async Task N_SuppressedWhileTheFlyoutIsVisible() {
+        // Decision 0019: the flyout already shows the state, so a toast would only duplicate it.
+        bool visible = true;
+        var (coord, sink, clock) = await CreateAfterBaselineAsync(suppressDelivery: () => visible);
+        using (coord) {
+            coord.AcceptSnapshot(NotificationFixtures.Empty(2).WithDevices(
+                NotificationFixtures.Device("usb:R8", "Phone", DeviceStateKind.Connected)));
+            await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(3));
+            Assert.Empty(sink.Emitted);
+        }
+    }
+
+    [Fact]
+    public async Task O_SuppressionConsumesNoBookkeepingSoTheNextTransitionStillEmits() {
+        // The gate sits BEFORE the burst/episode bookkeeping, so a suppressed notification must
+        // not latch an episode or eat a burst slot — the next real transition still notifies.
+        bool visible = true;
+        var (coord, sink, clock) = await CreateAfterBaselineAsync(suppressDelivery: () => visible);
+        using (coord) {
+            coord.AcceptSnapshot(NotificationFixtures.Empty(2).WithDevices(
+                NotificationFixtures.Device("usb:R8", "Phone", DeviceStateKind.Connected)));
+            await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(3));
+            Assert.Empty(sink.Emitted);
+
+            visible = false; // flyout closed
+            coord.AcceptSnapshot(NotificationFixtures.Empty(3)); // device gone
+            await clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(3));
+            await WaitUntilAsync(() => sink.Emitted.Any(i => i.Key.Kind == NotificationKind.DeviceDisconnected));
+        }
+    }
+
+    [Fact]
+    public async Task F_Disconnect_After_Hold() {
         var baseline = NotificationFixtures.Empty().WithDevices(
             NotificationFixtures.Device("usb:R8", "Phone", DeviceStateKind.Connected));
         var (coord, sink, clock) = await CreateAfterBaselineAsync(baseline);

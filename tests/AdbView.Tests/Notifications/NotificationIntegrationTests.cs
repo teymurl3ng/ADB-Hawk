@@ -232,9 +232,9 @@ public sealed class NotificationIntegrationTests {
         await h.PostAndDrainAsync(new DeviceListReceivedEvent(
             ImmutableArray.Create(Proto("R8", model: "SM_A065F")), T0));
         Assert.Empty(h.Sink.Emitted);
-        await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(2.4));
+        await h.Clock.AdvanceAndFlushAsync(NotificationPolicy.HoldConnected - TimeSpan.FromMilliseconds(100));
         Assert.Empty(h.Sink.Emitted);
-        await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(0.2));
+        await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromMilliseconds(200));
         await WaitUntilAsync(() => h.Sink.Emitted.Count >= 1);
         Assert.Single(h.Sink.Emitted);
         Assert.Equal(NotificationKind.DeviceConnected, h.Sink.Emitted[0].Key.Kind);
@@ -373,7 +373,7 @@ public sealed class NotificationIntegrationTests {
             ImmutableArray.Create(Proto("R8", model: "Phone")), T0));
         Assert.Contains(h.Engine.CurrentSnapshot.Devices, d => d.State == DeviceStateKind.Connected);
 
-        // Same connected roster again (metadata-style) before the 2.5s hold elapses.
+        // Same connected roster again (metadata-style) before the hold elapses.
         await h.PostAndDrainAsync(new DeviceListReceivedEvent(
             ImmutableArray.Create(Proto("R8", model: "Phone")), T0.AddMilliseconds(200)));
         await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(2.5));

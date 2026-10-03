@@ -26,7 +26,6 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Win.BtnHover}"/>
-                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Win.BorderSubtle}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Win.CardHover}"/>
@@ -85,6 +84,42 @@
                             </Track.Thumb>
                         </Track>
                     </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <!-- Quiet entry row rendered as one button (e.g. "Pair a device over Wi-Fi"). The card chrome
+         IS the button, so hovering fills the whole row at the card's own radius. The previous
+         shape (a card Border wrapping a padded inner Button) inset the 4-radius hover fill 10px
+         inside the 8-radius card, and that boundary read as a stray hairline. -->
+    <Style x:Key="RowCardButton" TargetType="Button">
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border CornerRadius="8" SnapsToDevicePixels="True"
+                            Background="{DynamicResource Win.Card}"
+                            BorderBrush="{DynamicResource Win.CardBorder}"
+                            BorderThickness="1">
+                        <Grid>
+                            <Border x:Name="Overlay" CornerRadius="8" Background="Transparent"
+                                    IsHitTestVisible="False"/>
+                            <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Overlay" Property="Background" Value="{DynamicResource Win.BtnHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Overlay" Property="Background" Value="{DynamicResource Win.CardHover}"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.4"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

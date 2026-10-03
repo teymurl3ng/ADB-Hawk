@@ -31,13 +31,22 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
         public required CancellationTokenSource Cts { get; init; }
     }
 
+    private readonly Func<bool>? _suppressDelivery;
+
+    /// <param name="suppressDelivery">Decision 0019: when this returns true the tray has the user's
+    /// attention already (the flyout is on screen showing the same state), so delivery is dropped
+    /// rather than duplicated as a toast. Gated BEFORE the burst/episode bookkeeping, so a
+    /// suppressed notification consumes nothing — it never latches an episode or a burst slot and
+    /// can therefore still fire later. Optional; omitted means "never suppress".</param>
     public NotificationCoordinator(
         Func<DateTimeOffset> clock,
         Func<TimeSpan, CancellationToken, Task> delay,
-        INotificationSink sink) {
+        INotificationSink sink,
+        Func<bool>? suppressDelivery = null) {
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _delay = delay ?? throw new ArgumentNullException(nameof(delay));
         _sink = sink ?? throw new ArgumentNullException(nameof(sink));
+        _suppressDelivery = suppressDelivery;
         _state = NotifierState.Create(_clock());
     }
 
@@ -293,6 +302,14 @@ internal sealed class NotificationCoordinator : IAsyncDisposable, IDisposable {
         System.Collections.Immutable.ImmutableArray<NotificationIntent> toEmit;
         lock (_gate) {
             if (!_notificationsEnabled) {
+                return;
+            }
+
+            // Decision 0019: the user is already looking at the truth (flyout visible, which also
+            // covers a pinned flyout — it never hides). Drop before ANY bookkeeping so nothing is
+            // latched or rate-limited by a notification the user never saw.
+            if (_suppressDelivery?.Invoke() == true) {
+                Serilog.Log.Information("NotificationCoordinator suppressed delivery: flyout visible.");
                 return;
             }
 
