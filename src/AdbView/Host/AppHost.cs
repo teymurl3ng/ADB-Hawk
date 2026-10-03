@@ -1508,7 +1508,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             return;
         }
 
-        NativeUi.BubbleState? state = IsFlyoutVisible ? null : _statusBubblePresenter?.Current;
+        // Not IsFlyoutVisible: that field is assigned from ShellVisible immediately after Show,
+        // before the window has loaded, so it can read false while the flyout is on screen. The
+        // window's own IsVisible is accurate for "is it on screen right now".
+        bool flyoutOnScreen = _nativeUi ? _nativeWindow?.IsVisible == true : _isVisible;
+        NativeUi.BubbleState? state = flyoutOnScreen ? null : _statusBubblePresenter?.Current;
 
         void Deliver() {
             if (state is null) {
