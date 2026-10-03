@@ -393,3 +393,20 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Withdrawal while AwaitingCode → still cancels | **AUTOMATED PASS** | Pre-success behavior unchanged |
 | Withdrawal → connect row appears → ActivePairingHost + Connect row valid for post-pair connect | **AUTOMATED PASS** | `WithdrawalWhileWaiting_ThenConnectRowAppears…` |
 | Live: QR pair on the A06 → `Post-pair connect: connecting to 192.168.0.53:45533` → card appears | **NOT EXERCISED** | The fix's live acceptance; the phone is still advertising this endpoint |
+
+## Native shell theme, pin round-trip, and QR discovery burst (2026-10-03)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Dark mode: state pill text light-on-dark; theme dictionaries swap with log proof | **LIVE PASS** | Window capture at 125% DPI; logs `Window theme dictionary swapped to "Dark"`, `App theme dictionary swapped`, `Native shell theme applied` |
+| Light mode: readable tokens, corrected semantic alphas (8 fixes vs app.css:161-177), themed Button/ScrollBar chrome | **LIVE PASS** | Window capture; no Aero2 light-gradient highlights remain |
+| Startup identity log (version + resolved theme) — stale-binary detector | **LIVE PASS** | `AppHost identity: version=0.1.0.0 native=true theme="Dark" transparency=false` |
+| Theme applied before first show (dictionary re-sync in OnSourceInitialized) | **LIVE PASS** | `Window theme dictionary swapped` precedes the open slide in the log |
+| Pin click round-trips through the reducer (icon and window agree) | **AUTOMATED PASS** | `SnapshotPinStateUpdatesTheViewModel`; live click requires the new binary (prior sessions ran pre-fix builds) |
+| QR session start triggers an immediate fallback query burst | **AUTOMATED PASS** | `MdnsFallbackTriggerTests` — frozen clock proves the burst comes from the trigger, not the 60 s requery floor |
+| Fallback rows fill only the discovery keys adb does not report (decision 0016) | **AUTOMATED PASS** | `MdnsEffectiveSetTests`; `DiscoveryHealthReducerTests` per-key win + no-duplicate cases |
+| Native offer-phase pairing card renders and raises pairStart (web parity) | **AUTOMATED PASS** | `NativeShellViewModelTests` offer cases |
+| Live: QR pair on a network where adb mDNS works | **NOT EXERCISED** | Blocked by environment 2026-10-03: `adb mdns services` empty; Chrome ×2 + svchost hold UDP 5353; Tailscale up. In-app health card reports the same. |
+| Live: synthetic click automation against the flyout | **NOT EXERCISED (harness)** | The unpinned flyout is non-topmost and light-dismisses on focus loss, so synthetic input is unreliable; owner manual test required. Root cause of the earlier misleading test: PowerShell reports virtualized coordinates — 1151 × 1.25 = 1439 matches the log's physical X. |
