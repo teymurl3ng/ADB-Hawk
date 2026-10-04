@@ -18,7 +18,10 @@ internal static class CommandLine {
         bool startupSilent = false;
         string fixtureSuffix = "";
         bool headlessSelfTest = false;
-        bool nativeUi = false;
+
+        // Decision 0022: native is the ONLY UI. The flag is accepted and ignored so stale
+        // shortcuts, scripts, and logs keep working.
+        bool nativeUi = true;
 
         foreach (string arg in args) {
             if (string.Equals(arg, "--startup", StringComparison.OrdinalIgnoreCase)) {

@@ -3,7 +3,7 @@
 **Status:** Frozen for v1 implementation  
 **Purpose:** Governing visual, interaction, and product-design specification for ADB View  
 **Target:** Windows 11 system-tray ADB status utility  
-**Primary UI:** WebView2-rendered frontend hosted by a native C# Windows shell
+**Primary UI:** native WPF shell (Fluent 2) hosted by the native C# Windows shell (decision 0022: the v1 WebView2 frontend was removed after the native shell reached full parity)
 
 ---
 
