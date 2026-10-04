@@ -228,6 +228,12 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                     _isVisible = (bool)e.NewValue;
                     RefreshStatusBubble();
                 };
+                // Decision 0021: self-sizing drives the placement height, so the next open anchors
+                // to the size the shell actually wants (and the web-era bookkeeping stays true).
+                _nativeWindow.SelfSizedHeightChanged += height => {
+                    _currentEffectiveHeight = (int)Math.Round(height);
+                    _lastAppliedHeight = _currentEffectiveHeight;
+                };
                 _shellViewModel = (NativeUi.Shell.NativeShellViewModel)((NativeUi.Shell.ShellView)_nativeWindow.Content).DataContext;
                 _shellViewModel.StartQrRequested += StartQrPairingSession;
                 _shellViewModel.QrCancelRequested += () => _qrPairingSession?.Cancel();

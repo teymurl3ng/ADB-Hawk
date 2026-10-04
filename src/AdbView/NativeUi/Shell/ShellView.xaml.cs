@@ -13,6 +13,8 @@ public partial class ShellView : UserControl {
         InitializeComponent();
     }
 
+
+
     /// <summary>Pinned-mode title-bar drag is handled by the native window in I3; placeholder keeps the XAML wire valid.</summary>
     private void OnHeaderDrag(object sender, System.Windows.Input.MouseButtonEventArgs e) {
     }

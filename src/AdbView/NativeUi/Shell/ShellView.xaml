@@ -13,7 +13,7 @@
         </ResourceDictionary>
     </UserControl.Resources>
     <!-- Stable shell (decision 0014-consistency): the layout never rebuilds — regions appear/disappear. -->
-    <Grid>
+    <Grid x:Name="ShellRoot">
         <Grid.RowDefinitions>
             <RowDefinition Height="40"/>
             <RowDefinition Height="*"/>
