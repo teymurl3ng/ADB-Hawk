@@ -92,7 +92,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void CodeEntryCreatesCardWithOfferNameAndSuppressesOtherRegions() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
 
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
 
@@ -106,7 +106,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void PhaseTransitionsUpdateSameInstance() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
         var card = vm.PairingCard!;
 
@@ -122,7 +122,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void ReenteringCodePhaseResetsTypedCode() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
         var card = vm.PairingCard!;
         foreach (var digit in "123456") {
@@ -139,7 +139,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void SubmitRaisesPairSubmitWithOfferIdAndCode() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
         var card = vm.PairingCard!;
         foreach (var digit in "248173") {
@@ -164,7 +164,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void SubmitBelowSixDigitsIsInert() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
         var card = vm.PairingCard!;
         card.AppendDigit('1');
@@ -179,7 +179,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void RetrySubmitsCompleteCodeElseRestartsPairing() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Failed)));
         var card = vm.PairingCard!;
 
@@ -199,7 +199,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void NullPairingClearsCardAndRestoresEntry() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Pairing)));
         Assert.True(vm.ShowPairingCard);
 
@@ -215,7 +215,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void HealthCardMapsRepairsAndForwardsOpaqueIds() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(health: HealthView(repairs: ImmutableArray.Create(
             Repair("repair-turn-on"),
             Repair("repair-slow", isRunning: true)))));
@@ -236,7 +236,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void HealthCardIsKeptWhenConfigurationUnchanged() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(health: HealthView()));
         var card = vm.DiscoveryHealth!;
 
@@ -252,7 +252,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void CheckAgainIsGatedAndForwarded() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(health: HealthView(canCheckAgain: false)));
         var card = vm.DiscoveryHealth!;
         Assert.False(card.CheckAgainCommand.CanExecute(null));
@@ -276,7 +276,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void OfferCardAppearsWhenNoOperationIsActive() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
 
         vm.ApplySnapshot(Snapshot());
         vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
@@ -291,7 +291,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void OfferPairButtonRaisesPairStartWithOfferId() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
 
         string? action = null;
@@ -309,7 +309,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void OfferWithdrawalClearsTheCard() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
         Assert.NotNull(vm.PairingCard);
 
@@ -321,7 +321,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void DifferentOfferIdRecreatesTheCard() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
         var first = vm.PairingCard!;
 
@@ -335,7 +335,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void OperationDisplayNameIsAuthoritativeOverOfferRows() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
 
         Assert.Equal(DeviceName, vm.PairingCard!.DeviceNameDisplay);
@@ -345,7 +345,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void SnapshotPinStateUpdatesTheViewModel() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         Assert.False(vm.Pinned);
 
         // The reducer owns pin state; the snapshot is what the shell renders.
@@ -359,7 +359,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void ThemeResourceRefreshRaisesBindableBrushes() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
         var card = vm.PairingCard!;
 
@@ -378,7 +378,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void QrCardRendersSvgOnceAndSkipsIdenticalRebuilds() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         var qr = QrView(ValidQrSvg);
 
         vm.ApplySnapshot(Snapshot(qr: qr));
@@ -402,7 +402,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void QrCancelIsForwarded() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(qr: QrView(ValidQrSvg)));
 
         var raised = false;
@@ -445,7 +445,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void QrOperationHidesSlotsAndShowsProgress() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
 
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Pairing) with { OfferId = QrOfferId }));
 
@@ -459,7 +459,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void QrFailureOffersScanAgain() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Failed, "The code didn't match.")
             with { OfferId = QrOfferId }));
 
@@ -477,7 +477,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void TypedCodeCardKeepsSlotsAndPair() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
 
         var card = vm.PairingCard!;
@@ -491,7 +491,7 @@ public sealed class NativeShellViewModelTests {
 
     [Fact]
     public void TypedCodeFailureOffersRetryNotScanAgain() {
-        var vm = new NativeShellViewModel();
+        using var vm = new NativeShellViewModel();
         vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Failed, "Wrong code.")));
 
         var card = vm.PairingCard!;
@@ -660,5 +660,81 @@ public sealed class NativeShellViewModelTests {
         }
 
         Assert.Fail("condition not met");
+    }
+
+    // ---------- decision 0022 parity fixes ----------
+
+    [Fact]
+    public void PillShowsTheBackendStateLabel() {
+        using var vm = new NativeShellViewModel();
+        var device = MakeDeviceView("usb:R8", DeviceStateKind.Offline, "Device offline");
+        vm.ApplySnapshot(CreateDefaultSnapshot() with {
+            GeneratedAt = T0,
+            Devices = ImmutableArray.Create(device),
+        });
+
+        Assert.Equal("Device offline", vm.Devices[0].StatePillText);
+    }
+
+    private static DeviceView MakeDeviceView(string id, DeviceStateKind state, string stateLabel) =>
+        new DeviceView {
+            Id = id,
+            DisplayName = "Galaxy A06",
+            State = state,
+            Severity = state == DeviceStateKind.Connected ? SeverityKind.Positive : SeverityKind.Failure,
+            StateLabel = stateLabel,
+            StatusLine = stateLabel,
+            Transport = TransportKind.Usb,
+            TransportLabel = "USB",
+            MetaTemplate = "Connected {age} ago",
+            StateSince = T0,
+            Detail = new DeviceDetailView {
+                Serial = null,
+                ExactModel = null,
+                AndroidVersion = null,
+                Address = null,
+                CopyFields = ImmutableArray<CopyFieldView>.Empty,
+            },
+        };
+
+    private static AppSnapshot CreateDefaultSnapshot() => StateEngine.CreateDefaultSnapshot();
+
+    [Fact]
+    public async Task SuccessCardHoldsThroughTheDwellThenClears() {
+        var delay = new ManualDelaySource();
+        using var vm = new NativeShellViewModel(delay.WaitAsync);
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.PairedWaitingForDevice)));
+        Assert.NotNull(vm.PairingCard);
+
+        // The operation clears (device appeared / wait expired): the success card holds.
+        vm.ApplySnapshot(Snapshot());
+        Assert.NotNull(vm.PairingCard);
+        Assert.Equal(TimeSpan.FromMilliseconds(750), Assert.Single(delay.Requested));
+
+        delay.CompleteFirst();
+        long deadline = Environment.TickCount64 + 3000;
+        while (vm.PairingCard is not null && Environment.TickCount64 < deadline) {
+            await Task.Delay(10);
+        }
+
+        Assert.Null(vm.PairingCard);
+    }
+
+    [Fact]
+    public async Task NewPairingOperationCancelsTheDwell() {
+        var delay = new ManualDelaySource();
+        using var vm = new NativeShellViewModel(delay.WaitAsync);
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.PairedWaitingForDevice)));
+        vm.ApplySnapshot(Snapshot());
+        Assert.NotNull(vm.PairingCard); // dwelling
+
+        // A new pairing operation arrives during the dwell: it wins immediately and the
+        // pending dwell is cancelled outright (nothing left to complete).
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
+        Assert.Equal(PairingCardState.CodeEntry, vm.PairingCard!.State);
+        Assert.Equal(0, delay.Pending);
+
+        await Task.Delay(80);
+        Assert.Equal(PairingCardState.CodeEntry, vm.PairingCard!.State); // still showing, not cleared
     }
 }

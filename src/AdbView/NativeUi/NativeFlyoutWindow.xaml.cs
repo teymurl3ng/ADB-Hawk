@@ -45,6 +45,9 @@ public sealed partial class NativeFlyoutWindow : Window {
 
     public event EventHandler? Deactivated95;
 
+    /// <summary>Raised when the user presses Escape (web-parity dismiss gesture, decision 0022).</summary>
+    public event EventHandler? DismissRequested;
+
     public NativeFlyoutWindow() {
         // ShellView XAML resolves StaticResource icon/token lookups during InitializeComponent —
         // the dark dictionary must be merged BEFORE the content tree parses.
@@ -61,6 +64,14 @@ public sealed partial class NativeFlyoutWindow : Window {
         ShowActivated = true;
         Background = Brushes.Black;
         WindowStartupLocation = WindowStartupLocation.Manual;
+        // Esc-to-dismiss (web parity): the web dismissed with Escape unless pinned; ported so the
+        // gesture survives the WebView removal (decision 0022).
+        PreviewKeyDown += (_, e) => {
+            if (e.Key == System.Windows.Input.Key.Escape) {
+                e.Handled = true;
+                DismissRequested?.Invoke(this, EventArgs.Empty);
+            }
+        };
         var shell = new Shell.ShellView { DataContext = new Shell.NativeShellViewModel() };
         Content = shell;
         // Decision 0021: self-sizing. Every layout pass of the shell re-measures the content with

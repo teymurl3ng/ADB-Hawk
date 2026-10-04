@@ -126,7 +126,25 @@
                         </Style>
                     </StackPanel.Style>
                     <Ellipse Width="32" Height="32" HorizontalAlignment="Center" Margin="0,0,0,12"
-                             StrokeThickness="2" Stroke="{DynamicResource Win.AccentBorder}"/>
+                             StrokeThickness="2" Stroke="{DynamicResource Win.AccentBorder}"
+                             StrokeDashArray="1.1 1" StrokeDashCap="Round"
+                             RenderTransformOrigin="0.5,0.5">
+                        <Ellipse.RenderTransform>
+                            <RotateTransform x:Name="SpinnerRotation" Angle="0"/>
+                        </Ellipse.RenderTransform>
+                        <Ellipse.Triggers>
+                            <EventTrigger RoutedEvent="Loaded">
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <!-- Web parity: animate-spin-quiet, 0.85 s linear loop
+                                             (a busy indicator, not an idle loop). -->
+                                        <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
+                                                         From="0" To="360" Duration="0:0:0.85" RepeatBehavior="Forever"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </EventTrigger>
+                        </Ellipse.Triggers>
+                    </Ellipse>
                     <TextBlock Text="{Binding HeaderText}" FontSize="14" FontWeight="SemiBold"
                                Foreground="{DynamicResource Win.TextPrimary}" HorizontalAlignment="Center" Margin="0,0,0,4"/>
                     <TextBlock Text="Keep the phone nearby while pairing completes." FontSize="12"

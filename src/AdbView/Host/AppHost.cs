@@ -216,6 +216,16 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
                 _nativeWindow = new NativeUi.NativeFlyoutWindow();
                 _nativeWindow.Deactivated95 += OnFlyoutDeactivate;
+                // Web-parity Esc dismiss: pin-checked exactly like the bridge's requestDismiss
+                // (BridgeCoordinator.HandleRequestDismiss) — a pinned flyout stays put.
+                _nativeWindow.DismissRequested += (_, _) => {
+                    if (_nativeWindow.IsPinned) {
+                        Log.Information("Esc dismiss ignored because flyout is pinned.");
+                        return;
+                    }
+
+                    HideFlyout();
+                };
                 // Keep the visibility flag in step with the window itself. It is assigned from
                 // ShellVisible immediately after Show, before the window has loaded, so it could
                 // read false while the flyout was on screen — which silently defeated decision

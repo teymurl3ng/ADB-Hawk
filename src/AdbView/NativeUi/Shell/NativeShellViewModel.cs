@@ -21,8 +21,28 @@ using AdbView.State;
 /// to the shell Dispatcher by AppHost). Pairing/discovery-health actions surface as events that
 /// AppHost routes to the existing backend coordinators.
 /// </summary>
-internal sealed class NativeShellViewModel : INotifyPropertyChanged {
+internal sealed class NativeShellViewModel : INotifyPropertyChanged, IDisposable {
+    /// <summary>Cancels a pending success dwell (the shell outlives the view; nothing else to release).</summary>
+    public void Dispose() {
+        CancellationTokenSource? toCancel;
+        lock (_dwellGate) {
+            toCancel = _dwellCts;
+            _dwellCts = null;
+            _dwellArmedGeneration++;
+        }
+
+        try {
+            toCancel?.Cancel();
+        }
+        catch (ObjectDisposedException) {
+        }
+
+        toCancel?.Dispose();
+        _ageTicker.Stop();
+    }
+
     private readonly Dispatcher _dispatcher;
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly DispatcherTimer _ageTicker;
     private readonly ObservableCollection<DeviceCardViewModel> _devices;
     private string? _expandedDeviceId;
@@ -39,7 +59,8 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
     public event Action<string>? DiscoveryRepairRequested;
     public event Action? DiscoveryRecheckRequested;
 
-    public NativeShellViewModel() {
+    public NativeShellViewModel(Func<TimeSpan, CancellationToken, Task>? delay = null) {
+        _delay = delay ?? ((span, ct) => Task.Delay(span, ct));
         _dispatcher = Dispatcher.CurrentDispatcher;
         _devices = new ObservableCollection<DeviceCardViewModel>();
         Devices = new ReadOnlyObservableCollection<DeviceCardViewModel>(_devices);
@@ -170,6 +191,16 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
         var op = snapshot.Pairing;
 
         if (op is null) {
+            // Web parity (pairingPresentation.ts): a SUCCESS card is held 750 ms after the
+            // operation clears, so the celebration is actually readable. Any new pairing
+            // activity (a new operation or a QR session) cancels the dwell.
+            if (PairingCard is not null
+                && PairingCard.State == PairingCardState.Success
+                && _pairingDwellGeneration == _dwellArmedGeneration) {
+                ArmSuccessDwell();
+                return;
+            }
+
             // Web parity (adapters.ts): an offer with no active operation renders the
             // offer-phase card; its Pair button raises pairStart with the offer id.
             if (!snapshot.PairingOffers.IsDefaultOrEmpty) {
@@ -194,6 +225,8 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
             return;
         }
 
+        CancelSuccessDwell();
+
         var state = op.Phase switch {
             State.PairingPhase.AwaitingCode => PairingCardState.CodeEntry,
             State.PairingPhase.Pairing => PairingCardState.Progress,
@@ -212,6 +245,87 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
         PairingCard.Update(state, op.Detail);
     }
 
+    /// <summary>How long a success pairing card stays after the operation clears
+    /// (web parity: pairingPresentation.SuccessDwell, 750 ms).</summary>
+    public static readonly TimeSpan SuccessDwell = TimeSpan.FromMilliseconds(750);
+
+    private int _dwellArmedGeneration;
+    private int _pairingDwellGeneration;
+    private CancellationTokenSource? _dwellCts;
+
+    private void ArmSuccessDwell() {
+        int generation;
+        CancellationTokenSource? toCancel;
+        lock (_dwellGate) {
+            generation = ++_dwellArmedGeneration;
+            toCancel = _dwellCts;
+            _dwellCts = new CancellationTokenSource();
+        }
+
+        CancelQuietly(toCancel);
+        _ = ClearPairingCardAfterDwellAsync(generation, _dwellCts.Token);
+    }
+
+    private async Task ClearPairingCardAfterDwellAsync(int generation, CancellationToken token) {
+        try {
+            await _delay(SuccessDwell, token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) {
+            return;
+        }
+#pragma warning disable CA1031 // R-08: the dwell wait must never crash the shell; log and clear.
+        catch (Exception ex) {
+            Serilog.Log.Warning(ex, "Shell: success-dwell wait failed; clearing anyway");
+        }
+#pragma warning restore CA1031
+
+        bool superseded;
+        PairingCardViewModel? card;
+        lock (_dwellGate) {
+            superseded = generation != _dwellArmedGeneration || _dwellCts is null;
+            card = PairingCard;
+            if (!superseded) {
+                _pairingDwellGeneration = _dwellArmedGeneration;
+            }
+        }
+
+        if (superseded) {
+            return;
+        }
+
+        // Clear only if the card is still the success card we held (a newer snapshot may have
+        // replaced it with an offer card; that one follows its own rules).
+        if (card is not null && card.State == PairingCardState.Success) {
+            PairingCard = null;
+        }
+    }
+
+    private void CancelSuccessDwell() {
+        CancellationTokenSource? toCancel;
+        lock (_dwellGate) {
+            toCancel = _dwellCts;
+            _dwellCts = null;
+        }
+
+        CancelQuietly(toCancel);
+    }
+
+    private readonly object _dwellGate = new();
+
+    private static void CancelQuietly(CancellationTokenSource? cts) {
+        if (cts is null) {
+            return;
+        }
+
+        try {
+            cts.Cancel();
+        }
+        catch (ObjectDisposedException) {
+        }
+
+        cts.Dispose();
+    }
+
     private void ApplyPairingQr(State.PairingQrView? qr) {
         if (qr is null) {
             if (PairingQr is not null) {
@@ -220,6 +334,8 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
 
             return;
         }
+
+        CancelSuccessDwell();
 
         // Snapshots repeat while a session is live; rebuilding would re-rasterize the QR each
         // time. Same payload => keep the current card (display-only, so equality is the payload).
@@ -430,6 +546,7 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged, IDisposable 
         _stateSince = view.StateSince;
         State = view.State;
         Severity = view.Severity;
+        StateLabelText = view.StateLabel;
         Transport = view.Transport;
         TransportLabel = view.TransportLabel;
         BatteryPercent = view.BatteryPercent;
@@ -480,12 +597,17 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged, IDisposable 
         }
     }
 
-    public string StatePillText => Severity switch {
-        SeverityKind.Positive => "Connected",
-        SeverityKind.Attention => "Attention",
-        SeverityKind.Failure => "Error",
-        _ => "Unknown",
-    };
+    /// <summary>Backend-rendered state label (DeviceView.StateLabel from Vocabulary) — the
+    /// authoritative pill wording. The earlier severity-derived text was wrong for half the
+    /// states (an offline device read "Error", recovery read "Unknown").</summary>
+    public string StateLabelText { get; private set; } = string.Empty;
+
+    public string StatePillText => string.IsNullOrEmpty(StateLabelText)
+        ? Severity switch {
+            SeverityKind.Positive => "Connected",
+            _ => "Unknown",
+        }
+        : StateLabelText;
 
     public SolidColorBrush StatePillBackground => Severity switch {
         SeverityKind.Positive => (SolidColorBrush)Application.Current.Resources["Win.GreenSurface"],
