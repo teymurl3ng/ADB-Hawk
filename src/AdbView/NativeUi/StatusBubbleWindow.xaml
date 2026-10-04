@@ -4,6 +4,7 @@
         Title="ADB View status"
         ShowInTaskbar="False"
         SizeToContent="WidthAndHeight"
+        MaxWidth="360"
         Background="{DynamicResource Win.Card}">
     <!-- The window IS the bubble. Unhovered it is exactly the 22 DIP status dot; hovering reveals
          the status text and the window grows towards the LEFT, keeping the bottom-right corner

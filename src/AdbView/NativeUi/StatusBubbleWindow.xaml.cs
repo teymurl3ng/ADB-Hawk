@@ -63,9 +63,11 @@ public sealed partial class StatusBubbleWindow : Window {
         // DWM rounding instead of the layered path (no AllowsTransparency).
         AllowsTransparency = false;
 
-        SizeToContent = SizeToContent.Manual;
-        Width = BubbleSizeDip;
-        Height = BubbleSizeDip;
+        // Content-sized: hovering shows the status text and the window grows leftwards (the
+        // anchor math repositions it). Frameless WindowStyle=None has no shell minimum-size
+        // floor, so the content governs — the captioned recipe floored at 133x38 DIP and
+        // stretched the capsule (research 2026-10-03 addendum).
+        SizeToContent = SizeToContent.WidthAndHeight;
         WindowStartupLocation = WindowStartupLocation.Manual;
         SourceInitialized += OnSourceInitialized;
         SizeChanged += OnSizeChanged;
@@ -79,10 +81,6 @@ public sealed partial class StatusBubbleWindow : Window {
 
     /// <summary>Raised when the user clicks the bubble (open the flyout).</summary>
     internal event Action? OpenRequested;
-
-    /// <summary>Raised when the bubble's size changed (hover expansion) and the Host may need to
-    /// re-anchor it. The window re-anchors itself, so this is informational.</summary>
-    internal event Action? LayoutChanged;
 
     /// <summary>Applied theme (dark-mode DWM attribute follows it).</summary>
     internal ThemeKind AppliedTheme => _theme;
@@ -176,7 +174,9 @@ public sealed partial class StatusBubbleWindow : Window {
     /// <summary>Its own desired size in DIP — what the Host needs to know for logging/verification.</summary>
     internal Size DesiredSizeDip => new(ActualWidth, ActualHeight);
 
-    private void OnSizeChanged(object sender, SizeChangedEventArgs e) => Reanchor();
+    private void OnSizeChanged(object sender, SizeChangedEventArgs e) {
+        Reanchor();
+    }
 
     private void Reanchor() {
         if (_anchorRightDip <= 0 || _anchorBottomDip <= 0) {
@@ -210,7 +210,7 @@ public sealed partial class StatusBubbleWindow : Window {
             Detail.Visibility = Visibility.Collapsed;
         }
 
-        LayoutChanged?.Invoke();
+        // SizeToContent grows/shrinks the window; OnSizeChanged re-anchors the corner.
     }
 
     private string _detail = string.Empty;

@@ -961,18 +961,23 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
     }
 
-    /// <summary>Decision 0013: re-reads the OS client-area-animation preference; when it
-    /// changed, updates the native gate and posts a shell-appearance event so the web layer's
-    /// reduced-motion CSS follows. No timer — one probe per user-initiated open.</summary>
+    /// <summary>Decision 0013: re-reads the OS client-area-animation preference and applies it
+    /// through <see cref="ShellMotionGate"/>. The gate is assigned DIRECTLY here — the show path
+    /// reads it synchronously right after this call — and the appearance event carries the real
+    /// value so the snapshot flag follows. (The 2026-10-04 audit found the event used to carry a
+    /// hardcoded false, which reset the gate to "enabled" on every snapshot and permanently
+    /// defeated reduced motion.) No timer — one probe per user-initiated open.</summary>
     private void RefreshAnimationPreference() {
         bool osAnimations = SystemTheme.ReadClientAreaAnimation();
-        if (osAnimations == _animationsEnabled) {
+        (bool enabled, bool changed) = ShellMotionGate.Apply(osAnimations, _animationsEnabled);
+        if (!changed) {
             return;
         }
 
+        _animationsEnabled = enabled;
         Log.Information(
             "Shell animations {State} (re-read at flyout open).",
-            osAnimations ? "ENABLED" : "DISABLED (OS reduced motion)");
+            enabled ? "ENABLED" : "DISABLED (OS reduced motion)");
         _animationsEverLogged = true;
         PostCurrentShellAppearance();
     }
@@ -1592,11 +1597,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         // which has been reliable in 6/6 sessions — and corrects the gate (and the web layer's
         // reduced-motion snapshot flag) before any meaningful interaction. The web layer's
         // @media (prefers-reduced-motion) CSS is independent of this value either way.
+        // The startup post runs in the ctor context, where the probe is unreliable, and the gate
+        // starts ASSUMING animations on (corrected by the first reliable probe at flyout open —
+        // forensics 2026-10-02 #3). Posting the gate (not a literal) is what keeps the snapshot's
+        // ReducedMotion flag truthful for the shell, the web layer, and the gate's own mirror.
         _stateEngine?.Post(new ShellAppearanceChangedEvent(
             ResolveEffectiveTheme(),
             ShellMaterialPolicy.ResolveTransparencyEnabled(),
             SystemTheme.ReadForcedColors(),
-            false));
+            !_animationsEnabled));
     }
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e) {

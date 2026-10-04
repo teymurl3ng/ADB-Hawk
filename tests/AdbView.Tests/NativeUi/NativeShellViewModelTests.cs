@@ -1,3 +1,6 @@
+#pragma warning disable CA1707
+#pragma warning disable CA2007
+#pragma warning disable xUnit1051
 namespace AdbView.Tests.NativeUi;
 
 using System;
@@ -495,5 +498,167 @@ public sealed class NativeShellViewModelTests {
         Assert.False(card.IsQrOriginated);
         Assert.True(card.ShowSlots);           // web parity: the failure card keeps the slots
         Assert.Equal("Retry", card.PrimaryLabel);
+    }
+
+    // ---------- copied badge (decision 0021 audit: the badge never cleared) ----------
+
+    private sealed class ManualDelaySource {
+        private readonly List<(TaskCompletionSource Tcs, TimeSpan Span, CancellationToken Token)> _pending = new();
+        private readonly List<TimeSpan> _allRequests = new();
+
+        /// <summary>Every wait ever requested, including cancelled ones — unlike <see cref="Pending"/>,
+        /// which only counts live waits.</summary>
+        public TimeSpan[] Requested {
+            get {
+                lock (_pending) {
+                    return _allRequests.ToArray();
+                }
+            }
+        }
+
+        public int Pending {
+            get {
+                lock (_pending) {
+                    return _pending.Count;
+                }
+            }
+        }
+
+        public Task WaitAsync(TimeSpan span, CancellationToken token) {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            lock (_pending) {
+                _allRequests.Add(span);
+                _pending.Add((tcs, span, token));
+            }
+
+            token.Register(() => {
+                lock (_pending) {
+                    _pending.RemoveAll(p => p.Tcs == tcs);
+                }
+
+                tcs.TrySetCanceled(token);
+            });
+            return tcs.Task;
+        }
+
+        public void CompleteFirst() {
+            TaskCompletionSource tcs;
+            lock (_pending) {
+                tcs = _pending[0].Tcs;
+                _pending.RemoveAt(0);
+            }
+
+            tcs.TrySetResult();
+        }
+    }
+
+    private static DeviceCardViewModel MakeCard(
+        ManualDelaySource? delay = null,
+        List<string>? clipboard = null) {
+        return DeviceCardViewModel.Create(
+            new DeviceView {
+                Id = "usb:R8",
+                DisplayName = "Galaxy A06",
+                State = DeviceStateKind.Connected,
+                Severity = SeverityKind.Positive,
+                StateLabel = "Connected",
+                StatusLine = "Connected · USB",
+                Transport = TransportKind.Usb,
+                TransportLabel = "USB",
+                MetaTemplate = "Connected {age} ago",
+                StateSince = T0,
+                Detail = new DeviceDetailView {
+                    Serial = "R8VXA02SNKH",
+                    ExactModel = "SM-A065F",
+                    AndroidVersion = "16",
+                    Address = null,
+                    CopyFields = ImmutableArray.Create(
+                        new CopyFieldView { Key = "serial", Label = "Serial", Value = "R8VXA02SNKH" }),
+                },
+            },
+            T0,
+            isExpanded: false,
+            notifyExpand: _ => { },
+            setClipboard: value => clipboard?.Add(value),
+            delay: delay!.WaitAsync);
+    }
+
+    [Fact]
+    public async Task CopiedBadgeClearsAfterTheWebHold() {
+        var delay = new ManualDelaySource();
+        using var card = MakeCard(delay: delay);
+
+        card.CopySerialCommand.Execute(null);
+        Assert.True(card.ShowSerialCopied);
+        Assert.Equal(TimeSpan.FromMilliseconds(1200), Assert.Single(delay.Requested));
+
+        delay.CompleteFirst();
+        await WaitForConditionAsync(() => card.ShowSerialCopy);
+        Assert.False(card.ShowSerialCopied);
+    }
+
+    [Fact]
+    public async Task SecondCopySupersedesTheFirstClear() {
+        var delay = new ManualDelaySource();
+        using var card = MakeCard(delay: delay);
+
+        card.CopySerialCommand.Execute(null);
+        // A second copy while the first hold is pending: the first clear must be cancelled.
+        card.CopySerialCommand.Execute(null);
+        Assert.Equal(2, delay.Requested.Length);
+        Assert.Equal(1, delay.Pending); // the first wait left the queue when cancelled
+
+        delay.CompleteFirst(); // the surviving (second) hold
+        await WaitForConditionAsync(() => card.ShowSerialCopy);
+        Assert.False(card.ShowSerialCopied);
+    }
+
+    [Fact]
+    public async Task ClipboardFailureShowsNoBadge() {
+        var delay = new ManualDelaySource();
+        using var card = DeviceCardViewModel.Create(
+            new DeviceView {
+                Id = "usb:R8",
+                DisplayName = "Galaxy A06",
+                State = DeviceStateKind.Connected,
+                Severity = SeverityKind.Positive,
+                StateLabel = "Connected",
+                StatusLine = "Connected · USB",
+                Transport = TransportKind.Usb,
+                TransportLabel = "USB",
+                MetaTemplate = "Connected {age} ago",
+                StateSince = T0,
+                Detail = new DeviceDetailView {
+                    Serial = "R8",
+                    ExactModel = null,
+                    AndroidVersion = null,
+                    Address = null,
+                    CopyFields = ImmutableArray<CopyFieldView>.Empty,
+                },
+            },
+            T0,
+            isExpanded: false,
+            notifyExpand: _ => { },
+            setClipboard: _ => throw new InvalidOperationException("clipboard locked"),
+            delay: delay.WaitAsync);
+
+        card.CopySerialCommand.Execute(null);
+
+        Assert.True(card.ShowSerialCopy);  // the copy icon stays
+        Assert.False(card.ShowSerialCopied); // no false "Copied"
+        Assert.Equal(0, delay.Pending); // and nothing to clear later
+    }
+
+    private static async Task WaitForConditionAsync(Func<bool> condition, int timeoutMs = 3000) {
+        long deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline) {
+            if (condition()) {
+                return;
+            }
+
+            await Task.Delay(10);
+        }
+
+        Assert.Fail("condition not met");
     }
 }

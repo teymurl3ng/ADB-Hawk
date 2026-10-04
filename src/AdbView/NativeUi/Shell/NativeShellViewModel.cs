@@ -7,6 +7,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -289,6 +291,7 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
             if (!seen.Contains(_devices[i].Id)) {
                 var removed = _devices[i];
                 removed.PropertyChanged -= OnDeviceCardPropertyChanged;
+                removed.Dispose();
                 _devices.RemoveAt(i);
                 if (_expandedDeviceId == removed.Id) {
                     _expandedDeviceId = null;
@@ -335,7 +338,7 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged {
 }
 
 /// <summary>One device card. Updated in place by <see cref="NativeShellViewModel.ApplyDevices"/>.</summary>
-internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
+internal sealed class DeviceCardViewModel : INotifyPropertyChanged, IDisposable {
     private readonly Action<DeviceCardViewModel> _notifyExpand;
     private string _copiedField = string.Empty;
     private string _metaTemplate = string.Empty;
@@ -347,10 +350,14 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
         DeviceView view,
         DateTimeOffset generatedAt,
         bool isExpanded,
-        Action<DeviceCardViewModel> notifyExpand) {
+        Action<DeviceCardViewModel> notifyExpand,
+        Action<string>? setClipboard = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null) {
         Id = view.Id;
         _notifyExpand = notifyExpand;
         IsExpanded = isExpanded;
+        _setClipboard = setClipboard ?? (value => Clipboard.SetText(value));
+        _delay = delay ?? ((span, ct) => Task.Delay(span, ct));
         ApplyView(view, generatedAt);
         ToggleExpandCommand = new RelayCommand(_ => NotifyExpand());
         CopyAddressCommand = new RelayCommand(
@@ -360,6 +367,18 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
             _ => Copy(Serial!),
             _ => !string.IsNullOrEmpty(Serial));
     }
+
+    private readonly Action<string> _setClipboard;
+
+    private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+
+    /// <summary>How long the "Copied" badge replaces the copy icon (the web's 1200 ms hold;
+    /// the native card never cleared it, so the copy button stayed hidden forever).</summary>
+    public static readonly TimeSpan CopiedBadgeHold = TimeSpan.FromMilliseconds(1200);
+
+    private int _copyGeneration;
+
+    private CancellationTokenSource? _copyCts;
 
     public string Id { get; }
 
@@ -397,8 +416,10 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
         DeviceView view,
         DateTimeOffset generatedAt,
         bool isExpanded,
-        Action<DeviceCardViewModel> notifyExpand) {
-        return new DeviceCardViewModel(view, generatedAt, isExpanded, notifyExpand);
+        Action<DeviceCardViewModel> notifyExpand,
+        Action<string>? setClipboard = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null) {
+        return new DeviceCardViewModel(view, generatedAt, isExpanded, notifyExpand, setClipboard, delay);
     }
 
     public void UpdateFrom(DeviceView view, DateTimeOffset generatedAt) => ApplyView(view, generatedAt);
@@ -529,9 +550,84 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged {
     public bool ShowSerialCopied => _copiedField == "serial";
 
     private void Copy(string value) {
-        Clipboard.SetText(value);
+        try {
+            _setClipboard(value);
+        }
+#pragma warning disable CA1031 // R-08: a clipboard-in-use failure is logged and must not show a false "Copied".
+        catch (Exception ex) {
+            Serilog.Log.Warning(ex, "Device card: clipboard write failed; badge not shown");
+            return;
+        }
+#pragma warning restore CA1031
+
         _copiedField = value == Address ? "address" : "serial";
         RaiseCopyStates();
+
+        // Generation-guarded one-shot clear (the StatusBubblePresenter pattern): a second copy
+        // supersedes the first's pending clear, and disposal cancels it outright.
+        int generation;
+        CancellationTokenSource? toCancel;
+        lock (_copyGate) {
+            generation = ++_copyGeneration;
+            toCancel = _copyCts;
+            _copyCts = new CancellationTokenSource();
+        }
+
+        CancelQuietly(toCancel);
+        _ = ClearCopiedBadgeAfterHoldAsync(generation, _copyCts.Token);
+    }
+
+    private readonly object _copyGate = new();
+
+    private async Task ClearCopiedBadgeAfterHoldAsync(int generation, CancellationToken token) {
+        try {
+            await _delay(CopiedBadgeHold, token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) {
+            return;
+        }
+#pragma warning disable CA1031 // R-08: the clear wait must never crash the card; log and clear.
+        catch (Exception ex) {
+            Serilog.Log.Warning(ex, "Device card: copied-badge clear wait failed; clearing anyway");
+        }
+#pragma warning restore CA1031
+
+        lock (_copyGate) {
+            if (generation != _copyGeneration) {
+                return; // superseded by a newer copy
+            }
+
+            _copiedField = string.Empty;
+            _copyCts = null;
+        }
+
+        RaiseCopyStates();
+    }
+
+    /// <summary>Cancels a pending copied-badge clear when the card is removed from the list.</summary>
+    public void Dispose() {
+        CancellationTokenSource? toCancel;
+        lock (_copyGate) {
+            toCancel = _copyCts;
+            _copyCts = null;
+            _copyGeneration++;
+        }
+
+        CancelQuietly(toCancel);
+    }
+
+    private static void CancelQuietly(CancellationTokenSource? cts) {
+        if (cts is null) {
+            return;
+        }
+
+        try {
+            cts.Cancel();
+        }
+        catch (ObjectDisposedException) {
+        }
+
+        cts.Dispose();
     }
 
     private void RaiseCopyStates() {
