@@ -446,6 +446,7 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged, IDisposable 
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(ShowDetails));
         OnPropertyChanged(nameof(ChevronIconGeometry));
+        OnPropertyChanged(nameof(ChevronAngle));
         OnPropertyChanged(nameof(ChevronToolTip));
         OnPropertyChanged(nameof(CardCursor));
         _notifyExpand(this);
@@ -460,9 +461,14 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged, IDisposable 
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(ShowDetails));
         OnPropertyChanged(nameof(ChevronIconGeometry));
+        OnPropertyChanged(nameof(ChevronAngle));
         OnPropertyChanged(nameof(ChevronToolTip));
         OnPropertyChanged(nameof(CardCursor));
     }
+
+    /// <summary>DESIGN 948: the chevron's target rotation (animated over Motion.State by the
+    /// card XAML; the geometry itself no longer swaps, so the rotation reads as one motion).</summary>
+    public double ChevronAngle => IsExpanded ? 180 : 0;
 
     public void RefreshAge(DateTimeOffset now) => RefreshAge(_metaTemplate, _stateSince, now);
 

@@ -1,10 +1,15 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <!-- Theme-neutral control chrome (decision 0015). The default Aero2 templates paint OS light
-         gradients on hover regardless of theme; these implicit styles replace only the chrome —
-         all color comes from DynamicResource tokens, so the dark/light dictionary swap retints
-         them. Rest-state visuals are transparent: cards and primary accent Borders provide their
-         own chrome exactly as before (R-02: no new variants). -->
+    <!-- Theme-neutral control chrome + motion tokens (decision 0015, decision 0021). The default
+         Aero2 templates paint OS light gradients on hover regardless of theme; these implicit
+         styles replace only the chrome — all color comes from DynamicResource tokens, so the
+         dark/light dictionary swap retints them. The motion tokens are the frozen DESIGN 24
+         values; the reduced-motion gate (AppHost) overrides them with zeros at window level, which
+         every DynamicResource consumer follows live. Rest-state visuals are transparent: cards and
+         primary accent Borders provide their own chrome exactly as before (R-02: no new variants). -->
+    <Duration x:Key="Motion.Feedback">0:0:0.083</Duration>
+    <Duration x:Key="Motion.State">0:0:0.167</Duration>
+    <Duration x:Key="Motion.Structural">0:0:0.333</Duration>
     <Style TargetType="Button">
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderBrush" Value="Transparent"/>
@@ -18,17 +23,47 @@
                             Background="{TemplateBinding Background}"
                             BorderBrush="{TemplateBinding BorderBrush}"
                             BorderThickness="{TemplateBinding BorderThickness}">
-                        <ContentPresenter Margin="{TemplateBinding Padding}"
-                                          HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                          VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                          RecognizesAccessKey="True"/>
+                        <Grid>
+                            <!-- Hover/press as opacity layers (DESIGN 941-942: 83 ms) - animating
+                                 opacity is composition-level, never layout. -->
+                            <Border x:Name="HoverLayer" CornerRadius="4" Background="{DynamicResource Win.BtnHover}"
+                                    Opacity="0" IsHitTestVisible="False"/>
+                            <Border x:Name="PressedLayer" CornerRadius="4" Background="{DynamicResource Win.CardHover}"
+                                    Opacity="0" IsHitTestVisible="False"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True"/>
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Win.BtnHover}"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity"
+                                                     To="1" Duration="{DynamicResource Motion.Feedback}"/>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity"
+                                                     To="0" Duration="{DynamicResource Motion.Feedback}"/>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
-                            <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource Win.CardHover}"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                     To="1" Duration="{DynamicResource Motion.Feedback}"/>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                     To="0" Duration="{DynamicResource Motion.Feedback}"/>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4"/>
@@ -112,6 +147,18 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Overlay" Property="Background" Value="{DynamicResource Win.BtnHover}"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <DoubleAnimation Storyboard.TargetName="Overlay" Storyboard.TargetProperty="Opacity"
+                                                     To="1" Duration="{DynamicResource Motion.Feedback}"/>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <DoubleAnimation Storyboard.TargetName="Overlay" Storyboard.TargetProperty="Opacity"
+                                                     To="0" Duration="{DynamicResource Motion.Feedback}"/>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Overlay" Property="Background" Value="{DynamicResource Win.CardHover}"/>

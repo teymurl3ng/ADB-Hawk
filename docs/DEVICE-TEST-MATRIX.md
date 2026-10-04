@@ -481,3 +481,21 @@ difference is the bubble's non-activating window. The next step is to read that 
 mouse hover, which distinguishes "synthetic input does not reach a `WS_EX_NOACTIVATE` window" from "the
 window never receives mouse input at all"; if it is the latter, hover moves to the HWND (`WM_MOUSEMOVE` +
 `TrackMouseEvent`) instead of WPF's input pipeline.
+
+## Motion system + native self-sizing (2026-10-04, decision 0021)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Native flyout self-sizes with content (376×500 → 376×306 with 2 device cards), bottom edge frozen at 804 DIP | **LIVE PASS** | Measured via GetWindowRect at 125% DPI; first implementation no-opped (dedup against the Height property instead of ActualHeight) |
+| Self-sizing math: clamp [160,560], frozen bottom, work-area handling, step threshold | **AUTOMATED PASS** | `ShellSizingTests` (11) |
+| Reduced-motion gate follows the OS client-area-animation setting | **AUTOMATED PASS** | `ShellMotionGateTests` (8); the audit found the gate was inert (hardcoded event value) |
+| Reduced motion zeroes the XAML motion tokens live (hover/chevron/fades go instant) | **NOT EXERCISED** | The override is wired (`ApplyMotionTokenGate`); needs the OS setting toggled both ways with the owner's eyes |
+| Hover/press 83 ms opacity layers (buttons + QR row) | **NOT EXERCISED** | Owner visual check |
+| Chevron rotates 167 ms; details fade in 167 ms; height stays instant | **NOT EXERCISED** | Owner visual check; height-instant is by contract (0012/0013) |
+| Pairing success/progress fade-in; Copied badge fades in 83 ms | **NOT EXERCISED** | Owner visual check |
+| Copied badge auto-clears after 1200 ms; a second copy supersedes; clipboard failure shows no badge | **AUTOMATED PASS** | 3 badge tests |
+| Status bubble content fades in 83 ms on appear; hover growth (content-sized window) | **NOT EXERCISED** | Hover input proven working by the owner (SetHovered log); growth awaits re-test |
+| Dead code removed (TickMs, SlideTarget intoTray variant, subscriber-less event) | **AUTOMATED PASS** | Build + gate |
+| Live: device connect/disconnect resize with the OS animation setting OFF (everything instant) | **NOT EXERCISED** | Owner |

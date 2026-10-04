@@ -47,7 +47,6 @@ internal sealed class FlyoutRevealAnimator {
     internal static readonly TimeSpan GrowthDuration = TimeSpan.FromMilliseconds(167);
     internal static readonly TimeSpan OpenDuration = TimeSpan.FromMilliseconds(167);
     internal static readonly TimeSpan CloseDuration = TimeSpan.FromMilliseconds(83);
-    internal const int TickMs = 16;
 
     private readonly ITickSource _ticks;
     private readonly Action<Rectangle> _applyBounds;

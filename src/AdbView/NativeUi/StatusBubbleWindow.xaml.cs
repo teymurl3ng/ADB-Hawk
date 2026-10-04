@@ -143,6 +143,17 @@ public sealed partial class StatusBubbleWindow : Window {
 
         // Show without activating: never Activate/Focus/SetForegroundWindow on this window.
         Show();
+
+        // Decision 0021: appear fade (Bare Minimum 83 ms per Motion in Windows) on the CONTENT -
+        // a window-level fade needs the layered path (banned here), content opacity is free.
+        Shell.Opacity = 0;
+        Shell.BeginAnimation(
+            System.Windows.UIElement.OpacityProperty,
+            new System.Windows.Media.Animation.DoubleAnimation {
+                From = 0,
+                To = 1,
+                Duration = (System.Windows.Duration)Application.Current.Resources["Motion.Feedback"],
+            });
     }
 
     private static SolidColorBrush ResolveBrush(BubbleColor color) {

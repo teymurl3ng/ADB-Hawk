@@ -78,6 +78,20 @@
 
                 <!-- Success -->
                 <StackPanel Visibility="{Binding IsSuccess, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsSuccess}" Value="True">
+                                    <DataTrigger.EnterActions>
+                                        <BeginStoryboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="{DynamicResource Motion.State}"/>
+                                        </BeginStoryboard>
+                                    </DataTrigger.EnterActions>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
                     <StackPanel Orientation="Horizontal">
                         <Grid Width="32" Height="32" VerticalAlignment="Center">
                             <Border CornerRadius="16" Background="{DynamicResource Win.GreenSurface}"
@@ -97,6 +111,20 @@
 
                 <!-- Progress -->
                 <StackPanel Visibility="{Binding IsProgress, Converter={StaticResource BoolToVisibility}, FallbackValue=Collapsed}">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsProgress}" Value="True">
+                                    <DataTrigger.EnterActions>
+                                        <BeginStoryboard>
+                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="{DynamicResource Motion.State}"/>
+                                        </BeginStoryboard>
+                                    </DataTrigger.EnterActions>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
                     <Ellipse Width="32" Height="32" HorizontalAlignment="Center" Margin="0,0,0,12"
                              StrokeThickness="2" Stroke="{DynamicResource Win.AccentBorder}"/>
                     <TextBlock Text="{Binding HeaderText}" FontSize="14" FontWeight="SemiBold"

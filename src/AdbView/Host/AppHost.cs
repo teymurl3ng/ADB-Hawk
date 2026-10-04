@@ -751,7 +751,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         bool reducedMotion = !_animationsEnabled;
         window.SetPhysicalBounds(reducedMotion
             ? physicalBounds
-            : SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea, intoTray: true));
+            : SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea));
         window.TopMost = window.IsPinned;
         window.Show();
 
@@ -827,7 +827,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _presenter?.Cancel();
         _presenter?.AnimateBounds(
             window.GetPhysicalBounds(),
-            SlideTarget(window.GetPhysicalBounds(), placement.Edge, monitor.WorkingArea, intoTray: true),
+            SlideTarget(window.GetPhysicalBounds(), placement.Edge, monitor.WorkingArea),
             FlyoutRevealAnimator.CloseDuration,
             completed: () => {
                 _closeAnimating = false;
@@ -901,7 +901,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         _presenter?.Cancel();
         bool reducedMotion = !_animationsEnabled;
         if (!reducedMotion) {
-            _flyoutWindow.Bounds = SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea, intoTray: true);
+            _flyoutWindow.Bounds = SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea);
         }
         else {
             _flyoutWindow.Bounds = physicalBounds;
@@ -1020,26 +1020,24 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     /// <summary>
-    /// Decision 0013: the off-screen slide origin/target — the final bounds pushed along the
-    /// tray-normal axis. intoTray=true: fully behind the taskbar (close target). intoTray=false:
-    /// one gap-width toward the tray from the final spot (open origin).
+    /// Decision 0013: the off-screen slide target — the final bounds pushed fully behind the
+    /// taskbar along the tray-normal axis (every call site slides into the tray; the "one
+    /// gap-width nudge" open-origin variant was never used and is removed).
     /// </summary>
-    private static Rectangle SlideTarget(Rectangle finalBounds, FlyoutPlacement.TaskbarEdge edge, Rectangle workArea, bool intoTray) {
-        const int openOffset = 24; // effective px; small nudge the window slides over
+    private static Rectangle SlideTarget(Rectangle finalBounds, FlyoutPlacement.TaskbarEdge edge, Rectangle workArea) {
         var moved = finalBounds;
-        int gap = intoTray ? 0 : openOffset;
         switch (edge) {
             case FlyoutPlacement.TaskbarEdge.Bottom:
-                moved.Y = intoTray ? workArea.Bottom : finalBounds.Bottom + openOffset;
+                moved.Y = workArea.Bottom;
                 break;
             case FlyoutPlacement.TaskbarEdge.Top:
-                moved.Y = intoTray ? workArea.Top - moved.Height : finalBounds.Top - openOffset;
+                moved.Y = workArea.Top - moved.Height;
                 break;
             case FlyoutPlacement.TaskbarEdge.Left:
-                moved.X = intoTray ? workArea.Left - moved.Width : finalBounds.Left - openOffset;
+                moved.X = workArea.Left - moved.Width;
                 break;
             case FlyoutPlacement.TaskbarEdge.Right:
-                moved.X = intoTray ? workArea.Right : finalBounds.Right + openOffset;
+                moved.X = workArea.Right;
                 break;
         }
 
@@ -1228,7 +1226,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _presenter?.Cancel();
             _presenter?.AnimateBounds(
                 window.Bounds,
-                SlideTarget(window.Bounds, placement.Edge, monitor.WorkingArea, intoTray: true),
+                SlideTarget(window.Bounds, placement.Edge, monitor.WorkingArea),
                 FlyoutRevealAnimator.CloseDuration,
                 completed: () => {
                     _closeAnimating = false;
@@ -1640,6 +1638,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         _animationsEnabled = animationsEnabled;
 
+        // Decision 0021: reduced motion zeroes the XAML motion tokens at window level - every
+        // DynamicResource consumer (hover layers, chevron, fades) follows live, so "instant"
+        // is one override instead of a per-call-site branch.
+        ApplyMotionTokenGate(animationsEnabled);
+
         var theme = snapshot.Shell.Theme;
         // v1 always opaque; ForcedColors still disables any residual transparency path.
         bool transparency = snapshot.Shell.TransparencyEnabled
@@ -1694,6 +1697,30 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         SwapAppThemeDictionary(theme);
         _shellViewModel?.RefreshThemeResources();
         Log.Information("Native shell theme applied: {Theme} (transparency={Transparency})", theme, transparency);
+    }
+
+    private void ApplyMotionTokenGate(bool animationsEnabled) {
+        var window = _nativeWindow;
+        if (window is null) {
+            return;
+        }
+
+        if (TryMarshalToFlyoutUi(new Action<bool>(ApplyMotionTokenGate), animationsEnabled)) {
+            return;
+        }
+
+        var resources = window.Resources;
+        if (animationsEnabled) {
+            resources.Remove("Motion.Feedback");
+            resources.Remove("Motion.State");
+            resources.Remove("Motion.Structural");
+            return;
+        }
+
+        // Zero-duration: every animation completes immediately - the 0012 instant step.
+        resources["Motion.Feedback"] = new System.Windows.Duration(TimeSpan.Zero);
+        resources["Motion.State"] = new System.Windows.Duration(TimeSpan.Zero);
+        resources["Motion.Structural"] = new System.Windows.Duration(TimeSpan.Zero);
     }
 
     private static void SwapAppThemeDictionary(ThemeKind theme) {
