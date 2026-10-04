@@ -40,28 +40,28 @@
                         <Trigger Property="IsMouseOver" Value="True">
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
-                                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity"
-                                                     To="1" Duration="{DynamicResource Motion.Feedback}"/>
+                                    <Storyboard><DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity"
+                                                     To="1" Duration="{StaticResource Motion.Feedback}"/></Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
-                                    <DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity"
-                                                     To="0" Duration="{DynamicResource Motion.Feedback}"/>
+                                    <Storyboard><DoubleAnimation Storyboard.TargetName="HoverLayer" Storyboard.TargetProperty="Opacity"
+                                                     To="0" Duration="{StaticResource Motion.Feedback}"/></Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
-                                    <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
-                                                     To="1" Duration="{DynamicResource Motion.Feedback}"/>
+                                    <Storyboard><DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                     To="1" Duration="{StaticResource Motion.Feedback}"/></Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
-                                    <DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
-                                                     To="0" Duration="{DynamicResource Motion.Feedback}"/>
+                                    <Storyboard><DoubleAnimation Storyboard.TargetName="PressedLayer" Storyboard.TargetProperty="Opacity"
+                                                     To="0" Duration="{StaticResource Motion.Feedback}"/></Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>
@@ -149,14 +149,14 @@
                             <Setter TargetName="Overlay" Property="Background" Value="{DynamicResource Win.BtnHover}"/>
                             <Trigger.EnterActions>
                                 <BeginStoryboard>
-                                    <DoubleAnimation Storyboard.TargetName="Overlay" Storyboard.TargetProperty="Opacity"
-                                                     To="1" Duration="{DynamicResource Motion.Feedback}"/>
+                                    <Storyboard><DoubleAnimation Storyboard.TargetName="Overlay" Storyboard.TargetProperty="Opacity"
+                                                     To="1" Duration="{StaticResource Motion.Feedback}"/></Storyboard>
                                 </BeginStoryboard>
                             </Trigger.EnterActions>
                             <Trigger.ExitActions>
                                 <BeginStoryboard>
-                                    <DoubleAnimation Storyboard.TargetName="Overlay" Storyboard.TargetProperty="Opacity"
-                                                     To="0" Duration="{DynamicResource Motion.Feedback}"/>
+                                    <Storyboard><DoubleAnimation Storyboard.TargetName="Overlay" Storyboard.TargetProperty="Opacity"
+                                                     To="0" Duration="{StaticResource Motion.Feedback}"/></Storyboard>
                                 </BeginStoryboard>
                             </Trigger.ExitActions>
                         </Trigger>

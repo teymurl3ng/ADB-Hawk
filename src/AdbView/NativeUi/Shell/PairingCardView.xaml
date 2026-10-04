@@ -84,8 +84,8 @@
                                 <DataTrigger Binding="{Binding IsSuccess}" Value="True">
                                     <DataTrigger.EnterActions>
                                         <BeginStoryboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                             From="0" To="1" Duration="{DynamicResource Motion.State}"/>
+                                            <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="{StaticResource Motion.State}"/></Storyboard>
                                         </BeginStoryboard>
                                     </DataTrigger.EnterActions>
                                 </DataTrigger>
@@ -117,8 +117,8 @@
                                 <DataTrigger Binding="{Binding IsProgress}" Value="True">
                                     <DataTrigger.EnterActions>
                                         <BeginStoryboard>
-                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                             From="0" To="1" Duration="{DynamicResource Motion.State}"/>
+                                            <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                             From="0" To="1" Duration="{StaticResource Motion.State}"/></Storyboard>
                                         </BeginStoryboard>
                                     </DataTrigger.EnterActions>
                                 </DataTrigger>

@@ -59,14 +59,14 @@
                                     <DataTrigger Binding="{Binding IsExpanded}" Value="True">
                                         <DataTrigger.EnterActions>
                                             <BeginStoryboard>
-                                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
-                                                                 To="180" Duration="{DynamicResource Motion.State}"/>
+                                                <Storyboard><DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
+                                                                 To="180" Duration="{StaticResource Motion.State}"/></Storyboard>
                                             </BeginStoryboard>
                                         </DataTrigger.EnterActions>
                                         <DataTrigger.ExitActions>
                                             <BeginStoryboard>
-                                                <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
-                                                                 To="0" Duration="{DynamicResource Motion.State}"/>
+                                                <Storyboard><DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
+                                                                 To="0" Duration="{StaticResource Motion.State}"/></Storyboard>
                                             </BeginStoryboard>
                                         </DataTrigger.ExitActions>
                                     </DataTrigger>
@@ -121,8 +121,8 @@
                             <DataTrigger Binding="{Binding ShowDetails}" Value="True">
                                 <DataTrigger.EnterActions>
                                     <BeginStoryboard>
-                                        <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                         From="0" To="1" Duration="{DynamicResource Motion.State}"/>
+                                        <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                         From="0" To="1" Duration="{StaticResource Motion.State}"/></Storyboard>
                                     </BeginStoryboard>
                                 </DataTrigger.EnterActions>
                             </DataTrigger>
@@ -165,8 +165,8 @@
                                                 <DataTrigger Binding="{Binding ShowAddressCopied}" Value="True">
                                                     <DataTrigger.EnterActions>
                                                         <BeginStoryboard>
-                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                             From="0" To="1" Duration="{DynamicResource Motion.Feedback}"/>
+                                                            <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                             From="0" To="1" Duration="{StaticResource Motion.Feedback}"/></Storyboard>
                                                         </BeginStoryboard>
                                                     </DataTrigger.EnterActions>
                                                 </DataTrigger>
@@ -205,8 +205,8 @@
                                                 <DataTrigger Binding="{Binding ShowSerialCopied}" Value="True">
                                                     <DataTrigger.EnterActions>
                                                         <BeginStoryboard>
-                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                                             From="0" To="1" Duration="{DynamicResource Motion.Feedback}"/>
+                                                            <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                                                             From="0" To="1" Duration="{StaticResource Motion.Feedback}"/></Storyboard>
                                                         </BeginStoryboard>
                                                     </DataTrigger.EnterActions>
                                                 </DataTrigger>

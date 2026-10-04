@@ -1709,18 +1709,32 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             return;
         }
 
-        var resources = window.Resources;
-        if (animationsEnabled) {
-            resources.Remove("Motion.Feedback");
-            resources.Remove("Motion.State");
-            resources.Remove("Motion.Structural");
-            return;
+        // Storyboards inside sealed templates must freeze, so their durations are StaticResource
+        // (baked at parse) - a live resource override cannot reach them. Reduced motion instead
+        // swaps the chrome dictionary for ControlsReduced.xaml: identical styles, instant
+        // setters, zero tokens. Swapping a merged dictionary re-resolves the implicit styles,
+        // so the change is live.
+        var wanted = animationsEnabled ? "Controls.xaml" : "ControlsReduced.xaml";
+        var merged = window.Resources.MergedDictionaries;
+        foreach (var theme in merged) {
+            for (var i = 0; i < theme.MergedDictionaries.Count; i++) {
+                var source = theme.MergedDictionaries[i].Source?.OriginalString ?? string.Empty;
+                bool isControls = source.EndsWith("Controls.xaml", StringComparison.Ordinal)
+                    || source.EndsWith("ControlsReduced.xaml", StringComparison.Ordinal);
+                if (isControls && !source.EndsWith(wanted, StringComparison.Ordinal)) {
+                    theme.MergedDictionaries[i] = new System.Windows.ResourceDictionary {
+                        Source = new Uri("pack://application:,,,/NativeUi/Themes/" + wanted, UriKind.Absolute),
+                    };
+                    Log.Information(
+                        "Motion gate: chrome dictionary swapped to {Dictionary} (animations {State}).",
+                        wanted,
+                        animationsEnabled ? "enabled" : "reduced to instant");
+                    return;
+                }
+            }
         }
 
-        // Zero-duration: every animation completes immediately - the 0012 instant step.
-        resources["Motion.Feedback"] = new System.Windows.Duration(TimeSpan.Zero);
-        resources["Motion.State"] = new System.Windows.Duration(TimeSpan.Zero);
-        resources["Motion.Structural"] = new System.Windows.Duration(TimeSpan.Zero);
+        Log.Warning("Motion gate: no Controls dictionary found to swap (animations={Enabled}).", animationsEnabled);
     }
 
     private static void SwapAppThemeDictionary(ThemeKind theme) {
