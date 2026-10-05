@@ -53,7 +53,7 @@ function Remove-NonPublicPublishArtifacts {
         elseif ($ext -eq '.map') { $remove = $true }
         elseif ($ext -eq '.xml' -and (
                 $name -match '^(Microsoft\.|Serilog|System\.|AdbView\.xml$)' -or
-                $rel -match '(^|/)(Microsoft\.Web\.WebView2|Serilog).*\.xml$'
+                $rel -match '(^|/)Serilog.*\.xml$'
             )) {
             # Documentation / reference XML next to managed assemblies — not app data.
             $remove = $true
@@ -61,44 +61,6 @@ function Remove-NonPublicPublishArtifacts {
 
         if ($remove) {
             Remove-Item -LiteralPath $_.FullName -Force
-        }
-    }
-}
-
-function Assert-FrontendWwwroot {
-    param([Parameter(Mandatory)][string]$WwwrootDir)
-    $index = Join-Path $WwwrootDir 'index.html'
-    if (-not (Test-Path -LiteralPath $index)) {
-        throw "wwwroot/index.html missing under $WwwrootDir"
-    }
-
-    $indexText = Get-Content -LiteralPath $index -Raw
-    if ($indexText -match 'https?://(localhost|127\.0\.0\.1)(:\d+)?') {
-        throw "wwwroot/index.html references a local development URL."
-    }
-    if ($indexText -match '@vite/client' -or $indexText -match 'vite\.svg') {
-        throw "wwwroot appears to be a Vite development bundle."
-    }
-
-    # Same inert-URL allowlist as tests/AdbView.Tests/Boundaries/BoundaryTests.cs.
-    $inertUrlPatterns = @(
-        'http://www\.w3\.org/[^"''\s)<>]+',
-        'https://react\.dev/errors/\d*',
-        'https://tailwindcss\.com'
-    )
-
-    Get-ChildItem -LiteralPath $WwwrootDir -Recurse -File | ForEach-Object {
-        if ($_.Extension -eq '.map') {
-            throw "Source map must not ship: $($_.FullName)"
-        }
-        if ($_.Extension -in '.js', '.css', '.html') {
-            $text = Get-Content -LiteralPath $_.FullName -Raw
-            foreach ($pattern in $inertUrlPatterns) {
-                $text = [regex]::Replace($text, $pattern, '')
-            }
-            if ($text -match 'https?://') {
-                throw "Absolute http(s) asset URL found in $($_.Name) (after inert-URL allowlist)."
-            }
         }
     }
 }
@@ -114,12 +76,6 @@ function Assert-PublicPackageContents {
     if (-not (Test-Path -LiteralPath $exe)) {
         throw "AdbView.exe missing from package staging: $PackageDir"
     }
-
-    $index = Join-Path $PackageDir 'wwwroot\index.html'
-    if (-not (Test-Path -LiteralPath $index)) {
-        throw "wwwroot/index.html missing from package staging: $PackageDir"
-    }
-    Assert-FrontendWwwroot -WwwrootDir (Join-Path $PackageDir 'wwwroot')
 
     $machine = Get-PeMachineKind -ExePath $exe
     $expectedMachine = if ($ExpectedRid -eq 'win-arm64') { 'arm64' } else { 'x64' }
@@ -226,35 +182,6 @@ function Assert-PackageDenylist {
     }
 }
 
-function Ensure-WebView2Bootstrapper {
-    param([Parameter(Mandatory)][string]$RedistDir)
-    $target = Join-Path $RedistDir 'MicrosoftEdgeWebview2Setup.exe'
-    $url = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703'
-
-    if (-not (Test-Path -LiteralPath $target) -or (Get-Item -LiteralPath $target).Length -lt 100000) {
-        Write-Host "package: downloading WebView2 Evergreen Bootstrapper from Microsoft..."
-        $ProgressPreference = 'SilentlyContinue'
-        Invoke-WebRequest -Uri $url -OutFile $target -UseBasicParsing
-    }
-
-    $len = (Get-Item -LiteralPath $target).Length
-    if ($len -lt 100000) {
-        throw "WebView2 bootstrapper looks invalid (size=$len): $target"
-    }
-
-    $sig = Get-AuthenticodeSignature -FilePath $target
-    if ($sig.Status -ne 'Valid') {
-        throw "WebView2 bootstrapper Authenticode status is '$($sig.Status)' (expected Valid)."
-    }
-    $subject = $sig.SignerCertificate.Subject
-    if ($subject -notmatch 'Microsoft') {
-        throw "WebView2 bootstrapper publisher is not Microsoft: $subject"
-    }
-
-    Write-Host "package: WebView2 bootstrapper ok ($len bytes; $subject)"
-    return (Resolve-Path -LiteralPath $target).Path
-}
-
 function Assert-Sha256SumsFile {
     param(
         [Parameter(Mandatory)][string]$SumsPath,
@@ -334,9 +261,10 @@ function Assert-InnoScriptContract {
         throw "installer/AdbView.iss must deletevalue the HKCU Run entry before optionally rewriting it."
     }
 
-    # Upgrade must purge prior hashed frontend so obsolete Vite assets do not accumulate.
+    # Migration: versions up to 0.1.0 shipped a WebView2 frontend under {app}\wwwroot. Nothing
+    # writes there now (decision 0022), so an upgrade must delete it rather than leave it orphaned.
     $installDelete = [regex]::Match($text, '(?ms)^\[InstallDelete\].*?(?=^\[|\z)').Value
     if ($installDelete -notmatch '\{app\}\\wwwroot') {
-        throw "installer/AdbView.iss must InstallDelete {app}\wwwroot before copying the new frontend."
+        throw "installer/AdbView.iss must InstallDelete the retired {app}\wwwroot frontend on upgrade."
     }
 }

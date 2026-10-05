@@ -30,16 +30,6 @@ jobs:
         with:
           dotnet-version: '10.0.401'
 
-      - name: Install pinned Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.node-version'
-          cache: 'npm'
-          cache-dependency-path: 'ui/package-lock.json'
-
-      - name: Install pinned npm
-        run: npm install -g npm@11.19.0
-
       - name: Install Inno Setup 6
         shell: pwsh
         run: |
@@ -76,8 +66,8 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # Official WebView2 Evergreen bootstrapper is acquired by PackageCommon
-          # (installer/redist/, gitignored). Do not commit it; do not SkipVerify.
+          # Decision 0022: the UI is native WPF; packaging is dotnet + Inno Setup only.
+          # Do not SkipVerify.
           ./scripts/package.ps1 -InnoCompiler $env:ISCC
 
       - name: Validate packages (scripts/test-package.ps1)

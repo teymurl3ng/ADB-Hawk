@@ -100,8 +100,10 @@ function Assert-InstalledDenylist {
     Assert-PackageDenylist -PackageDir $installDir
     $exe = Join-Path $installDir 'AdbView.exe'
     if (-not (Test-Path -LiteralPath $exe)) { throw 'AdbView.exe missing after install' }
-    $index = Join-Path $installDir 'wwwroot\index.html'
-    if (-not (Test-Path -LiteralPath $index)) { throw 'wwwroot/index.html missing after install' }
+    # Decision 0022: the WebView frontend is gone; an upgrade must not leave {app}\wwwroot behind.
+    if (Test-Path -LiteralPath (Join-Path $installDir 'wwwroot')) {
+        throw 'Retired wwwroot frontend still present after install'
+    }
 }
 
 function Get-ShortcutTarget([string]$lnkPath) {
@@ -239,9 +241,9 @@ switch ($Action) {
         New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
         $staleName = 'stale-old-hash-SENTINEL.js'
         $stalePath = Join-Path $assetsDir $staleName
-        Set-Content -LiteralPath $stalePath -Value '// phase10c stale asset sentinel' -Encoding utf8
+        Set-Content -LiteralPath $stalePath -Value '// phase10c stale frontend sentinel' -Encoding utf8
         $beforeAssets = @(Get-ChildItem -LiteralPath $assetsDir -File | Select-Object -ExpandProperty Name)
-        Write-Host ("Pre-upgrade assets ({0}): {1}" -f $beforeAssets.Count, ($beforeAssets -join ', '))
+        Write-Host ("Pre-upgrade retained frontend files ({0}): {1}" -f $beforeAssets.Count, ($beforeAssets -join ', '))
 
         $beforeUnins = @(
             Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' -EA SilentlyContinue |
@@ -258,11 +260,10 @@ switch ($Action) {
         Assert-InstalledDenylist
 
         if (Test-Path -LiteralPath $stalePath) {
-            throw "Stale frontend asset remained after upgrade: $stalePath"
+            throw "Retired frontend survived the upgrade: $stalePath"
         }
-        $afterAssets = @(Get-ChildItem -LiteralPath $assetsDir -File -EA SilentlyContinue | Select-Object -ExpandProperty Name)
-        if ($afterAssets -contains $staleName) {
-            throw 'Stale sentinel still listed in wwwroot/assets after upgrade'
+        if (Test-Path -LiteralPath (Join-Path $installDir 'wwwroot')) {
+            throw 'Retired wwwroot directory survived the upgrade'
         }
 
         $exe = Join-Path $installDir 'AdbView.exe'
@@ -294,13 +295,13 @@ switch ($Action) {
             throw "Start Menu shortcut invalid after upgrade: $($sc | ConvertTo-Json -Compress)"
         }
 
-        Write-Host 'Silent upgrade N->N+1 + stale wwwroot purge: PASS'
+        Write-Host 'Silent upgrade N->N+1 + retired frontend purge: PASS'
         Write-Report ([ordered]@{
                 action = 'upgrade'
                 fromVersion = $Version
                 toVersion = $UpgradeVersion
-                beforeAssets = $beforeAssets
-                afterAssets = $afterAssets
+                plantedFrontendFiles = $beforeAssets
+                wwwrootPurged = $true
                 productVersion = $vi.ProductVersion
                 fileVersion = $vi.FileVersion
                 uninstallCount = $afterUnins.Count
@@ -317,15 +318,15 @@ switch ($Action) {
         $SetupPath = Join-Path $ArtifactsDir "ADBView-$Version-$Rid-setup.exe"
         Invoke-SilentSetup -setup $SetupPath
         Assert-InstalledDenylist
-        $beforeAssets = @(Get-ChildItem (Join-Path $installDir 'wwwroot\assets') -File -EA SilentlyContinue | Select-Object -ExpandProperty Name)
-        Write-Host ("Installed wwwroot assets: {0}" -f ($beforeAssets -join ', '))
+        $installedFiles = @(Get-ChildItem -LiteralPath $installDir -File -EA SilentlyContinue | Select-Object -ExpandProperty Name)
+        Write-Host ("Installed files: {0}" -f ($installedFiles -join ', '))
         Invoke-SilentUninstall
         Write-Host 'all-silent baseline install/uninstall: PASS'
         Write-Report ([ordered]@{
                 action = 'all-silent'
                 version = $Version
                 rid = $Rid
-                assets = $beforeAssets
+                installedFiles = $installedFiles
                 ok = $true
             })
     }

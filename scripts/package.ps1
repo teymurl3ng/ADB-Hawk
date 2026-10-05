@@ -21,8 +21,8 @@ $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
 if (-not $env:DOTNET_ROOT) { $env:DOTNET_ROOT = 'C:\Users\Teymur\.dotnet' }
-$nodeDir = Join-Path $repo 'node_tool\node-v24.21.0-win-x64'
-if (Test-Path $nodeDir) { $env:PATH = "$env:DOTNET_ROOT;$nodeDir;$env:PATH" }
+# This machine's PATH dotnet is a bare runtime without an SDK; the SDK lives in DOTNET_ROOT.
+$env:PATH = "$env:DOTNET_ROOT;$env:PATH"
 
 . (Join-Path $PSScriptRoot 'lib\PackageCommon.ps1')
 
@@ -97,27 +97,18 @@ if (-not $SkipVerify) {
     Assert-LastExitCode 'verify.ps1'
 }
 else {
-    Write-Host 'package: -SkipVerify set; building frontend via scripts/build.ps1 only.'
+    Write-Host 'package: -SkipVerify set; building via scripts/build.ps1 only.'
     & (Join-Path $PSScriptRoot 'build.ps1')
     Assert-LastExitCode 'build.ps1'
 }
 
-$wwwrootIndex = Join-Path $repo 'src\AdbView\wwwroot\index.html'
-if (-not (Test-Path -LiteralPath $wwwrootIndex)) {
-    throw "Production wwwroot missing: $wwwrootIndex"
-}
-Assert-FrontendWwwroot -WwwrootDir (Join-Path $repo 'src\AdbView\wwwroot')
-
-$redistDir = Join-Path $repo 'installer\redist'
-New-Item -ItemType Directory -Path $redistDir -Force | Out-Null
-$bootstrapper = Ensure-WebView2Bootstrapper -RedistDir $redistDir
 $setupIcon = Join-Path $repo 'assets\icons\aperture-link-idle.ico'
 if (-not (Test-Path -LiteralPath $setupIcon)) {
     throw "Setup icon missing: $setupIcon"
 }
 
-# Frozen V-6 decision: IncludeNativeLibrariesForSelfExtract=true so WebView2Loader
-# and other native deps extract reliably from the single-file bundle.
+# Frozen V-6 decision: IncludeNativeLibrariesForSelfExtract=true so WPF's native dependencies
+# (PresentationNative, D3DCompiler, vcruntime) extract reliably from the single-file bundle.
 $includeNative = 'true'
 $gitCommit = (git -C $repo rev-parse HEAD).Trim()
 $builtUtc = [DateTime]::UtcNow.ToString('o')
@@ -168,7 +159,6 @@ foreach ($rid in $rids) {
     # ISCC resolves relative /D paths against the .iss directory — always pass absolute paths.
     $packageDirAbs = (Resolve-Path -LiteralPath $packageDir).Path
     $releaseRootAbs = (Resolve-Path -LiteralPath $releaseRoot).Path
-    $bootstrapperAbs = (Resolve-Path -LiteralPath $bootstrapper).Path
     $setupIconAbs = (Resolve-Path -LiteralPath $setupIcon).Path
     $isccArgs = @(
         "/DMyAppVersion=$version",
@@ -176,7 +166,6 @@ foreach ($rid in $rids) {
         "/DMySourceDir=$packageDirAbs",
         "/DMyOutputDir=$releaseRootAbs",
         "/DMyOutputBaseFilename=$setupBase",
-        "/DMyWebView2Bootstrapper=$bootstrapperAbs",
         "/DMySetupIcon=$setupIconAbs",
         "/DMyArchitecturesAllowed=$archAllowed",
         "/DMyArchitecturesInstallIn64BitMode=$archInstall",
@@ -248,11 +237,6 @@ $manifest = [ordered]@{
         readyToRun = $true
         trimmed = $false
         includeNativeLibrariesForSelfExtract = ($includeNative -eq 'true')
-    }
-    webView2 = [ordered]@{
-        strategy = 'evergreen-runtime'
-        bootstrapper = 'MicrosoftEdgeWebview2Setup.exe'
-        bundledRuntime = $false
     }
     adb = [ordered]@{
         bundled = $false
