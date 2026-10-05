@@ -139,7 +139,7 @@ internal enum DiscoveryRepairOutcome {
     Failed,
 }
 
-/// <summary>Backend-owned repair offer. Ids are opaque to the frontend.</summary>
+/// <summary>Backend-owned repair offer. Ids are opaque to the shell.</summary>
 internal sealed record DiscoveryRepairDescriptor(
     string Id,
     DiscoveryRepairActionKind Kind,

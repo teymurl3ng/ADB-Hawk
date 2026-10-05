@@ -42,6 +42,7 @@ public sealed partial class NativeFlyoutWindow : Window {
     private ThemeKind _theme = ThemeKind.Dark;
     private bool _transparencyEnabled;
     private bool _backdropActive;
+    private bool _animationsEnabled = true;
 
     public event EventHandler? Deactivated95;
 
@@ -266,6 +267,7 @@ public sealed partial class NativeFlyoutWindow : Window {
                 : "pack://application:,,,/NativeUi/Themes/FluentDark.xaml",
             UriKind.Absolute);
         var dictionary = new ResourceDictionary { Source = uri };
+        ApplyMotionDictionary(dictionary, _animationsEnabled);
 
         // Replace token values in place (keeps DynamicResource references alive).
         var merged = Resources.MergedDictionaries;
@@ -279,6 +281,50 @@ public sealed partial class NativeFlyoutWindow : Window {
 
         merged.Add(dictionary);
         Log.Information("Window theme dictionary added: {Theme}", theme);
+    }
+
+    /// <summary>
+    /// Decision 0021: storyboards inside sealed templates must freeze, so their durations are
+    /// StaticResource (baked at parse) — a live resource override cannot reach them. Reduced
+    /// motion instead swaps the chrome dictionary for ControlsReduced.xaml: identical styles,
+    /// instant setters, zero tokens. Swapping a merged dictionary re-resolves the implicit
+    /// styles, so the change is live. The desired state is remembered, so a gate that arrives
+    /// before the theme dictionary exists is honoured the moment it loads.
+    /// </summary>
+    internal void ApplyMotionGate(bool animationsEnabled) {
+        _animationsEnabled = animationsEnabled;
+        var merged = Resources.MergedDictionaries;
+        for (var i = 0; i < merged.Count; i++) {
+            if (merged[i].Source?.OriginalString.Contains("Fluent", StringComparison.Ordinal) == true
+                && ApplyMotionDictionary(merged[i], animationsEnabled)) {
+                return;
+            }
+        }
+
+        // No theme dictionary loaded yet (pre-SourceInitialized): the remembered flag is
+        // applied by ApplyThemeDictionary. Nothing to warn about.
+    }
+
+    private static bool ApplyMotionDictionary(ResourceDictionary theme, bool animationsEnabled) {
+        var wanted = animationsEnabled ? "Controls.xaml" : "ControlsReduced.xaml";
+        var nested = theme.MergedDictionaries;
+        for (var i = 0; i < nested.Count; i++) {
+            var source = nested[i].Source?.OriginalString ?? string.Empty;
+            bool isControls = source.EndsWith("Controls.xaml", StringComparison.Ordinal)
+                || source.EndsWith("ControlsReduced.xaml", StringComparison.Ordinal);
+            if (isControls && !source.EndsWith(wanted, StringComparison.Ordinal)) {
+                nested[i] = new ResourceDictionary {
+                    Source = new Uri("pack://application:,,,/NativeUi/Themes/" + wanted, UriKind.Absolute),
+                };
+                Log.Information(
+                    "Motion gate: chrome dictionary swapped to {Dictionary} (animations {State}).",
+                    wanted,
+                    animationsEnabled ? "enabled" : "reduced to instant");
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e) {

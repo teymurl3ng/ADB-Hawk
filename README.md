@@ -1,10 +1,10 @@
 # ADB View
 
-ADB View is a small Windows 11 system-tray utility for observing, explaining, notifying, and pairing ADB connections.
+ADB View is a small Windows 11 system-tray utility for observing, explaining, notifying, and pairing ADB connections. Its UI is a native WPF shell hosted by the native Windows process — no web content, no browser runtime (decision 0022).
 
 ## Repository status
 
-**Phase 9 complete: reliability / chaos hardening.** ENGINEERING.md §11 rows exercised via `tests/.../Integration/Chaos*` (hermetic FakeAdbServer + WebView backoff + single-instance + gated Explorer). Production gaps closed: WebView recreate backoff 1/5/15/60 + tray-only stop, StateEngine backlog warning (≥256, rate-limited), tracker degraded/malformed logging. Soak script `scripts/soak-phase9.ps1` (12 h default; smoke validated). Deferred Acrylic/typography visuals parked for Phase 11. The next step is Phase 10 (packaging) from `PHASES.md`.
+**Phase 10 complete: packaging.** Self-contained x64/arm64 single-file publishes, per-user Inno installer, portable zip, manifest + SHA-256 sums, and machine-checked package contracts (`scripts/package.ps1`, `scripts/test-package.ps1`, `scripts/test-install-acceptance.ps1`). The v1 WebView2 frontend was removed after the native shell reached full parity (decision 0022): the UI is now only `src/AdbView/NativeUi`, and the gate is dotnet-only. Deferred Acrylic/typography visuals parked for Phase 11.
 
 ## Governing documents
 
@@ -19,29 +19,26 @@ Supporting current research lives in `research/`. The complete Stitch design sou
 
 ## Prerequisites (pinned)
 
-| Tool     | Pin                                 | Where                                |
-| -------- | ----------------------------------- | ------------------------------------ |
-| .NET SDK | 10.0.401                            | `global.json`                        |
-| Node.js  | 24.21.0 LTS                         | `.node-version`                      |
-| npm      | 11.19.0 (bundled with Node 24.21.0) | `ui/package.json` (`packageManager`) |
+| Tool     | Pin      | Where         |
+| -------- | -------- | ------------- |
+| .NET SDK | 10.0.401 | `global.json` |
 
-NuGet versions are pinned in `Directory.Packages.props`; npm versions in `ui/package.json` + `ui/package-lock.json`. Every direct dependency is exact — no ranges, no wildcards. The boundary tests fail the build if any pin drifts from `ENGINEERING.md §15`.
+NuGet versions are pinned in `Directory.Packages.props`. Every direct dependency is exact — no ranges, no wildcards. The boundary tests fail the build if any pin drifts from `ENGINEERING.md §15`. There is no Node/npm toolchain (decision 0022).
 
 ## Build and verify
 
 ```powershell
-# everything (format, build, both test suites, boundaries, publish smoke):
+# everything (toolchain pin, format, Release build, C# tests incl. boundaries, publish smoke):
 .\scripts\verify.ps1
 
 # pieces:
-.\scripts\build.ps1        # ui bundle -> wwwroot -> Release solution build
-.\scripts\test.ps1         # C# (xUnit v3 / MTP) + Vitest, after a build
-.\scripts\package.ps1      # self-contained publish + portable zip (Phase 10 completes this)
+.\scripts\build.ps1        # Release solution build
+.\scripts\test.ps1         # C# test suite (xUnit v3 / MTP), after a build
+.\scripts\capture-native.ps1 -Fixture connected-usb   # screenshot the real shell with a fixture
+.\scripts\package.ps1      # self-contained publish + installer + portable zip
 ```
 
-`scripts/verify.ps1` is the gate (`AGENTS.md` R-12). It must pass before any phase is declared complete. CI runs the same gate on `windows-latest` (`.github/workflows/ci.yml`).
-
-Note: `npm` is invoked as `npm.cmd` in the scripts so they work under restricted PowerShell execution policies.
+`scripts/verify.ps1` is the gate (`AGENTS.md` R-12). It must pass before any phase is declared complete — and because its smoke run exits before the shell is created, launch the Release exe from a non-"smoke" path before claiming the UI works. CI runs the same gate on `windows-latest` (`.github/workflows/ci.yml`).
 
 ## Product boundary
 

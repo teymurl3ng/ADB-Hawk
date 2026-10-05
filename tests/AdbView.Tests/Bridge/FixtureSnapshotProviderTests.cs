@@ -43,7 +43,6 @@ public sealed class FixtureSnapshotProviderTests {
     public void AllCanonicalFixturesAreValid(string fixtureName) {
         var snapshot = FixtureSnapshotProvider.GetSnapshot(fixtureName, isPinned: false, revision: 1);
         Assert.NotNull(snapshot);
-        Assert.Equal(1, snapshot.Protocol);
         Assert.Equal(1, snapshot.Revision);
         Assert.Equal(FixtureSnapshotProvider.T0, snapshot.GeneratedAt);
         Assert.NotNull(snapshot.Health);

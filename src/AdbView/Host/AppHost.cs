@@ -1155,32 +1155,10 @@ internal sealed class AppHost : IDisposable {
             return;
         }
 
-        // Storyboards inside sealed templates must freeze, so their durations are StaticResource
-        // (baked at parse) - a live resource override cannot reach them. Reduced motion instead
-        // swaps the chrome dictionary for ControlsReduced.xaml: identical styles, instant
-        // setters, zero tokens. Swapping a merged dictionary re-resolves the implicit styles,
-        // so the change is live.
-        var wanted = animationsEnabled ? "Controls.xaml" : "ControlsReduced.xaml";
-        var merged = window.Resources.MergedDictionaries;
-        foreach (var theme in merged) {
-            for (var i = 0; i < theme.MergedDictionaries.Count; i++) {
-                var source = theme.MergedDictionaries[i].Source?.OriginalString ?? string.Empty;
-                bool isControls = source.EndsWith("Controls.xaml", StringComparison.Ordinal)
-                    || source.EndsWith("ControlsReduced.xaml", StringComparison.Ordinal);
-                if (isControls && !source.EndsWith(wanted, StringComparison.Ordinal)) {
-                    theme.MergedDictionaries[i] = new System.Windows.ResourceDictionary {
-                        Source = new Uri("pack://application:,,,/NativeUi/Themes/" + wanted, UriKind.Absolute),
-                    };
-                    Log.Information(
-                        "Motion gate: chrome dictionary swapped to {Dictionary} (animations {State}).",
-                        wanted,
-                        animationsEnabled ? "enabled" : "reduced to instant");
-                    return;
-                }
-            }
-        }
-
-        Log.Warning("Motion gate: no Controls dictionary found to swap (animations={Enabled}).", animationsEnabled);
+        // The window owns the dictionary swap and remembers the desired state, so a gate that
+        // arrives before the theme dictionary exists (startup, pre-SourceInitialized) is
+        // honoured the moment the theme loads.
+        window.ApplyMotionGate(animationsEnabled);
     }
 
     private static void SwapAppThemeDictionary(ThemeKind theme) {

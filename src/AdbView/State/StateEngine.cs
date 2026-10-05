@@ -64,7 +64,6 @@ internal sealed class StateEngine : IAsyncDisposable, IDisposable {
 
     public static AppSnapshot CreateDefaultSnapshot(bool isPinned = false, long revision = 1) {
         return new AppSnapshot {
-            Protocol = 1,
             Revision = revision,
             GeneratedAt = App.SystemClock.UtcNow,
             Health = new HealthView {

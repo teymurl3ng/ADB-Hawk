@@ -7,15 +7,15 @@ Public GitHub Releases and production signing are Phase 11 / business work.
 
 - Windows 11 x64 development machine (arm64 publish is cross-compile)
 - Pinned .NET SDK from `global.json` (10.0.401)
-- Pinned Node/npm from `.node-version` / `ui/package.json` (or `node_tool/`)
 - **Inno Setup 6** with `ISCC.exe` on disk  
   Default search paths:  
   `%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`  
   `%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe`  
   Or pass `-InnoCompiler <path>`  
   Local `scripts/package.ps1` does **not** install Inno Setup (CI installs it).
-- Network access once per machine/job to download the Microsoft WebView2 Evergreen
-  Bootstrapper into `installer/redist/` (Authenticode-validated; **gitignored**)
+
+There is no other prerequisite: the UI is native WPF (decision 0022), so no browser
+runtime, no Node toolchain, and no downloaded bootstrapper are involved.
 
 ## Version source
 
@@ -58,8 +58,7 @@ Workflow file: `.github/workflows/release.yml`
 | Name | `release` |
 | Triggers | `workflow_dispatch` (manual); push of tags `v*` / `phase-*-complete` |
 | Runner | `windows-latest` |
-| Tooling | .NET **10.0.401**, Node from `.node-version`, npm **11.19.0**, Inno Setup **6** via Chocolatey |
-| Bootstrapper | Official Microsoft Evergreen URL via `Ensure-WebView2Bootstrapper` (not committed) |
+| Tooling | .NET **10.0.401**, Inno Setup **6** via Chocolatey |
 | Package entrypoint | `scripts/package.ps1` (**no** `-SkipVerify`) |
 | Validation | `scripts/test-package.ps1` |
 | Upload | Actions artifact `ADBView-<version>-packages` (public outputs only) |
@@ -92,7 +91,6 @@ Staging (not redistributed / not uploaded):
 
 - `win-x64/publish`, `win-x64/package`
 - `win-arm64/publish`, `win-arm64/package`
-- `installer/redist/MicrosoftEdgeWebview2Setup.exe`
 
 ## Publish mode
 
@@ -100,9 +98,9 @@ Staging (not redistributed / not uploaded):
 - Single-file
 - ReadyToRun
 - **Not** trimmed
-- `IncludeNativeLibrariesForSelfExtract=true` (see `research/2026-09-20-phase10b-single-file-webview2.md`)
+- `IncludeNativeLibrariesForSelfExtract=true` (extracts WPF's native dependencies from the bundle)
 
-Public package contents after staging cleanup: `AdbView.exe` + `wwwroot/**` (plus only files proven required). No PDBs, no docs XML, no `adb.exe`.
+Public package contents after staging cleanup: `AdbView.exe` (plus only files proven required). No PDBs, no docs XML, no `adb.exe`, no web assets.
 
 ## Architecture
 
@@ -132,14 +130,6 @@ When production signing is introduced:
 
 Do not compute release checksums before signing. Phase 10 ships **unsigned** artifacts deliberately.
 
-## WebView2 behavior
-
-- Evergreen Runtime (not fixed, not bundled in the app package)
-- Installer detects HKLM/HKCU EdgeUpdate client `{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}` `pv`
-- If missing: runs official Evergreen Bootstrapper (`/silent /install`) from staging `{tmp}`
-- Bootstrap failure aborts setup (no “success” install without a renderable UI host)
-- Uninstall does **not** remove the system Evergreen Runtime
-
 ## ADB
 
 - **Not bundled**
@@ -158,17 +148,16 @@ Do not compute release checksums before signing. Phase 10 ships **unsigned** art
 | Desktop shortcut | none |
 | Optional task | “Start ADB View when I sign in” (**unchecked**) → `HKCU\...\Run` with `--startup` |
 | Startup modify | Reinstall/upgrade with startup unchecked clears any prior `HKCU\...\Run` value (no orphan) |
-| Frontend upgrade | `[InstallDelete]` purges `{app}\wwwroot` so obsolete Vite-hashed assets do not accumulate |
+| Frontend migration | `[InstallDelete]` removes the retired `{app}\wwwroot` (pre-0022 installs) on upgrade |
 | Running app | `AppMutex=Local\AdbView.SingleInstance`; `CloseApplications=no` (prompt/wait, no silent force-kill) |
-| Uninstall removes | app files, Start Menu, uninstall entry, optional Run value, `%LOCALAPPDATA%\ADBView\WebView2`, `%LOCALAPPDATA%\ADBView\logs` |
+| Uninstall removes | app files, Start Menu, uninstall entry, optional Run value, `%LOCALAPPDATA%\ADBView\WebView2` (pre-0022 profile, migration), `%LOCALAPPDATA%\ADBView\logs` |
 
 ## Portable usage
 
 1. Extract ZIP  
 2. Run `AdbView.exe`  
 3. No registry / auto-start changes  
-4. Still requires Evergreen WebView2 Runtime on the machine  
-5. Still requires user-supplied platform-tools for ADB features  
+4. Still requires user-supplied platform-tools for ADB features  
 
 ## Unsigned / SmartScreen
 
@@ -180,8 +169,8 @@ CI proves the **same packaging command and policy** (file set, version, RID, App
 
 ## Phase 10C / 10D status
 
-- **10C COMPLETE** — host package-lifecycle acceptance (installer, portable, no-ADB, recovery, upgrade, AppMutex, wwwroot purge, uninstall, WebView2-present, denylist, dual-RID construction).
-- **10D COMPLETE** — `.github/workflows/release.yml` green on `d6a81e2` (Actions run `35524942016`); artifact `ADBView-0.1.0-packages` inventory + SHA-256 verified.
+- **10C COMPLETE** — host package-lifecycle acceptance (installer, portable, no-ADB, recovery, upgrade, AppMutex, retired-frontend purge, uninstall, denylist, dual-RID construction). Re-validated after decision 0022: the installer carries no WebView2 runtime steps and asserts `wwwroot` is absent after install/upgrade.
+- **10D COMPLETE** — `.github/workflows/release.yml` green on `d6a81e2` (Actions run `35524942016`); artifact `ADBView-0.1.0-packages` inventory + SHA-256 verified. Node/npm steps removed by decision 0022.
 
 Public release is **not** automatic from this workflow. Tag `phase-10-complete` → `d6a81e2`.
 
@@ -192,8 +181,7 @@ Remain **NOT EXERCISED** (not PASS) until release hardening:
 | ID | Item |
 |---|---|
 | A | Pristine Windows 11 x64 VM (no SDK/repo/dev tools; preferably no .NET 10 Desktop) — installer, portable, first launch, upgrade, uninstall |
-| B | Windows 11 ARM64 **runtime** — install/launch/WebView2/tray/flyout/single-instance/uninstall (or remove ARM64 from public v1 support) |
-| C | Genuinely WebView2-free machine — bootstrapper detect/install/continue-or-fail |
-| D | Real reboot/sign-in auto-start with `--startup` (tray only, no flyout) |
-| E | SmartScreen / Mark-of-the-Web on a real downloaded artifact |
-| F | Production Authenticode signing + checksums-after-sign |
+| B | Windows 11 ARM64 **runtime** — install/launch/tray/flyout/single-instance/uninstall (or remove ARM64 from public v1 support) |
+| C | Real reboot/sign-in auto-start with `--startup` (tray only, no flyout) |
+| D | SmartScreen / Mark-of-the-Web on a real downloaded artifact |
+| E | Production Authenticode signing + checksums-after-sign |

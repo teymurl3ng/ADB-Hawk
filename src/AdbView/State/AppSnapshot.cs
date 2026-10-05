@@ -4,9 +4,8 @@ using System;
 using System.Collections.Immutable;
 
 internal sealed record AppSnapshot {
-    public required int Protocol { get; init; }
     public required long Revision { get; init; }             // monotonic, never reused
-    public required DateTimeOffset GeneratedAt { get; init; }// UTC; frontend clock-skew safe
+    public required DateTimeOffset GeneratedAt { get; init; }// UTC; the shell formats ages from it
     public required HealthView Health { get; init; }
     public required ShellView Shell { get; init; }
     public required ImmutableArray<DeviceView> Devices { get; init; }      // display order = stable
@@ -68,7 +67,7 @@ internal sealed record DeviceView {
     public required TransportKind Transport { get; init; }
     public required string TransportLabel { get; init; } // "USB" | "Wi-Fi"
     public int? BatteryPercent { get; init; }            // null => omit battery entirely
-    public required string MetaTemplate { get; init; }    // "Connected {age} ago" (frontend fills {age})
+    public required string MetaTemplate { get; init; }    // "Connected {age} ago" (the shell fills {age})
     public required DateTimeOffset StateSince { get; init; }
     public DateTimeOffset? ConnectedSince { get; init; }     // only when a meaningful connected instant exists
     public required DeviceDetailView Detail { get; init; } // expanded card payload
@@ -136,7 +135,7 @@ internal sealed record SubsystemWarningView {
 
 // ---------- discovery health (decision 0008) ----------
 // Evidence lines are rendered by Vocabulary from structured diagnosis and arrive ready to
-// display; the frontend never derives wording (R-07).
+// display; the shell never derives wording (R-07).
 
 internal sealed record DiscoveryHealthView {
     public required string Title { get; init; }
@@ -152,7 +151,7 @@ internal sealed record DiscoveryHealthView {
 internal sealed record DiscoveryRepairCardAction {
     public required string Id { get; init; }
     public required string Label { get; init; }
-    public required bool IsAdmin { get; init; }        // UAC-shield hint for the frontend
+    public required bool IsAdmin { get; init; }        // UAC-shield hint for the shell
     public required bool IsRunning { get; init; }
     public required string RunningLabel { get; init; } // label shown while IsRunning
 }

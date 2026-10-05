@@ -38,7 +38,7 @@ internal static class Vocabulary {
         public const string OfflineGuidance = "ADB can see this device, but the connection isn’t responding.";
 
         /// <summary>
-        /// Frontend <c>formatAge</c> substitutes <c>{age}</c> with a string that already includes
+        /// The shell's age formatting substitutes <c>{age}</c> with a string that already includes
         /// "ago" / "Just now", so templates must not append a second "ago".
         /// </summary>
         public const string ConnectedMetaTemplate = "Connected {age}";
