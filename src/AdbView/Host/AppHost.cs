@@ -597,6 +597,21 @@ internal sealed class AppHost : IDisposable {
             ? Screen.FromRectangle(placement.Rect)
             : TrayIcon.GetTaskbarScreen();
 
+        _suppressLightDismiss = true;
+        _lightDismissArmed = false;
+        int showGen = ++_showGeneration;
+
+        _presenter?.Cancel();
+        bool reducedMotion = !_animationsEnabled;
+        window.TopMost = window.IsPinned;
+        window.Show();
+
+        // Placement happens AFTER Show, never before: on the first show the handle does not
+        // exist until Show() runs, so a pre-Show SetWindowPos silently no-ops and WPF applies
+        // the XAML seed geometry at the OS cascade position — the flyout would open wherever
+        // the window manager put it (observed live: an open slide across the whole screen
+        // from the left edge). The layout pass inside Show() also ran the first self-sizing
+        // step, so the height used here is the measured one rather than the 500 DIP seed.
         var physicalBounds = FlyoutPlacement.CalculatePlacement(
             FlyoutPlacement.ResolveAnchor(
                 placement.Rect,
@@ -608,18 +623,9 @@ internal sealed class AppHost : IDisposable {
             monitor.WorkingArea,
             window.DpiScale,
             new Size(376, _currentEffectiveHeight));
-
-        _suppressLightDismiss = true;
-        _lightDismissArmed = false;
-        int showGen = ++_showGeneration;
-
-        _presenter?.Cancel();
-        bool reducedMotion = !_animationsEnabled;
         window.SetPhysicalBounds(reducedMotion
             ? physicalBounds
             : SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea));
-        window.TopMost = window.IsPinned;
-        window.Show();
 
         if (!window.IsPinned) {
             Windows.Win32.PInvoke.SetForegroundWindow(new Windows.Win32.Foundation.HWND(window.Handle));
@@ -736,6 +742,8 @@ internal sealed class AppHost : IDisposable {
             return;
         }
 
+        // Fire-and-forget: the expensive evidence sweep hops to the worker pool inside
+        // RunDiscoveryCheckAsync, so this never blocks the UI thread (see the comment there).
         _ = RunDiscoveryCheckAsync();
     }
 
@@ -778,11 +786,15 @@ internal sealed class AppHost : IDisposable {
         try {
             engine.Post(new DiscoveryCheckStartedEvent());
 
-            var evidence = DiscoveryDiagnostics.Collect(
-                source,
-                Environment.ProcessId,
-                ResolveProcessName);
-            var interfaces = source.GetMulticastCandidateAddresses();
+            // The evidence sweep (GetExtendedUdpTable plus process-name resolution) costs
+            // seconds on busy machines, so it must never execute on the caller's thread —
+            // every caller is the UI thread (flyout open, the health card's check-again, the
+            // repair flow). Without this hop the open-slide ticks starve and the 167 ms
+            // reveal takes seconds (observed live: a 3 s slide on first show).
+            (DiscoveryEnvironmentEvidence evidence, IReadOnlyList<System.Net.IPAddress> interfaces)
+                = await Task.Run(() => (
+                    DiscoveryDiagnostics.Collect(source, Environment.ProcessId, ResolveProcessName),
+                    source.GetMulticastCandidateAddresses())).ConfigureAwait(false);
             var probe = await Adb.MdnsReferenceProbe
                 .ProbeAsync(interfaces, _appLifetimeCts.Token)
                 .ConfigureAwait(false);

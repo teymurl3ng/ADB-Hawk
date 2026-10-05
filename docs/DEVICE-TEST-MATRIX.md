@@ -499,3 +499,15 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Status bubble content fades in 83 ms on appear; hover growth (content-sized window) | **NOT EXERCISED** | Hover input proven working by the owner (SetHovered log); growth awaits re-test |
 | Dead code removed (TickMs, SlideTarget intoTray variant, subscriber-less event) | **AUTOMATED PASS** | Build + gate |
 | Live: device connect/disconnect resize with the OS animation setting OFF (everything instant) | **NOT EXERCISED** | Owner |
+
+## WebView removal follow-up: first-show placement + discovery evidence threading (2026-10-05)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| First show opens at the tray, sliding in from the taskbar side (never from the OS cascade position) | **LIVE PASS** | Defect: the open-origin `SetPhysicalBounds` ran before `Show()`, where the HWND does not exist yet, so it silently no-opped and WPF placed the window at the WM cascade position (physical X=32–192) — the reveal slid the flyout across the whole screen ("old UI appears from the dead on the left", owner report). Log before: `bounds animation started {X=64,Y=375,...}->{X=1439,...}`; after the fix (placement applied after `Show`, using the self-sized height): `{X=1920,Y=691,...}->{X=1439,Y=691,...}` |
+| The 167 ms open slide completes in ~167–400 ms on first show | **LIVE PASS** | Defect: `DiscoveryDiagnostics.Collect` (GetExtendedUdpTable sweeps + process-name resolution) ran on the UI thread via `RunDiscoveryCheckAsync`'s synchronous prefix, starving the animator's dispatcher ticks — the reveal took 3.1 s. The sweep now hops to the worker pool inside the check, covering all three callers (flyout open, health-card check-again, repair flow). Log after: started 22:53:08.349, completed 22:53:08.713 (364 ms, includes two concurrent self-size steps) |
+| Open-slide origin/final heights use the measured content height (no post-open seed snap) | **LIVE PASS** | Before: origin/target carried the 500 DIP seed and self-sizing snapped 500→251 after the slide; now both are 251 DIP from the first layout pass |
+| Metadata probes never run on the UI thread | **AUTOMATED PASS** | `DeviceMetadataLifecycle` probes via `Task.Run` (existing tests); the 2 s `marketname` stall seen in the log is a device-side shell latency on a worker thread, correctly off-screen |
+| Owner re-check: open feels instant, no stray window at the left edge | **NOT EXERCISED** | Owner |
