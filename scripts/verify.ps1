@@ -1,7 +1,7 @@
 # THE gate (AGENTS.md R-12). Must pass before any phase is declared complete.
-# Runs: toolchain pin check, format check, full build, both test suites,
-# frontend lint/format/typecheck, contract regeneration check, visual check,
-# and the Release publish smoke run.
+# Runs: toolchain pin check, format check, full build, the C# test suite
+# (unit + boundary + native composition), and the Release publish smoke run.
+# Decision 0022: the web frontend is removed; the gate is dotnet-only.
 [CmdletBinding()]
 param()
 
@@ -10,8 +10,8 @@ $repo = Split-Path -Parent $PSScriptRoot
 Set-Location $repo
 
 if (-not $env:DOTNET_ROOT) { $env:DOTNET_ROOT = 'C:\Users\Teymur\.dotnet' }
-$nodeDir = Join-Path $repo 'node_tool\node-v24.21.0-win-x64'
-if (Test-Path $nodeDir) { $env:PATH = "$env:DOTNET_ROOT;$nodeDir;$env:PATH" }
+# This machine's PATH dotnet is a bare runtime without an SDK; the SDK lives in DOTNET_ROOT.
+$env:PATH = "$env:DOTNET_ROOT;$env:PATH"
 
 function Assert-LastExitCode([string]$step) {
     if ($LASTEXITCODE -ne 0) {
@@ -25,59 +25,24 @@ function Assert-Condition([string]$description, [scriptblock]$condition) {
     }
 }
 
-# --- 1. Toolchain pins (global.json, .node-version, ui/package.json packageManager) ---
+# --- 1. Toolchain pin (global.json) ---
 $sdkVersion = (dotnet --version)
 Assert-Condition "dotnet SDK must be 10.0.401 (found '$sdkVersion'); see global.json" { $sdkVersion -eq '10.0.401' }
 
-$nodePin = (Get-Content -Raw (Join-Path $repo '.node-version')).Trim()
-$nodeVersion = (& node --version)
-Assert-Condition "Node $nodePin is required (found '$nodeVersion'); see .node-version" { $nodeVersion -eq "v$nodePin" }
-
-$packageJson = Get-Content -Raw (Join-Path $repo 'ui\package.json') | ConvertFrom-Json
-$npmPin = $packageJson.packageManager -replace '^npm@', ''
-$npmVersion = (& npm.cmd --version)
-Assert-Condition "npm $npmPin is required (found '$npmVersion'); Node $nodePin bundles it" { $npmVersion -eq $npmPin }
-
-Write-Host 'verify: toolchain pins ok (dotnet 10.0.401, node 24.21.0, npm 11.19.0).'
+Write-Host 'verify: toolchain pin ok (dotnet 10.0.401).'
 
 # --- 2. Formatting ---
 dotnet format (Join-Path $repo 'ADBView.sln') --verify-no-changes
 Assert-LastExitCode 'dotnet format'
 
-# --- 3. Full build (frontend bundle -> wwwroot -> Release solution) ---
+# --- 3. Full build (Release solution) ---
 & (Join-Path $PSScriptRoot 'build.ps1')
 
 # --- 4. C# tests (includes the repository/source-boundary tests) ---
 dotnet test (Join-Path $repo 'tests\AdbView.Tests\AdbView.Tests.csproj') -c Release --no-build
 Assert-LastExitCode 'dotnet test'
 
-# --- 5. Frontend gates: eslint, prettier, tsc, vitest ---
-Push-Location (Join-Path $repo 'ui')
-try {
-    npm.cmd run lint
-    Assert-LastExitCode 'eslint'
-
-    npm.cmd run format:check
-    Assert-LastExitCode 'prettier'
-
-    npm.cmd run typecheck
-    Assert-LastExitCode 'tsc'
-
-    npm.cmd run test
-    Assert-LastExitCode 'vitest'
-}
-finally {
-    Pop-Location
-}
-
-# --- 6. Contract regeneration check (ENGINEERING.md §4.2) ---
-& (Join-Path $PSScriptRoot 'gen-contract.ps1') -Verify
-Assert-LastExitCode 'gen-contract'
-
-# --- 7. Visual regression (no specs/baselines until Phase 2) ---
-& (Join-Path $PSScriptRoot 'visual.ps1')
-
-# --- 8. Release publish smoke run ---
+# --- 5. Release publish smoke run ---
 $smoke = Join-Path $repo 'artifacts\smoke'
 if (Test-Path -LiteralPath $smoke) {
     Remove-Item -LiteralPath $smoke -Recurse -Force

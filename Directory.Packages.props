@@ -15,7 +15,6 @@
     provided by the SDK and is intentionally not re-referenced.
   -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.Web.WebView2" Version="1.0.4191.47" />
     <PackageVersion Include="QRCoder" Version="1.8.0" />
     <PackageVersion Include="Serilog" Version="4.4.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />

@@ -1,4 +1,4 @@
-# Run both test suites: C# (xUnit v3 / Microsoft Testing Platform) and Vitest.
+# Run the C# test suite (xUnit v3 / Microsoft Testing Platform).
 # scripts/verify.ps1 is the authoritative gate; this script assumes a prior build.
 [CmdletBinding()]
 param()
@@ -6,27 +6,17 @@ param()
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 
+if (-not $env:DOTNET_ROOT) { $env:DOTNET_ROOT = 'C:\Users\Teymur\.dotnet' }
+# This machine's PATH dotnet is a bare runtime without an SDK; the SDK lives in DOTNET_ROOT.
+$env:PATH = "$env:DOTNET_ROOT;$env:PATH"
+
 function Assert-LastExitCode([string]$step) {
     if ($LASTEXITCODE -ne 0) {
         throw "Test step '$step' failed with exit code $LASTEXITCODE."
     }
 }
 
-# The boundary tests inspect the built frontend output.
-if (-not (Test-Path (Join-Path $repo 'ui\dist\index.html'))) {
-    throw 'ui/dist is missing; run scripts\build.ps1 first (the boundary tests inspect the built frontend).'
-}
-
 dotnet test (Join-Path $repo 'tests\AdbView.Tests\AdbView.Tests.csproj') -c Release
 Assert-LastExitCode 'dotnet test'
 
-Push-Location (Join-Path $repo 'ui')
-try {
-    npm.cmd run test
-    Assert-LastExitCode 'vitest'
-}
-finally {
-    Pop-Location
-}
-
-Write-Host 'test: C# and frontend test suites passed.'
+Write-Host 'test: C# test suite passed.'

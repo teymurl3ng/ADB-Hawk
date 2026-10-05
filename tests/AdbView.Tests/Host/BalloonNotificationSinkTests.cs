@@ -167,10 +167,14 @@ public sealed class BalloonNotificationSinkTests {
                 delivered.Set();
             });
 
-        await Task.Run(() => {
+        // A dedicated thread, not Task.Run: the pool is free to run a pool work item on the
+        // calling thread, which would make the thread-identity guard below flaky.
+        var worker = new Thread(() => {
             emitThread = Environment.CurrentManagedThreadId;
             sink.Emit(Intent(NotificationSeverity.Info, "W", "w"));
-        }, TestContext.Current.CancellationToken);
+        }) { IsBackground = true };
+        worker.Start();
+        Assert.True(worker.Join(TimeSpan.FromSeconds(2)), "worker thread did not finish");
 
         Assert.True(delivered.Wait(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken), "marshal did not complete");
         Assert.Single(host.Shown);

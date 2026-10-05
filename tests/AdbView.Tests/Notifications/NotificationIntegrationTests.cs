@@ -30,13 +30,6 @@ using DomainPhase = AdbView.Adb.Model.PairingPhase;
 public sealed class NotificationIntegrationTests {
     private static readonly DateTimeOffset T0 = NotificationFixtures.T0;
 
-    private sealed class MockBridgeHost : IBridgeHost {
-        public void SendSnapshot(SnapshotEnvelope envelope) { }
-        public void SetPinned(bool isPinned) { }
-        public void HideFlyout() { }
-        public void ResizeFlyout(int clampedEffectiveHeight, AdbView.Bridge.ContentSizePhase phase = AdbView.Bridge.ContentSizePhase.Live, string? layoutKey = null) { }
-    }
-
     private sealed class HermeticExecutableLocator : IAdbExecutableLocator {
         public string? Locate() => null;
     }
@@ -143,7 +136,6 @@ public sealed class NotificationIntegrationTests {
             sessionId: 88000 + Environment.TickCount % 1000,
             fixtureSuffix: fixtureSuffix,
             supervisorFactory: CreateHermeticSupervisor,
-            bridgeHost: new MockBridgeHost(),
             headless: headless,
             notificationSink: sink,
             notificationClock: () => clock.Now,
@@ -166,7 +158,6 @@ public sealed class NotificationIntegrationTests {
             sessionId: 88101,
             fixtureSuffix: "?fixture=empty",
             supervisorFactory: CreateHermeticSupervisor,
-            bridgeHost: new MockBridgeHost(),
             headless: true);
         Assert.False(host.UsesRealBalloonNotificationSink);
         Assert.Same(NullNotificationSink.Instance, host.NotificationSink);
@@ -179,7 +170,6 @@ public sealed class NotificationIntegrationTests {
             sessionId: 88102,
             fixtureSuffix: "",
             supervisorFactory: CreateHermeticSupervisor,
-            bridgeHost: new MockBridgeHost(),
             headless: true);
         Assert.False(host.UsesRealBalloonNotificationSink);
         Assert.Same(NullNotificationSink.Instance, host.NotificationSink);
@@ -775,23 +765,9 @@ public sealed class NotificationIntegrationTests {
             sessionId: 88199,
             fixtureSuffix: "?fixture=empty",
             supervisorFactory: CreateHermeticSupervisor,
-            bridgeHost: new MockBridgeHost(),
             headless: true);
         Assert.False(host.UsesRealBalloonNotificationSink);
         Assert.IsNotType<BalloonNotificationSink>(host.NotificationSink);
     }
 
-    [Fact]
-    public async Task Bridge_Ready_Resend_Does_Not_Notify() {
-        await using var h = CreateHarness();
-        await h.ExitStartupSuppressAsync();
-        await h.PostAndDrainAsync(new DeviceListReceivedEvent(
-            ImmutableArray.Create(Proto("R8", model: "Phone")), T0));
-        await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(2.5));
-        await WaitUntilAsync(() => h.Sink.Emitted.Count >= 1);
-        h.Sink.Clear();
-        h.Host.Coordinator!.HandleAction(new ReadyAction { Protocol = BridgeProtocol.Version });
-        await h.Clock.AdvanceAndFlushAsync(TimeSpan.FromSeconds(3));
-        Assert.Empty(h.Sink.Emitted);
-    }
 }

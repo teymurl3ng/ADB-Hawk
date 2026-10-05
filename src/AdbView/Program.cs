@@ -12,10 +12,8 @@ internal static class Program {
             System.Diagnostics.Process.GetCurrentProcess().SessionId,
             options.FixtureSuffix,
             supervisorFactory: null,
-            bridgeHost: null,
             headless: false,
-            startupSilent: options.StartupSilent,
-            nativeUi: options.NativeUi);
+            startupSilent: options.StartupSilent);
         host.Run();
         return 0;
     }

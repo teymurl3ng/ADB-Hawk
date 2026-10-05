@@ -122,7 +122,7 @@ internal static class FixtureSnapshotProvider {
     }
 
     private static AppSnapshot CreateEmptySnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -144,7 +144,7 @@ internal static class FixtureSnapshotProvider {
     // Decision 0008: connected Wi-Fi device + zero services + healthy server; evidence from
     // a measured probe and environmental findings.
     private static AppSnapshot CreateDiscoveryHealthSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -204,7 +204,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateConnectedUsbSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -236,7 +236,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateConnectedWifiSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -268,7 +268,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateExpandedSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -300,7 +300,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateUnauthorizedSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -332,7 +332,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateOfflineSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -363,7 +363,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateRecoverySnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -394,7 +394,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateBootloaderSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -425,7 +425,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateSideloadSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -456,7 +456,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateUnknownSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -487,7 +487,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreateMultiDeviceSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -640,7 +640,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreatePairingOfferSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -668,7 +668,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreatePairingCodeSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -698,7 +698,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreatePairingProgressSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -728,7 +728,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreatePairingSuccessSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -760,7 +760,7 @@ internal static class FixtureSnapshotProvider {
     // Decision 0010: active QR session. The data URI is a placeholder rendering; the live
     // card displays real QRCoder output from the backend.
     private static AppSnapshot CreatePairingQrSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {
@@ -788,7 +788,7 @@ internal static class FixtureSnapshotProvider {
     };
 
     private static AppSnapshot CreatePairingFailureSnapshot(bool isPinned, long revision) => new() {
-        Protocol = BridgeProtocol.Version,
+        Protocol = 1,
         Revision = revision,
         GeneratedAt = T0,
         Health = new HealthView {

@@ -24,12 +24,6 @@
     <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Sinks.File" />
     <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" ExcludeAssets="runtime" />
-    <PackageReference Include="Microsoft.Web.WebView2" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Update="wwwroot\**">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">

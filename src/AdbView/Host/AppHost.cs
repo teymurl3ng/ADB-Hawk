@@ -13,13 +13,10 @@ using Serilog;
 
 namespace AdbView.Host;
 
-internal sealed class AppHost : IBridgeHost, IDisposable {
+internal sealed class AppHost : IDisposable {
     private readonly SingleInstance? _singleInstance;
     private readonly TrayIcon? _trayIcon;
     private readonly PowerAndSession? _powerAndSession;
-    private readonly FlyoutWindow? _flyoutWindow;
-    private readonly WebViewHost? _webViewHost;
-    private readonly BridgeCoordinator? _coordinator;
     private readonly StateEngine? _stateEngine;
     private readonly Adb.AdbServerSupervisor? _supervisor;
     private readonly DeviceTrackerLifecycle? _deviceTrackerLifecycle;
@@ -31,7 +28,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private FlyoutRevealAnimator? _presenter;
     private bool _animationsEnabled = true;
     private bool _animationsEverLogged;
-    private readonly bool _nativeUi;
     private NativeUi.NativeFlyoutWindow? _nativeWindow;
     private NativeUi.Shell.NativeShellViewModel? _shellViewModel;
     private NativeUi.StatusBubbleWindow? _statusBubble;
@@ -54,7 +50,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     private readonly bool _startupSilent;
     private bool _pendingInitialShow;
     private bool _initialShowCompleted;
-    private bool _webViewReadyForShow;
     private ThemeKind _lastAppliedTheme = ThemeKind.Dark;
     private bool _lastAppliedTransparency = true;
 
@@ -65,13 +60,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     internal bool IsFlyoutVisible => System.Threading.Volatile.Read(ref _isVisible);
     private int _currentEffectiveHeight = 500;
     private int _lastAppliedHeight;
-    private int _lastReportedContentHeight;
-    private int _hiddenContentSizeReportsForInitialShow;
     private bool _suppressLightDismiss;
     private bool _lightDismissArmed;
     private int _showGeneration;
-    private long _contentSizeSeq;
-    public BridgeCoordinator? Coordinator => _coordinator;
     internal StateEngine? StateEngine => _stateEngine;
     internal Adb.AdbServerSupervisor? Supervisor => _supervisor;
     internal DeviceTrackerLifecycle? DeviceTrackerLifecycle => _deviceTrackerLifecycle;
@@ -101,12 +92,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             sessionId,
             fixtureSuffix,
             supervisorFactory: null,
-            bridgeHost: null,
             headless: headless,
             startupSilent: startupSilent) { }
 
     /// <param name="headless">
-    /// When true, skips WinForms/tray/webview/single-instance. Composition unit tests
+    /// When true, skips WinForms/tray/single-instance. Composition unit tests
     /// must use this: creating Controls installs WinFormsSynchronizationContext and
     /// async awaits deadlock without Application.Run.
     /// </param>
@@ -117,7 +107,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         int sessionId,
         string fixtureSuffix,
         Func<Adb.AdbServerSupervisor>? supervisorFactory,
-        IBridgeHost? bridgeHost = null,
         bool headless = false,
         Func<Adb.DeviceTracker>? deviceTrackerFactory = null,
         Func<Adb.MdnsTracker>? mdnsTrackerFactory = null,
@@ -129,11 +118,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         bool startupSilent = false,
         INetworkDiagnosticsSource? networkDiagnosticsSource = null,
         IElevatedProcessLauncher? processLauncher = null,
-        IServiceStateSource? serviceStateSource = null,
-        bool nativeUi = false) {
+        IServiceStateSource? serviceStateSource = null) {
         _fixtureSuffix = fixtureSuffix;
         _headless = headless;
-        _nativeUi = nativeUi;
         _isFixtureMode = !string.IsNullOrEmpty(fixtureSuffix);
         _startupSilent = startupSilent;
         // Decision 0008: real diagnostics only for headed production; fixtures/tests stay hermetic.
@@ -184,13 +171,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _trayIcon.OnToggleRequested += (s, e) => OnToggleFlyout();
             _trayIcon.OnOpenRequested += (s, e) => ShowFlyoutOnly();
             _trayIcon.OnExitRequested += (s, e) => {
-                if (_nativeUi) {
-                    // Dispatcher.Run keeps the STA loop alive; Application.Exit would not.
-                    _nativeWindow?.Dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Normal);
-                    return;
-                }
-
-                Application.Exit();
+                // Dispatcher.Run keeps the STA loop alive; Application.Exit would not.
+                _nativeWindow?.Dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Normal);
             };
             _trayIcon.PreferencesChanged += OnTrayPreferencesChanged;
 
@@ -200,8 +182,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _powerAndSession.Resume += OnPowerResume;
             _powerAndSession.SessionSwitch += OnSessionSwitch;
 
-            if (_nativeUi) {
-                // Decision 0015 Phase I1: native WPF shell. Tray stays WinForms interop.
+            {
+                // Decision 0015/0022: native WPF shell (the only UI). Tray stays WinForms interop.
                 // The WPF Application object must exist before any card view-model reads
                 // Application.Current.Resources (theme tokens) — it is null otherwise, and a
                 // device-list render would NRE the dispatcher and kill the process silently.
@@ -248,8 +230,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 _shellViewModel.StartQrRequested += StartQrPairingSession;
                 _shellViewModel.QrCancelRequested += () => _qrPairingSession?.Cancel();
                 _shellViewModel.PinChangeRequested += OnPinChangeRequestedFromShell;
-                // Native surface forwards the exact action verbs the bridge contract defines
-                // (WebActions.cs); the same coordinators serve both UIs.
+                // The shell forwards the pairing verbs directly to the coordinators.
                 _shellViewModel.PairingActionRequested += (action, offerId, code) => {
                     switch (action) {
                         case "pairStart":
@@ -272,10 +253,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 };
                 _shellViewModel.DiscoveryRepairRequested += repairId => _ = RunDiscoveryRepairAsync(repairId);
                 _shellViewModel.DiscoveryRecheckRequested += () => _ = RunDiscoveryCheckAsync();
-            }
-            else {
-                _flyoutWindow = new FlyoutWindow();
-                _flyoutWindow.Deactivate += OnFlyoutDeactivate;
             }
         }
         else {
@@ -303,11 +280,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         if (!_headless && !_isFixtureMode) {
             PostCurrentShellAppearance();
             SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
-        }
-
-        IBridgeHost coordinatorHost = bridgeHost ?? (IBridgeHost)this;
-        if (headless && bridgeHost == null) {
-            throw new ArgumentException("headless AppHost requires an injected IBridgeHost.", nameof(bridgeHost));
         }
 
         if (!_isFixtureMode) {
@@ -353,15 +325,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             // Decision 0013: graceful presentation (mode-B growth + open/close slides).
             // Native shell: DispatcherTimer tick + physical SetWindowPos on the WPF hwnd.
             _presenter = new FlyoutRevealAnimator(
-                _nativeUi ? new NativeUi.DispatcherTimerTickSource() : new FormsTimerTickSource(),
-                bounds => {
-                    if (_nativeUi) {
-                        _nativeWindow?.SetPhysicalBounds(bounds);
-                    }
-                    else if (_flyoutWindow is { IsDisposed: false } window) {
-                        window.Bounds = bounds;
-                    }
-                });
+                new NativeUi.DispatcherTimerTickSource(),
+                bounds => _nativeWindow?.SetPhysicalBounds(bounds));
 
             // Decision 0009: one active connect toward the paired device while waiting.
             _postPairConnect = new PostPairConnectCoordinator(new Adb.HostConnectClient());
@@ -375,26 +340,15 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _supervisor.StateChanged += OnSupervisorStateChanged;
         }
 
-        _coordinator = new BridgeCoordinator(
-            coordinatorHost,
-            isPinned: false,
-            initialSnapshot: initialSnapshot,
-            onSetPinned: pinned => _stateEngine.Post(new SetPinnedEvent(pinned)),
-            onPairStart: offerId => _pairingSession?.Start(offerId),
-            onPairSubmit: (offerId, code) => _pairingSession?.Submit(offerId, code),
-            onPairCancel: offerId => _pairingSession?.Cancel(offerId),
-            onDiscoveryRecheck: () => _ = RunDiscoveryCheckAsync(),
-            onDiscoveryRepair: repairId => _ = RunDiscoveryRepairAsync(repairId),
-            onPairQrStart: StartQrPairingSession,
-            onPairQrCancel: () => _qrPairingSession?.Cancel());
-
-        if (_nativeUi) {
-            // Snapshots published before the coordinator existed (PostCurrentShellAppearance's
-            // async post) never reached it — seed its baseline before declaring readiness.
-            _coordinator.UpdateSnapshot(_stateEngine.CurrentSnapshot);
-            // No WebView handshake exists in native mode; declare readiness so snapshots
-            // start flowing to the shell instead of queuing in UpdateSnapshot.
-            _coordinator.MarkReady();
+        // Decision 0022: the shell binds snapshots directly (no bridge/envelope hop). This ctor
+        // seed is what replaced the coordinator's UpdateSnapshot+MarkReady handshake: the shell
+        // exists synchronously, so the current snapshot is applied once here (PostCurrentShell-
+        // Appearance's async post publishes again; the shell is idempotent).
+        if (_shellViewModel is not null) {
+            _shellViewModel.ApplySnapshot(_stateEngine.CurrentSnapshot);
+            if (_nativeWindow is not null) {
+                _nativeWindow.IsPinned = _stateEngine.CurrentSnapshot.Shell.Pinned;
+            }
 
             // Decision 0020: the status bubble is opt-in, so nothing is constructed until the
             // preference says so.
@@ -413,10 +367,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 serviceState: serviceStateSource ?? new ScServiceStateSource(),
                 post: evt => _stateEngine.Post(evt),
                 runDiscoveryCheck: RunDiscoveryCheckAsync);
-        }
-
-        if (!headless && !_nativeUi) {
-            _webViewHost = new WebViewHost(_flyoutWindow!, _coordinator);
         }
 
         if (!headless) {
@@ -467,39 +417,14 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void MarshalNotificationToUi(Action work) {
-        if (_nativeUi) {
-            // Native shell: notifications deliver on the WPF Dispatcher.
-            var dispatcher = _nativeWindow?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
-            if (!dispatcher.CheckAccess()) {
-                _ = dispatcher.BeginInvoke(work);
-                return;
-            }
-
-            work();
+        // Notifications deliver on the WPF Dispatcher.
+        var dispatcher = _nativeWindow?.Dispatcher ?? System.Windows.Threading.Dispatcher.CurrentDispatcher;
+        if (!dispatcher.CheckAccess()) {
+            _ = dispatcher.BeginInvoke(work);
             return;
         }
 
-        if (_flyoutWindow is null) {
-            work();
-            return;
-        }
-
-        if (!_flyoutWindow.InvokeRequired) {
-            work();
-            return;
-        }
-
-        if (Application.MessageLoop) {
-            _flyoutWindow.Invoke(work);
-            return;
-        }
-
-        if (_flyoutWindow.IsHandleCreated) {
-            _ = _flyoutWindow.BeginInvoke(work);
-            return;
-        }
-
-        // No message loop yet (tests / pre-Run): deliver synchronously so sinks stay testable.
+        // No dispatcher yet (tests / pre-Run): deliver synchronously so sinks stay testable.
         work();
     }
 
@@ -507,31 +432,17 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     /// Balloon click: show-only. Never toggles a visible flyout closed; never deep-links.
     /// </summary>
     private void ShowFlyoutOnly() {
-        if (_nativeUi) {
-            if (TryMarshalToFlyoutUi(new Action(ShowFlyoutOnly))) {
-                return;
-            }
-
-            ShowNativeFlyout();
-            return;
-        }
-
-        if (_flyoutWindow is null || _trayIcon is null) {
-            return;
-        }
-
         if (TryMarshalToFlyoutUi(new Action(ShowFlyoutOnly))) {
             return;
         }
 
-        // Already visible (pinned or not) → remain; ShowFlyout repositions but does not hide.
-        ShowFlyout();
+        ShowNativeFlyout();
     }
 
     private void OnPowerSuspend(object? sender, EventArgs e) {
         _notificationCoordinator?.OnSuspend();
         _metadataLifecycle?.OnSuspend();
-        if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) {
+        if (_isVisible && _nativeWindow?.IsPinned != true) {
             HideFlyout();
         }
     }
@@ -549,7 +460,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _notificationCoordinator?.RebaselineForResume(_stateEngine.CurrentSnapshot);
         }
 
-        if (_isVisible && (_flyoutWindow == null || !_flyoutWindow.IsPinned)) {
+        if (_isVisible && _nativeWindow?.IsPinned != true) {
             HideFlyout();
         }
     }
@@ -605,9 +516,9 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         ApplyNativeShellFromSnapshot(snapshot);
         _notificationCoordinator?.AcceptSnapshot(snapshot);
 
-        _coordinator?.UpdateSnapshot(snapshot);
+        NotifyNativeShell(snapshot);
         if (_metadataLifecycle is not null) {
-            bool pinned = _flyoutWindow?.IsPinned ?? snapshot.Shell.Pinned;
+            bool pinned = _nativeWindow?.IsPinned ?? snapshot.Shell.Pinned;
             _metadataLifecycle.SetPresentationState(_isVisible, pinned);
         }
 
@@ -644,87 +555,32 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         // absent from every user session). Identity + resolved theme are logged at startup so
         // one log glance answers "which build, which theme".
         Log.Information(
-            "AppHost identity: version={Version} native={Native} theme={Theme} transparency={Transparency}",
+            "AppHost identity: version={Version} theme={Theme} transparency={Transparency}",
             typeof(AppHost).Assembly.GetName().Version?.ToString() ?? "unknown",
-            _nativeUi,
             theme,
             transparency);
 
-        if (_nativeUi) {
-            // Decision 0015 Phase I1: native shell boots on the WPF dispatcher. No WebView,
-            // no measurement priming — the window self-sizes from XAML layout (full self-
-            // sizing + growth anchoring lands in Phase I3). I1 presents at the 500 epx
-            // placeholder so the initial show fires; device content updates in place.
-            _nativeWindow!.ApplyShellAppearance(theme, transparency);
-            _webViewReadyForShow = true;
-            Log.Information("AppHost.Run: native UI mode (dispatcher loop).");
-            _currentEffectiveHeight = 500;
-            _lastAppliedHeight = 500;
-            TryCompletePendingInitialShow();
-            System.Windows.Threading.Dispatcher.Run();
-            return;
-        }
-
-        _flyoutWindow!.ApplyShellAppearance(theme, transparency);
-
-        // Force handle creation so OnHandleCreated/ApplyBackdrop runs before WebView2 init
-        var _ = _flyoutWindow.Handle;
-        Log.Information("FlyoutWindow handle forced: {Handle}", _flyoutWindow.Handle);
-
-        // Prime width to 376 epx before WebView navigates. Default WinForms size is ~300px;
-        // measuring at that width inflates wrapped content height and the first show sticks
-        // (decision 0005 freezes HWND after show).
-        PrimeHiddenLayoutViewport();
-
-#pragma warning disable CA2008 // TaskScheduler
-        _webViewHost?.InitializeAsync(_fixtureSuffix).ContinueWith(t => {
-            if (t.IsFaulted) Log.Error(t.Exception, "WebView initialization failed in background.");
-            else {
-                _webViewReadyForShow = true;
-                _flyoutWindow?.Invoke(new Action(() => {
-                    _webViewHost?.ApplyOpaqueBackground(_lastAppliedTheme);
-                }));
-                if (!string.IsNullOrEmpty(_fixtureSuffix)) {
-                    // Fixture harness: wait for first content-size (same as production) so
-                    // presentation height matches the frozen visible-session invariant.
-                    _flyoutWindow?.Invoke(new Action(TryCompletePendingInitialShow));
-                }
-                else {
-                    _flyoutWindow?.Invoke(new Action(TryCompletePendingInitialShow));
-                }
-            }
-        });
-#pragma warning restore CA2008
-
-        Application.Run();
+        // Decision 0022: native shell boots on the WPF dispatcher. The window self-sizes from
+        // measured content (decision 0021); the 500 placeholder only seeds placement before the
+        // first measured step.
+        _nativeWindow!.ApplyShellAppearance(theme, transparency);
+        Log.Information("AppHost.Run: native UI mode (dispatcher loop).");
+        _currentEffectiveHeight = 500;
+        _lastAppliedHeight = 500;
+        TryCompletePendingInitialShow();
+        System.Windows.Threading.Dispatcher.Run();
     }
 
     private void OnToggleFlyout() {
-        if (_nativeUi) {
-            if (TryMarshalToFlyoutUi(new Action(OnToggleFlyout))) {
-                return;
-            }
-
-            if (_isVisible) {
-                HideNativeFlyout();
-            }
-            else {
-                ShowNativeFlyout();
-            }
-
-            return;
-        }
-
-        if (_flyoutWindow == null) return;
         if (TryMarshalToFlyoutUi(new Action(OnToggleFlyout))) {
             return;
         }
 
-        if (_isVisible && !_flyoutWindow.IsPinned) {
-            HideFlyout();
+        if (_isVisible) {
+            HideNativeFlyout();
         }
         else {
-            ShowFlyout();
+            ShowNativeFlyout();
         }
     }
 
@@ -832,7 +688,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             ? Screen.FromRectangle(placement.Rect)
             : TrayIcon.GetTaskbarScreen();
         int closeGen = _showGeneration;
-        _closeAnimating = true;
 
         _presenter?.Cancel();
         _presenter?.AnimateBounds(
@@ -840,7 +695,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             SlideTarget(window.GetPhysicalBounds(), placement.Edge, monitor.WorkingArea),
             FlyoutRevealAnimator.CloseDuration,
             completed: () => {
-                _closeAnimating = false;
                 if (closeGen != _showGeneration) {
                     return; // a show superseded this close mid-slide
                 }
@@ -848,133 +702,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
                 window.Hide();
                 Log.Information("HideNativeFlyout: close slide completed.");
             });
-    }
-
-    private void ShowFlyout() {
-        if (_nativeUi) {
-            ShowNativeFlyout();
-            return;
-        }
-
-        if (_flyoutWindow == null || _trayIcon == null) return;
-
-        // Decision 0013: re-read the OS animation preference at every open — the Win11
-        // "Animation effects" toggle does not raise a preference category we handle, so this
-        // is the reliable moment to pick up a flip (one probe per user-initiated open).
-        RefreshAnimationPreference();
-
-        // Presentation height = latest measured natural content (clamped by caller / prior Apply).
-        if (_lastReportedContentHeight > 0) {
-            _currentEffectiveHeight = _lastReportedContentHeight;
-            _lastAppliedHeight = _lastReportedContentHeight;
-        }
-
-        if (_webViewHost is { IsTrayOnly: true }) {
-            _ = _webViewHost.TryRecoverFromTrayOnlyAsync();
-        }
-
-        var placement = _trayIcon.GetPlacementInfo();
-        Log.Information("ShowFlyout: trayRect={Rect}, edge={Edge}", placement.Rect, placement.Edge);
-
-        var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
-            ? Screen.FromRectangle(placement.Rect)
-            : TrayIcon.GetTaskbarScreen();
-
-        var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
-
-        var anchor = FlyoutPlacement.ResolveAnchor(
-            placement.Rect,
-            monitor.WorkingArea,
-            monitor.Bounds,
-            placement.Edge,
-            dpiScale
-        );
-
-        var physicalBounds = FlyoutPlacement.CalculatePlacement(
-            anchor,
-            placement.Edge,
-            monitor.WorkingArea,
-            dpiScale,
-            new Size(376, _currentEffectiveHeight)
-        );
-
-        Log.Information("ShowFlyout: physicalBounds={Bounds}, anchor={Anchor}, monitorWorkArea={WorkArea}", physicalBounds, anchor, monitor.WorkingArea);
-
-        // Programmatic show must not be eaten by activation churn / failed SetForegroundWindow.
-        _suppressLightDismiss = true;
-        _lightDismissArmed = false;
-        int showGen = ++_showGeneration;
-
-        // Decision 0013: cancel any close animation (its terminal Hide would eat this show),
-        // then present. Animated open: slide out of the tray edge over 167 ms.
-        _closeAnimating = false;
-        _presenter?.Cancel();
-        bool reducedMotion = !_animationsEnabled;
-        if (!reducedMotion) {
-            _flyoutWindow.Bounds = SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea);
-        }
-        else {
-            _flyoutWindow.Bounds = physicalBounds;
-        }
-
-        _flyoutWindow.TopMost = _flyoutWindow.IsPinned;
-        _flyoutWindow.Show();
-        _flyoutWindow.RecalcNonClientFrame();
-
-        // Take foreground explicitly so we actually receive Deactivate when clicking away
-        if (!_flyoutWindow.IsPinned) {
-            Windows.Win32.PInvoke.SetForegroundWindow(new Windows.Win32.Foundation.HWND(_flyoutWindow.Handle));
-        }
-
-        _isVisible = _flyoutWindow.Visible;
-
-        if (reducedMotion) {
-            _suppressLightDismiss = false;
-        }
-
-        if (!reducedMotion) {
-            _presenter?.AnimateBounds(
-                _flyoutWindow.Bounds,
-                physicalBounds,
-                FlyoutRevealAnimator.OpenDuration,
-                completed: () => {
-                    if (showGen != _showGeneration) {
-                        return; // a hide superseded this open mid-flight
-                    }
-
-                    _suppressLightDismiss = false;
-                    ArmLightDismiss(showGen);
-                    Log.Information("ShowFlyout: open reveal completed.");
-                });
-        }
-        else {
-            // Arm light-dismiss only after this show's message batch — not via Thread.Sleep.
-            if (_flyoutWindow.IsHandleCreated) {
-                _ = _flyoutWindow.BeginInvoke(new Action(() => {
-                    if (showGen != _showGeneration) {
-                        return;
-                    }
-
-                    _lightDismissArmed = true;
-                    Log.Information("ShowFlyout: light-dismiss armed (visible={Visible})", _flyoutWindow.Visible);
-                }));
-            }
-            else {
-                _lightDismissArmed = true;
-            }
-        }
-
-        NotifyMetadataPresentation();
-        MaybeStartDiscoveryCheck();
-
-        // Decision 0012 cleanup: a manual show satisfies the pending initial-show request —
-        // without this, a tray toggle before the first report leaves the flag dangling and the
-        // window auto re-opens later at a different height (audit RACE 5).
-        if (FlyoutInteractionPolicy.ShouldClearPendingInitialShowOnManualShow(_pendingInitialShow, _initialShowCompleted)) {
-            _pendingInitialShow = false;
-            _initialShowCompleted = true;
-            Log.Information("AppHost: pending initial show satisfied by manual show.");
-        }
     }
 
     /// <summary>Decision 0013: re-reads the OS client-area-animation preference and applies it
@@ -1010,23 +737,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         }
 
         _ = RunDiscoveryCheckAsync();
-    }
-
-    /// <summary>Arms light-dismiss unless the show generation was superseded (decision 0013).</summary>
-    private void ArmLightDismiss(int showGen) {
-        if (_flyoutWindow is not { IsHandleCreated: true }) {
-            _lightDismissArmed = true;
-            return;
-        }
-
-        _ = _flyoutWindow.BeginInvoke(new Action(() => {
-            if (showGen != _showGeneration) {
-                return;
-            }
-
-            _lightDismissArmed = true;
-            Log.Information("ShowFlyout: light-dismiss armed (visible={Visible})", _flyoutWindow.Visible);
-        }));
     }
 
     /// <summary>
@@ -1127,317 +837,66 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     /// exists so work runs once the loop starts; otherwise skip.
     /// </summary>
     private bool TryMarshalToFlyoutUi(Delegate method, params object[] args) {
-        if (_nativeUi) {
-            // WinForms contract parity: return false = "caller proceeds inline". Only marshal
-            // when actually off the shell thread.
-            var dispatcher = _nativeWindow?.Dispatcher;
-            if (dispatcher is null || dispatcher.CheckAccess()) {
-                return false;
-            }
-
-            _ = dispatcher.BeginInvoke(method, args);
-            return true;
-        }
-
-        if (_flyoutWindow == null || !_flyoutWindow.InvokeRequired) {
+        // WinForms contract parity: return false = "caller proceeds inline". Only marshal
+        // when actually off the shell thread.
+        var dispatcher = _nativeWindow?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess()) {
             return false;
         }
 
-        if (Application.MessageLoop) {
-            _flyoutWindow.Invoke(method, args);
-            return true;
-        }
-
-        if (_flyoutWindow.IsHandleCreated) {
-            _ = _flyoutWindow.BeginInvoke(method, args);
-            return true;
-        }
-
-        Log.Debug("AppHost UI marshal skipped: no message loop and no handle");
+        _ = dispatcher.BeginInvoke(method, args);
         return true;
     }
 
-    public void SendSnapshot(SnapshotEnvelope envelope) {
-        if (TryMarshalToFlyoutUi(new Action<SnapshotEnvelope>(SendSnapshot), envelope)) {
+    private void NotifyNativeShell(AppSnapshot snapshot) {
+        if (_shellViewModel is null) {
             return;
         }
 
-        if (_nativeUi) {
-            // Native shell binds the AppSnapshot record directly (no JSON hop).
-            Log.Debug("NativeUi snapshot: rev={Rev} devices={Devices} pairing={Pairing}", envelope.Snapshot.Revision, envelope.Snapshot.Devices.Length, envelope.Snapshot.Pairing is not null);
-            _shellViewModel?.ApplySnapshot(envelope.Snapshot);
+        if (TryMarshalToFlyoutUi(new Action<AppSnapshot>(NotifyNativeShell), snapshot)) {
             return;
         }
 
-        var json = BridgeSerializer.SerializeSnapshotEnvelope(envelope);
-        _webViewHost?.PostWebMessageAsJson(json);
+        // Absorbed from BridgeCoordinator.UpdateSnapshot (the pin reflection that keeps
+        // TopMost/light-dismiss/metadata in step after the reducer accepts a SetPinnedEvent).
+        if (_nativeWindow is not null && _nativeWindow.IsPinned != snapshot.Shell.Pinned) {
+            _nativeWindow.IsPinned = snapshot.Shell.Pinned;
+            NotifyMetadataPresentation();
+        }
+
+        // The shell binds the AppSnapshot record directly (no JSON hop).
+        _shellViewModel.ApplySnapshot(snapshot);
     }
 
-    public void SetPinned(bool isPinned) {
-        if (TryMarshalToFlyoutUi(new Action<bool>(SetPinned), isPinned)) {
+    private void ApplyWindowPin(bool isPinned) {
+        if (TryMarshalToFlyoutUi(new Action<bool>(ApplyWindowPin), isPinned)) {
             return;
         }
 
-        if (_nativeUi && _nativeWindow is not null) {
-            if (_nativeWindow.IsPinned == isPinned) {
-                return;
-            }
-
-            _nativeWindow.IsPinned = isPinned;
-            Log.Information("AppHost.SetPinned: native IsPinned={IsPinned}", isPinned);
-            // The metadata tick gates on pinned AND visible; skip-starved probes after pinning
-            // were a native-only gap (the WinForms branch falls through to this call).
-            NotifyMetadataPresentation();
+        if (_nativeWindow is null || _nativeWindow.IsPinned == isPinned) {
             return;
         }
 
-        if (_flyoutWindow != null) {
-            _flyoutWindow.IsPinned = isPinned;
-            Log.Information("AppHost.SetPinned: FlyoutWindow.IsPinned={IsPinned}, TopMost={TopMost}",
-                _flyoutWindow.IsPinned, _flyoutWindow.TopMost);
-        }
-
+        _nativeWindow.IsPinned = isPinned;
+        Log.Information("AppHost.SetPinned: IsPinned={IsPinned}", isPinned);
+        // The metadata tick gates on pinned AND visible; skip-starved probes after pinning
+        // were a native-only gap.
         NotifyMetadataPresentation();
     }
 
-    public void HideFlyout() {
+    private void HideFlyout() {
         if (TryMarshalToFlyoutUi(new Action(HideFlyout))) {
             return;
         }
 
-        if (_nativeUi) {
-            HideNativeFlyout();
-            return;
-        }
-
-        _showGeneration++; // invalidate pending light-dismiss arm
-        _lightDismissArmed = false;
-        // Adopt latest measured content height so the next show re-presents correctly.
-        if (_lastReportedContentHeight > 0) {
-            _currentEffectiveHeight = _lastReportedContentHeight;
-            _lastAppliedHeight = _lastReportedContentHeight;
-        }
-
-        _isVisible = false;
-        NotifyMetadataPresentation();
-
-        // Decision 0013: graceful close — slide into the tray edge over 83 ms, then hide.
-        // _showGeneration was bumped above, so any Show during the slide cancels the terminal
-        // Hide (the close animation's generation check fails) and the flyout stays open.
-        var window = _flyoutWindow;
-        if (window is not null && window.Visible && _animationsEnabled && _trayIcon is not null) {
-            var placement = _trayIcon.GetPlacementInfo();
-            var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
-                ? Screen.FromRectangle(placement.Rect)
-                : TrayIcon.GetTaskbarScreen();
-            int closeGen = _showGeneration;
-            _closeAnimating = true;
-
-            _presenter?.Cancel();
-            _presenter?.AnimateBounds(
-                window.Bounds,
-                SlideTarget(window.Bounds, placement.Edge, monitor.WorkingArea),
-                FlyoutRevealAnimator.CloseDuration,
-                completed: () => {
-                    _closeAnimating = false;
-                    if (closeGen != _showGeneration) {
-                        return; // a show superseded this close mid-slide
-                    }
-
-                    window.Hide();
-                    Log.Information("HideFlyout: close slide completed.");
-                });
-        }
-        else {
-            _closeAnimating = false;
-            _presenter?.Cancel();
-            window?.Hide();
-        }
+        HideNativeFlyout();
     }
 
     private void NotifyMetadataPresentation() {
-        bool pinned = _flyoutWindow?.IsPinned
+        bool pinned = _nativeWindow?.IsPinned
             ?? _stateEngine?.CurrentSnapshot.Shell.Pinned
             ?? false;
         _metadataLifecycle?.SetPresentationState(_isVisible, pinned);
-    }
-
-    public void ResizeFlyout(
-        int clampedEffectiveHeight,
-        ContentSizePhase phase = ContentSizePhase.Live,
-        string? layoutKey = null) {
-        if (TryMarshalToFlyoutUi(
-                new Action<int, ContentSizePhase, string?>(ResizeFlyout),
-                clampedEffectiveHeight,
-                phase,
-                layoutKey ?? string.Empty)) {
-            return;
-        }
-
-        long seq = ++_contentSizeSeq;
-
-        // Decision 0015 Phase I1: native shell self-sizes — no report-driven sizing.
-        if (_nativeUi) {
-            return;
-        }
-
-        _lastReportedContentHeight = clampedEffectiveHeight;
-
-        bool visible = _isVisible && _flyoutWindow is { Visible: true };
-        Log.Information(
-            "AppHost.ResizeFlyout: seq={Seq} phase={Phase} height={Height} visible={Visible}",
-            seq,
-            phase,
-            clampedEffectiveHeight,
-            visible);
-
-        // Decision 0013 (amending 0012): while visible the height change is an animated mode-B
-        // retarget (child pinned to final size once; window frame glides). Hidden keeps the
-        // instant path (priming / next-show), except during a close slide where applying would
-        // fight the animation — the height is recorded for the next show instead.
-        if (visible) {
-            AnimateVisibleResize(clampedEffectiveHeight);
-            return;
-        }
-
-        if (_closeAnimating) {
-            return;
-        }
-
-        bool applied = ApplyImmediateResize(clampedEffectiveHeight, force: false);
-
-        // The initial-show gate only concerns the hidden priming path; while visible the step
-        // above already applied and there is nothing to complete.
-        if (applied) {
-            if (_pendingInitialShow && !_initialShowCompleted) {
-                _hiddenContentSizeReportsForInitialShow++;
-                if (!FlyoutInteractionPolicy.ShouldCompleteInitialShow(_hiddenContentSizeReportsForInitialShow)) {
-                    Log.Information(
-                        "AppHost: initial show waiting for settled content-size (report={Report}, height={Height})",
-                        _hiddenContentSizeReportsForInitialShow,
-                        clampedEffectiveHeight);
-                    return;
-                }
-            }
-
-            TryCompletePendingInitialShow();
-        }
-    }
-
-    private void PrimeHiddenLayoutViewport() {
-        if (_flyoutWindow is null) {
-            return;
-        }
-
-        var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
-        int physicalWidth = (int)Math.Round(376 * dpiScale);
-        int physicalHeight = (int)Math.Round(_currentEffectiveHeight * dpiScale);
-        var primed = new Size(physicalWidth, physicalHeight);
-        if (_flyoutWindow.Size == primed) {
-            return;
-        }
-
-        _flyoutWindow.Size = primed;
-        _flyoutWindow.RecalcNonClientFrame();
-        Log.Information(
-            "AppHost: primed hidden layout viewport {Width}x{Height} (effective 376x{EffectiveHeight})",
-            physicalWidth,
-            physicalHeight,
-            _currentEffectiveHeight);
-    }
-
-    private bool _closeAnimating;
-
-    /// <summary>Decision 0013: animated mode-B growth/shrink while visible. Bookkeeping adopts
-    /// the new height immediately (0 ms truth for state); only the window's presentation
-    /// animates, with the WebView child pinned to the final size once (no per-frame Chromium
-    /// work — the measured 0003/0005 jank).</summary>
-    private void AnimateVisibleResize(int newHeight) {
-        var window = _flyoutWindow;
-        if (window is null) {
-            return;
-        }
-
-        if (newHeight == _currentEffectiveHeight && _lastAppliedHeight != 0) {
-            return;
-        }
-
-        if (!_animationsEnabled || _presenter is null) {
-            ApplyImmediateResize(newHeight, force: false);
-            return;
-        }
-
-        _currentEffectiveHeight = newHeight;
-        _lastAppliedHeight = newHeight;
-
-        var target = ComputeBoundsForEffectiveHeight(newHeight);
-        if (window.Bounds == target) {
-            return;
-        }
-
-        var dpiScale = window.DeviceDpi / 96.0;
-        var finalChildBounds = new Rectangle(
-            Point.Empty,
-            new Size((int)Math.Round(376 * dpiScale), (int)Math.Round(newHeight * dpiScale)));
-        _webViewHost?.PinChildBounds(finalChildBounds);
-
-        _presenter.AnimateBounds(
-            window.Bounds,
-            target,
-            FlyoutRevealAnimator.GrowthDuration,
-            completed: () => {
-                _webViewHost?.UnpinChildBounds();
-                window.RecalcNonClientFrame();
-            });
-    }
-
-    private bool ApplyImmediateResize(int clampedEffectiveHeight, bool force) {
-        if (!force && clampedEffectiveHeight == _currentEffectiveHeight && _lastAppliedHeight != 0) {
-            Log.Information("AppHost.ResizeFlyout suppressed duplicate: {Height}", clampedEffectiveHeight);
-            return false;
-        }
-
-        _currentEffectiveHeight = clampedEffectiveHeight;
-        _lastAppliedHeight = clampedEffectiveHeight;
-
-        // Hidden path (priming / next-show); the visible path animates via AnimateVisibleResize.
-        if (_flyoutWindow != null) {
-            UpdateFlyoutBounds();
-        }
-
-        return true;
-    }
-
-    private Rectangle ComputeBoundsForEffectiveHeight(int effectiveHeight) {
-        if (_flyoutWindow is null || _trayIcon is null) {
-            return Rectangle.Empty;
-        }
-
-        var dpiScale = _flyoutWindow.DeviceDpi / 96.0;
-        int physicalWidth = (int)Math.Round(376 * dpiScale);
-
-        if (_flyoutWindow.IsPinned) {
-            var current = _flyoutWindow.Bounds;
-            int physicalHeight = (int)Math.Round(effectiveHeight * dpiScale);
-            return new Rectangle(current.X, current.Y, physicalWidth, physicalHeight);
-        }
-
-        var placement = _trayIcon.GetPlacementInfo();
-        var monitor = (placement.Rect.Width > 0 && placement.Rect.Height > 0)
-            ? Screen.FromRectangle(placement.Rect)
-            : TrayIcon.GetTaskbarScreen();
-        var anchor = FlyoutPlacement.ResolveAnchor(
-            placement.Rect,
-            monitor.WorkingArea,
-            monitor.Bounds,
-            placement.Edge,
-            dpiScale);
-        return FlyoutPlacement.CalculatePlacement(
-            anchor,
-            placement.Edge,
-            monitor.WorkingArea,
-            dpiScale,
-            new Size(376, effectiveHeight));
     }
 
     private void TryCompletePendingInitialShow() {
@@ -1445,22 +904,16 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             return;
         }
 
-        if (!_webViewReadyForShow) {
-            return;
-        }
-
-        // Require at least one valid content-size report (not merely the placeholder) before first paint.
+        // The native window self-sizes (decision 0021); the height seed only stages placement.
         if (_lastAppliedHeight == 0) {
             return;
         }
 
         Log.Information("AppHost: completing pending initial flyout show (height={Height})", _currentEffectiveHeight);
-        ShowFlyout();
+        ShowNativeFlyout();
 
         // Clear the request only after the flyout is actually visible.
-        bool visibleNow = _nativeUi
-            ? (_nativeWindow?.ShellVisible ?? false)
-            : _flyoutWindow is { Visible: true };
+        bool visibleNow = _nativeWindow?.ShellVisible ?? false;
         if (FlyoutInteractionPolicy.ShouldClearInitialShowRequest(visibleNow)) {
             _pendingInitialShow = false;
             _initialShowCompleted = true;
@@ -1474,7 +927,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     /// <summary>Decision 0020: creates the bubble on first use. Off by default, so an owner who
     /// never enables the toggle pays nothing.</summary>
     private void EnsureStatusBubble() {
-        if (_nativeUi == false || _statusBubble is not null) {
+        if (_statusBubble is not null) {
             return;
         }
 
@@ -1542,7 +995,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         // Not IsFlyoutVisible: that field is assigned from ShellVisible immediately after Show,
         // before the window has loaded, so it can read false while the flyout is on screen. The
         // window's own IsVisible is accurate for "is it on screen right now".
-        bool flyoutOnScreen = _nativeUi ? _nativeWindow?.IsVisible == true : _isVisible;
+        bool flyoutOnScreen = _nativeWindow?.IsVisible == true;
         NativeUi.BubbleState? state = flyoutOnScreen ? null : _statusBubblePresenter?.Current;
 
         void Deliver() {
@@ -1630,9 +1083,6 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
     }
 
     private void ApplyNativeShellFromSnapshot(AppSnapshot snapshot) {
-        if (!_nativeUi && _flyoutWindow is null) {
-            return;
-        }
 
         // Decision 0013: OS reduced-motion turns every presentation animation into the 0012
         // instant steps. Logged on first evaluation and on change — a session that STARTS
@@ -1664,25 +1114,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
         _lastAppliedTheme = theme;
         _lastAppliedTransparency = transparency;
-        if (_nativeUi) {
-            if (TryMarshalToFlyoutUi(new Action(() => ApplyNativeTheme(theme, transparency)))) {
-                return;
-            }
-
-            ApplyNativeTheme(theme, transparency);
+        if (TryMarshalToFlyoutUi(new Action(() => ApplyNativeTheme(theme, transparency)))) {
             return;
         }
 
-        // WebView path (guarded above: !_nativeUi && _flyoutWindow is not null).
-        if (TryMarshalToFlyoutUi(new Action(() => {
-            _flyoutWindow?.ApplyShellAppearance(theme, transparency);
-            _webViewHost?.ApplyOpaqueBackground(theme);
-        }))) {
-            return;
-        }
-
-        _flyoutWindow?.ApplyShellAppearance(theme, transparency);
-        _webViewHost?.ApplyOpaqueBackground(theme);
+        ApplyNativeTheme(theme, transparency);
     }
 
     private void StartQrPairingSession() {
@@ -1770,29 +1206,8 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
         Log.Information("App theme dictionary added: {Theme}", theme);
     }
 
-    private void UpdateFlyoutBounds() {
-        if (_flyoutWindow == null || _trayIcon == null) return;
-
-        var physicalBounds = ComputeBoundsForEffectiveHeight(_currentEffectiveHeight);
-
-        if (_flyoutWindow.IsPinned) {
-            if (_flyoutWindow.Size != physicalBounds.Size) {
-                _flyoutWindow.Size = physicalBounds.Size;
-                Log.Information("UpdateFlyoutBounds (pinned): new size {Size}", _flyoutWindow.Size);
-                _flyoutWindow.RecalcNonClientFrame();
-            }
-        }
-        else if (_flyoutWindow.Bounds != physicalBounds) {
-            _flyoutWindow.Bounds = physicalBounds;
-            Log.Information("UpdateFlyoutBounds: physicalBounds={Bounds}", physicalBounds);
-            _flyoutWindow.RecalcNonClientFrame();
-        }
-    }
-
     private void OnFlyoutDeactivate(object? sender, EventArgs e) {
-        bool pinned = _nativeUi
-            ? _nativeWindow?.IsPinned ?? false
-            : _flyoutWindow?.IsPinned ?? false;
+        bool pinned = _nativeWindow?.IsPinned ?? false;
         if (!FlyoutInteractionPolicy.ShouldHonorLightDismiss(_suppressLightDismiss, _lightDismissArmed, pinned)) {
             Log.Information(
                 "OnFlyoutDeactivate ignored: suppress={Suppress} armed={Armed} pinned={Pinned}",
@@ -1808,7 +1223,7 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
 
     private void OnDisplayChanged(object? sender, EventArgs e) {
         if (_isVisible) {
-            ShowFlyout();
+            ShowNativeFlyout();
         }
     }
 
@@ -1853,16 +1268,11 @@ internal sealed class AppHost : IBridgeHost, IDisposable {
             _powerAndSession.SessionSwitch -= OnSessionSwitch;
             _powerAndSession.Dispose();
         }
-        if (_flyoutWindow != null) {
-            _flyoutWindow.Deactivate -= OnFlyoutDeactivate;
-            _flyoutWindow.Dispose();
-        }
         if (_trayIcon != null) {
             _trayIcon.PreferencesChanged -= OnTrayPreferencesChanged;
             _trayIcon.Dispose();
         }
 
-        _webViewHost?.Dispose();
         _singleInstance?.Dispose();
         Log.CloseAndFlush();
     }

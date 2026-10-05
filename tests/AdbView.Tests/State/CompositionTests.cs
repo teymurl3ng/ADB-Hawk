@@ -21,70 +21,7 @@ using Xunit;
 
 [Collection("AppHostSerial")]
 public sealed class CompositionTests {
-    private sealed class MockBridgeHost : IBridgeHost {
-        public readonly List<SnapshotEnvelope> SentSnapshots = new();
-        public readonly List<bool> PinnedStates = new();
 
-        public void SendSnapshot(SnapshotEnvelope envelope) => SentSnapshots.Add(envelope);
-        public void SetPinned(bool isPinned) => PinnedStates.Add(isPinned);
-        public void HideFlyout() { }
-        public void ResizeFlyout(int clampedEffectiveHeight, AdbView.Bridge.ContentSizePhase phase = AdbView.Bridge.ContentSizePhase.Live, string? layoutKey = null) { }
-    }
-
-    [Fact]
-    public async Task ScenarioL_EndToEndEventFlow_SupervisorToBridgeCoordinator() {
-        var mockHost = new MockBridgeHost();
-        var initial = StateEngine.CreateDefaultSnapshot(isPinned: false, revision: 1);
-        await using var engine = new StateEngine(initial);
-
-        var coordinator = new BridgeCoordinator(
-            mockHost,
-            isPinned: false,
-            initialSnapshot: initial,
-            onSetPinned: pinned => engine.Post(new SetPinnedEvent(pinned)));
-
-        // WebView reports ready
-        coordinator.HandleAction(new ReadyAction { Protocol = BridgeProtocol.Version });
-        Assert.Single(mockHost.SentSnapshots); // initial snapshot sent
-
-        // Wire engine to coordinator
-        engine.SnapshotPublished += snapshot => coordinator.UpdateSnapshot(snapshot);
-
-        // Emit supervisor state change
-        var state = new AdbServerStateChanged(AdbServerPhase.Unavailable, null, 0, 0);
-        engine.Post(new AdbServerStateChangedEvent(state));
-
-        await engine.DrainAsync();
-
-        // Must have received the updated snapshot through the IPC host
-        Assert.Equal(2, mockHost.SentSnapshots.Count);
-        var latest = mockHost.SentSnapshots[1].Snapshot;
-        Assert.Equal(GlobalHealthKind.AdbUnavailable, latest.Health.Kind);
-        Assert.Equal(2, latest.Revision);
-    }
-
-    [Fact]
-    public void ScenarioM_BridgeCoordinator_DoesNotIndependentlyMutateShellPinned() {
-        var mockHost = new MockBridgeHost();
-        var initial = StateEngine.CreateDefaultSnapshot(isPinned: false, revision: 1);
-        bool pinDispatched = false;
-
-        var coordinator = new BridgeCoordinator(
-            mockHost,
-            isPinned: false,
-            initialSnapshot: initial,
-            onSetPinned: pinned => { pinDispatched = pinned; });
-
-        // Handle PinAction
-        coordinator.HandleAction(new PinAction());
-
-        // Callback was dispatched
-        Assert.True(pinDispatched);
-
-        // BUT coordinator's CurrentSnapshot was NOT independently mutated!
-        // It remains unpinned until authoritative StateEngine delivers an updated snapshot.
-        Assert.False(coordinator.CurrentSnapshot.Shell.Pinned);
-    }
 
     private sealed class HermeticExecutableLocator : IAdbExecutableLocator {
         public string? Locate() => null;
@@ -117,7 +54,6 @@ public sealed class CompositionTests {
                 factoryCallCount++;
                 return CreateHermeticSupervisor();
             },
-            bridgeHost: new MockBridgeHost(),
             headless: true,
             deviceTrackerFactory: () => {
                 trackerFactoryCount++;
@@ -137,7 +73,6 @@ public sealed class CompositionTests {
         Assert.Null(host.PairingSession);
         Assert.Null(host.MetadataLifecycle);
         Assert.NotNull(host.StateEngine);
-        Assert.NotNull(host.Coordinator);
         Assert.NotNull(host.NotificationCoordinator);
         Assert.False(host.UsesRealBalloonNotificationSink);
         Assert.Same(NullNotificationSink.Instance, host.NotificationSink);
@@ -153,7 +88,6 @@ public sealed class CompositionTests {
                 factoryCallCount++;
                 return CreateHermeticSupervisor();
             },
-            bridgeHost: new MockBridgeHost(),
             headless: true,
             deviceTrackerFactory: () => new DeviceTracker(
                 connectionFactory: () => throw new System.IO.IOException("hermetic-no-socket")));
@@ -165,7 +99,6 @@ public sealed class CompositionTests {
         Assert.NotNull(host.PairingSession);
         Assert.NotNull(host.MetadataLifecycle);
         Assert.NotNull(host.StateEngine);
-        Assert.NotNull(host.Coordinator);
         Assert.NotNull(host.NotificationCoordinator);
         Assert.False(host.UsesRealBalloonNotificationSink);
         Assert.Same(NullNotificationSink.Instance, host.NotificationSink);
@@ -184,7 +117,6 @@ public sealed class CompositionTests {
             sessionId: 54323,
             fixtureSuffix: "",
             supervisorFactory: CreateHermeticSupervisor,
-            bridgeHost: new MockBridgeHost(),
             headless: true);
 
         var offerA = new RawMdnsService {
@@ -199,7 +131,7 @@ public sealed class CompositionTests {
         await host.StateEngine.DrainAsync();
         Assert.Single(host.StateEngine.CurrentSnapshot.PairingOffers);
 
-        host.Coordinator!.HandleAction(new PairStartAction { OfferId = offerA.DiscoveryKey });
+        host.PairingSession!.Start(offerA.DiscoveryKey);
         await host.StateEngine.DrainAsync();
         Assert.Equal(AdbView.State.PairingPhase.AwaitingCode, host.StateEngine.CurrentSnapshot.Pairing!.Phase);
         Assert.Equal(offerA.DiscoveryKey, host.StateEngine.CurrentSnapshot.Pairing.OfferId);
@@ -218,7 +150,7 @@ public sealed class CompositionTests {
         Assert.Null(host.StateEngine.CurrentSnapshot.Pairing);
 
         // Regression: pairStart for B must be accepted, not rejected as a failed op.
-        host.Coordinator.HandleAction(new PairStartAction { OfferId = offerB.DiscoveryKey });
+        host.PairingSession!.Start(offerB.DiscoveryKey);
         await host.StateEngine.DrainAsync();
         var pairing = host.StateEngine.CurrentSnapshot.Pairing;
         Assert.NotNull(pairing);
@@ -243,7 +175,6 @@ public sealed class CompositionTests {
             sessionId: 54324,
             fixtureSuffix: "",
             supervisorFactory: () => CreateHermeticSupervisor(),
-            bridgeHost: new MockBridgeHost(),
             headless: true,
             deviceTrackerFactory: () => {
                 deviceStarts++;
@@ -289,7 +220,6 @@ public sealed class CompositionTests {
             sessionId: 54325,
             fixtureSuffix: "",
             supervisorFactory: CreateHermeticSupervisor,
-            bridgeHost: new MockBridgeHost(),
             headless: true,
             deviceTrackerFactory: () => new DeviceTracker(
                 connectionFactory: () => throw new System.IO.IOException("x")));
@@ -313,7 +243,6 @@ public sealed class CompositionTests {
             sessionId: 54323,
             fixtureSuffix: "",
             supervisorFactory: CreateHermeticSupervisor,
-            bridgeHost: new MockBridgeHost(),
             headless: true);
 
         host.StateEngine!.Post(new SetPinnedEvent(true));

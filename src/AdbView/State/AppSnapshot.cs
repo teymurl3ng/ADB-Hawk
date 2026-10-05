@@ -2,11 +2,9 @@ namespace AdbView.State;
 
 using System;
 using System.Collections.Immutable;
-using System.Text.Json.Serialization;
 
 internal sealed record AppSnapshot {
-    public required int Protocol { get; init; }              // == BridgeProtocol.Version (1)
-    [JsonConverter(typeof(AdbView.Bridge.SafeRevisionConverter))]
+    public required int Protocol { get; init; }
     public required long Revision { get; init; }             // monotonic, never reused
     public required DateTimeOffset GeneratedAt { get; init; }// UTC; frontend clock-skew safe
     public required HealthView Health { get; init; }
@@ -55,7 +53,6 @@ internal enum SeverityKind { Positive, Attention, Failure, Informational, Neutra
 
 internal enum TransportKind {
     Usb,
-    [JsonStringEnumMemberName("wifi")]
     WiFi,
     Unknown,
 }

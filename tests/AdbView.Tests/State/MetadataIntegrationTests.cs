@@ -683,10 +683,11 @@ public sealed class MetadataIntegrationTests {
             MetadataCommand.ExactModel => new MetadataCommandResult(command, MetadataFieldStatus.Ok, null, "SM-A065F"),
             _ => new MetadataCommandResult(command, MetadataFieldStatus.Ok, null, "16"),
         };
-        int calls = probe.Calls.Count;
         now = T0.AddSeconds(31);
         life.SetPresentationState(true, false);
-        await WaitForAsync(() => probe.Calls.Count > calls);
+        // Wait for the refresh to be applied, not merely probed: the probe records its call
+        // before its metadata event is posted and reduced.
+        await WaitForAsync(() => engine.CurrentDeviceState.MetadataSessions["usb:R8"].BatteryObservedAt > observed1);
         await engine.DrainAsync();
 
         Assert.Equal(80, engine.CurrentSnapshot.Devices[0].BatteryPercent);

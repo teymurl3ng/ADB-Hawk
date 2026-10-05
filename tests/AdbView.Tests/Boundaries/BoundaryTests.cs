@@ -16,13 +16,10 @@ namespace AdbView.Tests.Boundaries;
 /// </summary>
 public sealed class BoundaryTests {
     private static readonly string[] CSharpExtensions = [".cs"];
-    private static readonly string[] FrontendExtensions = [".ts", ".tsx", ".js", ".jsx", ".mts", ".cts"];
 
     private static string AppSourceRoot => RootFile("src", "AdbView");
     private static string HostBoundary => RootFile("src", "AdbView", "Host");
     private static string SystemClockFile => RootFile("src", "AdbView", "App", "SystemClock.cs");
-    private static string UiSourceRoot => RootFile("ui", "src");
-    private static string ActionsModule => RootFile("ui", "src", "bridge", "actions.ts");
 
     private static string ReadText(string path) => File.ReadAllText(path);
 
@@ -160,22 +157,6 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
-    // 4. postMessage only in ui/src/bridge/actions.ts (ENGINEERING.md §10.1).
-    [Fact]
-    public void PostMessageAppearsOnlyInBridgeActionsModule() {
-        var violations = new List<string>();
-        foreach (var file in SourceFiles(UiSourceRoot, FrontendExtensions)) {
-            if (file.Equals(ActionsModule, StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            if (ReadText(file).Contains("postMessage", StringComparison.Ordinal)) {
-                violations.Add($"{Path.GetRelativePath(Root, file)}: postMessage outside ui/src/bridge/actions.ts");
-            }
-        }
-
-        AssertNoViolations(violations);
-    }
 
     // 5. Forbidden component identifiers do not exist (DESIGN.md §16, R-02).
     [Fact]
@@ -184,7 +165,7 @@ public sealed class BoundaryTests {
         var pattern = new Regex($@"\b({string.Join("|", forbidden)})\b");
         var violations = new List<string>();
 
-        foreach (var root in new[] { RootFile("src"), UiSourceRoot }) {
+        foreach (var root in new[] { RootFile("src") }) {
             foreach (var file in SourceFiles(root, [".cs", ".ts", ".tsx", ".js", ".jsx"])) {
                 foreach (Match match in pattern.Matches(ReadText(file))) {
                     violations.Add($"{Path.GetRelativePath(Root, file)}: '{match.Value}' is a forbidden component identifier");
@@ -227,7 +208,6 @@ public sealed class BoundaryTests {
     [Fact]
     public void NuGetPinsMatchEngineeringAuthority() {
         var expected = new Dictionary<string, string> {
-            ["Microsoft.Web.WebView2"] = "1.0.4191.47",
             ["Serilog"] = "4.4.0",
             ["Serilog.Sinks.File"] = "7.0.0",
             ["Microsoft.Windows.CsWin32"] = "0.3.333",
@@ -267,68 +247,6 @@ public sealed class BoundaryTests {
         AssertNoViolations(problems);
     }
 
-    // 8. npm direct dependencies are exact and match the Phase 0 research pins (R-09).
-    [Fact]
-    public void NpmDirectDependenciesAreExactAndPinned() {
-        var expected = new Dictionary<string, string> {
-            ["react"] = "19.3.0",
-            ["react-dom"] = "19.3.0",
-            ["@types/react"] = "19.3.0",
-            ["@types/react-dom"] = "19.3.0",
-            ["typescript"] = "6.0.3",
-            ["vite"] = "8.2.2",
-            ["@vitejs/plugin-react"] = "6.1.1",
-            ["tailwindcss"] = "4.3.3",
-            ["@tailwindcss/vite"] = "4.3.3",
-            ["vitest"] = "5.0.1",
-            ["@testing-library/react"] = "16.3.3",
-            ["@testing-library/dom"] = "10.4.2",
-            ["@testing-library/jest-dom"] = "7.0.1",
-            ["jsdom"] = "30.0.1",
-            ["@playwright/test"] = "1.63.0",
-            ["eslint"] = "10.10.0",
-            ["typescript-eslint"] = "8.70.0",
-            ["eslint-plugin-react-hooks"] = "7.1.1",
-            ["prettier"] = "3.9.6",
-        };
-
-        using var document = JsonDocument.Parse(ReadText(RootFile("ui", "package.json")));
-        var root = document.RootElement;
-        var actual = new Dictionary<string, string>();
-        foreach (var section in new[] { "dependencies", "devDependencies" }) {
-            if (!root.TryGetProperty(section, out var deps)) {
-                continue;
-            }
-
-            foreach (var dep in deps.EnumerateObject()) {
-                actual[dep.Name] = dep.Value.GetString() ?? string.Empty;
-            }
-        }
-
-        var problems = new List<string>();
-        foreach (var (name, version) in expected) {
-            if (!actual.TryGetValue(name, out var actualVersion)) {
-                problems.Add($"{name}: pin missing from ui/package.json");
-            }
-            else if (!string.Equals(version, actualVersion, StringComparison.Ordinal)) {
-                problems.Add($"{name}: expected {version}, found {actualVersion}");
-            }
-        }
-
-        foreach (var name in actual.Keys.Where(n => !expected.ContainsKey(n))) {
-            problems.Add($"{name}: not in ENGINEERING.md §15 — adding a dependency requires a research note and a §15 edit in the same change");
-        }
-
-        // Exactness: no ranges, wildcards, tags, or aliases on any direct dependency.
-        var exactVersion = new Regex(@"^\d+(\.\d+){1,3}$");
-        foreach (var (name, version) in actual) {
-            if (!exactVersion.IsMatch(version)) {
-                problems.Add($"{name}: '{version}' is not an exact version; ranges, wildcards, and tags are forbidden (AGENTS.md R-09)");
-            }
-        }
-
-        AssertNoViolations(problems);
-    }
 
     // 9. VSTest compatibility packages are absent (Phase 0 research: MTP v2 only).
     [Fact]
@@ -351,41 +269,6 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
-    // 10. Built frontend output contains no absolute http(s) URL (ENGINEERING.md §10.6).
-    [Fact]
-    public void BuiltFrontendContainsNoAbsoluteHttpUrls() {
-        var dist = RootFile("ui", "dist");
-        Assert.True(
-            Directory.Exists(dist) && File.Exists(Path.Combine(dist, "index.html")),
-            "ui/dist is missing or incomplete — run scripts/build.ps1 before running the gate (the built frontend is inspected, not the sources)");
-
-        // Inert, non-dereferenceable URL constants that bundlers legitimately embed.
-        // Each entry is documented; anything else absolute fails the gate.
-        var inertUrlPatterns = new[]
-        {
-            // XML/SVG/MathML namespace identifiers (React's renderer embeds these).
-            @"http://www\.w3\.org/[^""'\s)<>]+",
-            // React production error-code constants — developer diagnostics, never fetched.
-            @"https://react\.dev/errors/\d*",
-            // Tailwind's compiled-CSS license/credit comment — never fetched.
-            @"https://tailwindcss\.com",
-        };
-        var absoluteUrl = new Regex(@"https?://");
-        var violations = new List<string>();
-
-        foreach (var file in Directory.EnumerateFiles(dist, "*", SearchOption.AllDirectories)) {
-            var text = ReadText(file);
-            foreach (var pattern in inertUrlPatterns) {
-                text = Regex.Replace(text, pattern, string.Empty);
-            }
-
-            if (absoluteUrl.IsMatch(text)) {
-                violations.Add($"{Path.GetRelativePath(Root, file)}: contains an absolute http(s) URL — production assets must be fully local (DESIGN.md §36)");
-            }
-        }
-
-        AssertNoViolations(violations);
-    }
 
     // 11. Production sources contain zero legacy bridge strings (R-04, Phase 3 Wave 2).
     [Fact]
@@ -393,7 +276,7 @@ public sealed class BoundaryTests {
         var legacyStrings = new[] { "toggle_pin", "pinned:true", "pinned:false" };
         var violations = new List<string>();
 
-        foreach (var root in new[] { AppSourceRoot, UiSourceRoot }) {
+        foreach (var root in new[] { AppSourceRoot }) {
             foreach (var file in SourceFiles(root, [".cs", ".ts", ".tsx", ".js", ".jsx"])) {
                 if (file.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase) ||
                     file.EndsWith(".test.tsx", StringComparison.OrdinalIgnoreCase) ||
@@ -413,61 +296,8 @@ public sealed class BoundaryTests {
         AssertNoViolations(violations);
     }
 
-    // 12. React components do not access WebView2 APIs directly (Phase 3 Wave 2).
-    [Fact]
-    public void ReactComponentsDoNotAccessWebViewApisDirectly() {
-        var violations = new List<string>();
-        var componentsDir = RootFile("ui", "src", "components");
-        var appFile = RootFile("ui", "src", "App.tsx");
 
-        var filesToCheck = SourceFiles(componentsDir, FrontendExtensions).Append(appFile);
-        foreach (var file in filesToCheck) {
-            var text = ReadText(file);
-            if (text.Contains("chrome.webview", StringComparison.Ordinal) ||
-                text.Contains("window.chrome", StringComparison.Ordinal)) {
-                violations.Add($"{Path.GetRelativePath(Root, file)}: direct access to WebView API (must use bridge module)");
-            }
-        }
 
-        AssertNoViolations(violations);
-    }
-
-    // 13. Production frontend sources contain no browser-owned fixture generators (R-07, Phase 3 Wave 3).
-    [Fact]
-    public void FrontendFixtureGeneratorsAreAbsentFromProductionSource() {
-        var forbiddenGenerators = new[] { "getFixtureDevices" };
-        var violations = new List<string>();
-
-        foreach (var file in SourceFiles(UiSourceRoot, FrontendExtensions)) {
-            if (file.EndsWith(".test.ts", StringComparison.OrdinalIgnoreCase) ||
-                file.EndsWith(".test.tsx", StringComparison.OrdinalIgnoreCase) ||
-                file.EndsWith(".spec.ts", StringComparison.OrdinalIgnoreCase) ||
-                file.Contains("__fixtures__", StringComparison.OrdinalIgnoreCase)) {
-                continue;
-            }
-
-            var text = ReadText(file);
-            foreach (var generator in forbiddenGenerators) {
-                if (text.Contains(generator, StringComparison.Ordinal)) {
-                    violations.Add($"{Path.GetRelativePath(Root, file)}: contains forbidden fixture generator '{generator}'");
-                }
-            }
-        }
-
-        AssertNoViolations(violations);
-    }
-
-    // 14. Native WebView authority guard in useSnapshot: production path must never fall back to static fixtures (R-06, R-07).
-    [Fact]
-    public void NativeWebViewAuthorityGuardIsEnforcedInUseSnapshot() {
-        var useSnapshotPath = RootFile("ui", "src", "bridge", "useSnapshot.ts");
-        var text = ReadText(useSnapshotPath);
-
-        // Prove that window.chrome?.webview presence explicitly blocks fixture fallback
-        Assert.Contains("if (window.chrome?.webview) return null;", text, StringComparison.Ordinal);
-        // Prove that standalone fixture fallback is gated behind isTestMode()
-        Assert.Contains("if (!isTestMode()) return null;", text, StringComparison.Ordinal);
-    }
 
     // 15. Adb.Protocol does not reference forbidden layers (R-04, Phase 4 Wave 4A/4B).
     [Fact]
