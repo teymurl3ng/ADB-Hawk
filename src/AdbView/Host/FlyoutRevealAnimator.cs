@@ -2,7 +2,6 @@ namespace AdbView.Host;
 
 using System;
 using System.Drawing;
-using System.Windows.Forms;
 using Serilog;
 
 internal interface ITickSource : IDisposable {
@@ -10,38 +9,12 @@ internal interface ITickSource : IDisposable {
     void Stop();
 }
 
-/// <summary>UI-thread tick source: WinForms Timer ticks on the same thread that applies bounds,
-/// so no marshaling is needed inside the animator. Decision 0013 sanctions this clock.</summary>
-internal sealed class FormsTimerTickSource : ITickSource {
-    private readonly Timer _timer;
-    private Action? _tick;
-
-    public FormsTimerTickSource() {
-        _timer = new Timer {
-            Interval = 16, // ~60 fps; bounds application is one SetWindowPos per tick
-        };
-        _timer.Tick += (_, _) => _tick?.Invoke();
-    }
-
-    public void Start(Action tick) {
-        _tick = tick;
-        _timer.Start();
-    }
-
-    public void Stop() {
-        _timer.Stop();
-        _tick = null;
-    }
-
-    public void Dispose() => _timer.Dispose();
-}
-
 /// <summary>
-/// Fluent-curve presentation animator (decision 0013): animates the flyout window's bounds for
-/// growth (mode-B: the WebView child is pinned to its final size by the caller, so per-frame
-/// window updates only clip/reveal — zero Chromium work) and for open/close slides
-/// (position-only). Retargeting replaces the target from the last applied frame (R-06).
-/// Reduced motion bypasses this class entirely at the call sites.
+/// Fluent-curve presentation animator (decision 0013, amended by 0023): drives the flyout
+/// window's bounds for the open/close reveal, which is a <b>position-only</b> translation of a
+/// fixed-size window (see <see cref="AnimateSlide"/>); the height itself is an instant self-size
+/// step and never interpolates (decisions 0012/0021). Retargeting replaces the target from the
+/// last applied frame (R-06). Reduced motion bypasses this class entirely at the call sites.
 /// </summary>
 internal sealed class FlyoutRevealAnimator {
     internal static readonly TimeSpan GrowthDuration = TimeSpan.FromMilliseconds(167);
@@ -58,6 +31,14 @@ internal sealed class FlyoutRevealAnimator {
     private long _durationTicks;
     private bool _running;
     private Action? _completed;
+    private bool _positionOnly;
+
+    // Tick-quality evidence (decision 0023): frames actually applied, and the worst gap between
+    // ticks. Logged once per animation so a jitter regression is visible in the log with no
+    // tooling — the animation's own duration is the reference the gap is read against.
+    private int _framesApplied;
+    private long _lastTickMs;
+    private long _worstGapMs;
 
     public FlyoutRevealAnimator(ITickSource tickSource, Action<Rectangle> applyBounds, Func<long>? elapsedMs = null) {
         _ticks = tickSource;
@@ -72,7 +53,29 @@ internal sealed class FlyoutRevealAnimator {
 
     /// <summary>Starts (or retargets) a bounds animation. If one is running, the target is
     /// replaced and the flight continues from the last applied frame.</summary>
-    public void AnimateBounds(Rectangle from, Rectangle to, TimeSpan duration, Action? completed = null) {
+    public void AnimateBounds(Rectangle from, Rectangle to, TimeSpan duration, Action? completed = null) =>
+        Start(from, to, duration, completed, positionOnly: false);
+
+    /// <summary>
+    /// Decision 0023 / DESIGN §24: the open/close reveal is a <b>position-only</b> translation —
+    /// the window's size is fixed for the flight, so the slide never resizes the HWND per frame.
+    /// Animating a shadowed window's size every frame is the pattern Microsoft's AnimateWindow
+    /// doc calls "visually distracting, jerky". Endpoints that differ in size mean the caller's
+    /// origin came from a stale window rect; the target size wins and the mismatch is logged.
+    /// </summary>
+    public void AnimateSlide(Rectangle from, Rectangle to, TimeSpan duration, Action? completed = null) {
+        if (from.Size != to.Size) {
+            Log.Warning(
+                "FlyoutRevealAnimator: slide endpoints differ in size ({From} -> {To}); forcing the target size.",
+                from,
+                to);
+            from = new Rectangle(from.X, from.Y, to.Width, to.Height);
+        }
+
+        Start(from, to, duration, completed, positionOnly: true);
+    }
+
+    private void Start(Rectangle from, Rectangle to, TimeSpan duration, Action? completed, bool positionOnly) {
         if (from == to) {
             _applyBounds(to);
             completed?.Invoke();
@@ -81,9 +84,13 @@ internal sealed class FlyoutRevealAnimator {
 
         _from = from;
         _to = to;
+        _positionOnly = positionOnly;
         LastApplied = from;
         _startTicks = _elapsedMs();
         _durationTicks = Math.Max(1, (long)duration.TotalMilliseconds);
+        _framesApplied = 0;
+        _lastTickMs = _startTicks;
+        _worstGapMs = 0;
 
         if (!_running) {
             _completed = completed;
@@ -147,21 +154,43 @@ internal sealed class FlyoutRevealAnimator {
         }
 
         long now = _elapsedMs();
+        long gap = now - _lastTickMs;
+        _lastTickMs = now;
+        if (gap > _worstGapMs) {
+            _worstGapMs = gap;
+        }
+
         double progress = Math.Min(1.0, (double)(now - _startTicks) / _durationTicks);
         double eased = Easing.FluentPointToPoint(progress);
+
+        // A slide is a position-only translation (decision 0023 / DESIGN §24): the size is the
+        // target's for every frame, so the reveal clips nothing and resizes nothing.
+        int width = _positionOnly ? _to.Width : _from.Width + (int)Math.Round((_to.Width - _from.Width) * eased);
+        int height = _positionOnly ? _to.Height : _from.Height + (int)Math.Round((_to.Height - _from.Height) * eased);
 
         var frame = Rectangle.Round(new RectangleF(
             _from.X + ((_to.X - _from.X) * (float)eased),
             _from.Y + ((_to.Y - _from.Y) * (float)eased),
-            _from.Width + ((_to.Width - _from.Width) * (float)eased),
-            _from.Height + ((_to.Height - _from.Height) * (float)eased)));
+            width,
+            height));
 
-        LastApplied = frame;
-        _applyBounds(frame);
+        // Skip a frame identical to the one the window is already at. The caller places the
+        // window on `from` before starting (and a frame callback can fire more than once per
+        // composed frame), so re-applying the same rect is pure redundant SetWindowPos churn.
+        if (frame != LastApplied) {
+            LastApplied = frame;
+            _framesApplied++;
+            _applyBounds(frame);
+        }
 
         if (progress >= 1.0) {
             _running = false;
             _ticks.Stop();
+            Log.Information(
+                "FlyoutRevealAnimator: completed {Frames} frames over a {Duration} ms flight; worst tick gap {WorstGap} ms.",
+                _framesApplied,
+                _durationTicks,
+                _worstGapMs);
             var done = _completed;
             _completed = null;
             done?.Invoke();

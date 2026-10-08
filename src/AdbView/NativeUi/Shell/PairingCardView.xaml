@@ -1,6 +1,7 @@
 <UserControl x:Class="AdbView.NativeUi.Shell.PairingCardView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:motion="clr-namespace:AdbView.NativeUi.Motion"
              Focusable="False">
     <UserControl.Resources>
         <ResourceDictionary>
@@ -85,7 +86,9 @@
                                     <DataTrigger.EnterActions>
                                         <BeginStoryboard>
                                             <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                             From="0" To="1" Duration="{StaticResource Motion.State}"/></Storyboard>
+                                                             From="0" To="1" Duration="{StaticResource Motion.State}">
+                                                <DoubleAnimation.EasingFunction><motion:BezierEase/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation></Storyboard>
                                         </BeginStoryboard>
                                     </DataTrigger.EnterActions>
                                 </DataTrigger>
@@ -118,7 +121,9 @@
                                     <DataTrigger.EnterActions>
                                         <BeginStoryboard>
                                             <Storyboard><DoubleAnimation Storyboard.TargetProperty="Opacity"
-                                                             From="0" To="1" Duration="{StaticResource Motion.State}"/></Storyboard>
+                                                             From="0" To="1" Duration="{StaticResource Motion.State}">
+                                                <DoubleAnimation.EasingFunction><motion:BezierEase/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation></Storyboard>
                                         </BeginStoryboard>
                                     </DataTrigger.EnterActions>
                                 </DataTrigger>

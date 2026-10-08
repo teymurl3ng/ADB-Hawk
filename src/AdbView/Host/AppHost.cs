@@ -322,10 +322,18 @@ internal sealed class AppHost : IDisposable {
                 submitCode: (offerId, code) => _pairingSession.Submit(offerId, code),
                 isStartActive: offerId => _pairingSession.IsActive(offerId));
 
-            // Decision 0013: graceful presentation (mode-B growth + open/close slides).
-            // Native shell: DispatcherTimer tick + physical SetWindowPos on the WPF hwnd.
+            // Decision 0023: one writer per window rect. Self-sizing stands down while the slide
+            // owns the geometry, so an instant height step cannot fight the interpolation. The
+            // gate is a delegate — it is only invoked once the window lays out, long after the
+            // presenter below exists.
+            if (_nativeWindow is not null) {
+                _nativeWindow.IsBoundsAnimating = () => _presenter?.IsAnimating == true;
+            }
+
+            // Decision 0023: graceful presentation — the open/close reveal is a position-only
+            // slide on the composition clock, and self-sizing owns the height as instant steps.
             _presenter = new FlyoutRevealAnimator(
-                new NativeUi.DispatcherTimerTickSource(),
+                new NativeUi.CompositionTickSource(),
                 bounds => _nativeWindow?.SetPhysicalBounds(bounds));
 
             // Decision 0009: one active connect toward the paired device while waiting.
@@ -638,7 +646,9 @@ internal sealed class AppHost : IDisposable {
         }
 
         if (!reducedMotion) {
-            _presenter?.AnimateBounds(
+            // Position-only reveal (decision 0023 / DESIGN §24): both endpoints are the same size,
+            // so the slide translates the window without resizing it per frame.
+            _presenter?.AnimateSlide(
                 window.GetPhysicalBounds(),
                 physicalBounds,
                 FlyoutRevealAnimator.OpenDuration,
@@ -647,6 +657,9 @@ internal sealed class AppHost : IDisposable {
                         return;
                     }
 
+                    // The slide owned the window rect; let self-sizing settle onto content that
+                    // changed while it was in flight rather than dropping that step (decision 0023).
+                    window.RecheckSelfSizedHeight();
                     _suppressLightDismiss = false;
                     _lightDismissArmed = true;
                     Log.Information("ShowNativeFlyout: open slide completed.");
@@ -696,7 +709,9 @@ internal sealed class AppHost : IDisposable {
         int closeGen = _showGeneration;
 
         _presenter?.Cancel();
-        _presenter?.AnimateBounds(
+        // Position-only close slide (decision 0023); the tray-adjacent edge slides back into the
+        // tray at the window's current size.
+        _presenter?.AnimateSlide(
             window.GetPhysicalBounds(),
             SlideTarget(window.GetPhysicalBounds(), placement.Edge, monitor.WorkingArea),
             FlyoutRevealAnimator.CloseDuration,

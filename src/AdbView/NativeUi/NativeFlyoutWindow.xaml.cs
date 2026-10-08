@@ -34,6 +34,8 @@ public sealed partial class NativeFlyoutWindow : Window {
     private const int SC_SIZE = 0xF000;
     private const int WM_ACTIVATE = 0x0006;
     private const int WM_ACTIVATEAPP = 0x001C;
+    private const int WM_SETTINGCHANGE = 0x001A;
+    private const int WM_DISPLAYCHANGE = 0x007E;
     private const int DWMSBT_TRANSIENTWINDOW = 3;
     private const int DWMWCP_ROUNDSMALL = 3;
 
@@ -63,7 +65,11 @@ public sealed partial class NativeFlyoutWindow : Window {
         ResizeMode = ResizeMode.CanResize;            // THICKFRAME stripped in source hook
         ShowInTaskbar = false;
         ShowActivated = true;
-        Background = Brushes.Black;
+        // Decision 0023: seed the themed opaque surface, never black. A frame composited before
+        // the first themed paint — or the newly revealed strip of a window resize, which the
+        // platform invalidates and repaints later — would otherwise show black behind the shell.
+        // ApplyShellAppearance replaces this with the resolved theme the moment it runs.
+        Background = ShellMaterialPolicy.OpaqueBrush(_theme);
         WindowStartupLocation = WindowStartupLocation.Manual;
         // Esc-to-dismiss (web parity): the web dismissed with Escape unless pinned; ported so the
         // gesture survives the WebView removal (decision 0022).
@@ -167,75 +173,126 @@ public sealed partial class NativeFlyoutWindow : Window {
     /// <summary>Raised when self-sizing applied a new height (AppHost syncs placement state).</summary>
     internal event Action<double>? SelfSizedHeightChanged;
 
-    private double _appliedSelfSizedHeight;
+    /// <summary>
+    /// Decision 0023: the single-writer gate. AppHost points this at
+    /// <c>FlyoutRevealAnimator.IsAnimating</c>; while it reports true the animator owns the
+    /// window rect and <see cref="ApplySelfSizedHeight"/> stands down, so an instant height step
+    /// cannot fight the slide's interpolation.
+    /// </summary>
+    internal Func<bool>? IsBoundsAnimating { get; set; }
+
+    /// <summary>Re-runs one self-size pass. Used when a slide completes so content that settled
+    /// mid-flight is applied rather than dropped; the step itself is deduplicated, so calling it
+    /// when nothing changed is a no-op.</summary>
+    internal void RecheckSelfSizedHeight() => ApplySelfSizedHeight();
+
+    private bool _selfSizing;
+
+    /// <summary>Cached top of the tray monitor's work area, in physical pixels. Resolving it is a
+    /// Win32 window + monitor query, so it is reused across layout passes and invalidated on the
+    /// messages that can move it (decision 0023). Null means "ask again".</summary>
+    private int? _taskbarWorkTopPx;
 
     /// <summary>
     /// Decision 0021: one instant self-size step per settled content change. Measures the shell
     /// with infinite height, clamps (ShellSizing), and applies via SetWindowPos with the bottom
     /// edge frozen — growth extends upwards, never moves the tray-adjacent edge. No interpolation,
     /// no per-frame work: sub-DIP noise is deduplicated away.
+    ///
+    /// Decision 0023 makes this the <b>only</b> writer of the window rect besides the open/close
+    /// slide, and it stands down while that slide is in flight: the animator owns the geometry for
+    /// the duration, so a step cannot fight the interpolation. Content that settles mid-slide is
+    /// picked up by <see cref="RecheckSelfSizedHeight"/> when the slide completes, so no update is
+    /// dropped.
     /// </summary>
     private void ApplySelfSizedHeight() {
         if (_source is null || Content is not Shell.ShellView shell) {
             return;
         }
 
-        // Measure with infinite height: inside the ScrollViewer the content already sees an
-        // unconstrained height, but re-measuring the ROOT guarantees the full desired size
-        // regardless of the current window height.
-        double width = shell.ActualWidth > 0 ? shell.ActualWidth : ShellSizing.WidthDip;
-        shell.ShellRoot.Measure(new System.Windows.Size(width, double.PositiveInfinity));
-        double desired = shell.ShellRoot.DesiredSize.Height;
-
-        // The tray's monitor is the right one (the flyout anchors to the tray); the screen lookup
-        // belongs to Host/ per the R-04 boundary, so it comes from TrayIcon, not from here.
-        double scale = DpiScale;
-        double workTopDip = TrayIcon.GetTaskbarScreen().WorkingArea.Top / scale;
-        double bottomDip = Top + Height;
-
-        var step = ShellSizing.Step(desired, workTopDip, bottomDip);
-        if (step is null) {
+        if (IsBoundsAnimating?.Invoke() == true) {
             return;
         }
 
-        var (targetHeight, targetTop) = step.Value;
-
-        // Compare against the window's ACTUAL height (synced from the OS), not the Height
-        // property: external SetWindowPos moves do not update the logical property, so using it
-        // for dedup would fight the placement animation forever.
-        if (!ShellSizing.IsWorthAStep(targetHeight, ActualHeight)) {
+        // The Measure below can provoke another layout pass, and this runs from LayoutUpdated;
+        // re-entering would step the height from the same state twice. One step per settled
+        // change (decision 0021).
+        if (_selfSizing) {
             return;
         }
 
-        // Preserve the CURRENT physical x/width (placement owns them; Left/Top are unreliable here)
-        // and apply the new y/height: bottom edge frozen, one call, no activation.
-        if (!Win32Helpers.TryGetWindowRect(_source.Handle, out var rect)) {
-            Log.Warning("SelfSizedHeight: TryGetWindowRect failed; skipping the step");
-            return;
+        _selfSizing = true;
+        try {
+            // Measure with infinite height. This is load-bearing, not a redundant re-measure: the
+            // shell root's grid has a star content row, so under the window's CURRENT (finite)
+            // height the root reports the current height back, and growth/shrink would never be
+            // detectible. Only an unconstrained measure yields the content's natural height.
+            double width = shell.ActualWidth > 0 ? shell.ActualWidth : ShellSizing.WidthDip;
+            shell.ShellRoot.Measure(new System.Windows.Size(width, double.PositiveInfinity));
+            double desired = shell.ShellRoot.DesiredSize.Height;
+
+            // The tray's monitor is the right one (the flyout anchors to the tray); the screen
+            // lookup belongs to Host/ per the R-04 boundary, so it comes from TrayIcon, not from
+            // here. It is a Win32 window + monitor query, so it is resolved once and re-resolved
+            // only when a message says it may have moved (decision 0023).
+            double scale = DpiScale;
+            if (_taskbarWorkTopPx is null) {
+                _taskbarWorkTopPx = TrayIcon.GetTaskbarScreen().WorkingArea.Top;
+            }
+
+            double workTopDip = _taskbarWorkTopPx.Value / scale;
+
+            // Preserve the CURRENT physical x/width (placement owns them; Left/Top are unreliable
+            // here) and apply the new y/height: bottom edge frozen, one call, no activation. The
+            // frozen edge is read from this same rect rather than from Top + Height, so it cannot
+            // drift on the arithmetic between the logical properties and the applied geometry.
+            if (!Win32Helpers.TryGetWindowRect(_source.Handle, out var rect)) {
+                Log.Warning("SelfSizedHeight: TryGetWindowRect failed; skipping the step");
+                return;
+            }
+
+            double bottomDip = rect.bottom / scale;
+            var step = ShellSizing.Step(desired, workTopDip, bottomDip);
+            if (step is null) {
+                return;
+            }
+
+            var (targetHeight, targetTop) = step.Value;
+
+            // Compare against the window's ACTUAL height (synced from the OS), not the Height
+            // property: external SetWindowPos moves do not update the logical property, so using it
+            // for dedup would fight the placement animation forever.
+            if (!ShellSizing.IsWorthAStep(targetHeight, ActualHeight)) {
+                return;
+            }
+
+            Log.Information(
+                "SelfSizedHeight: stepping {Current:F0} -> {Target:F0} DIP (top {Top:F0}, physical {Px})",
+                ActualHeight, targetHeight, targetTop, rect.top);
+
+            var ok = PInvoke.SetWindowPos(
+                new HWND(_source.Handle),
+                HWND.Null,
+                rect.left,
+                (int)Math.Round(targetTop * scale),
+                rect.right - rect.left,
+                (int)Math.Round(targetHeight * scale),
+                SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            if (!ok) {
+                Log.Warning("SelfSizedHeight: SetWindowPos failed for {Height}DIP", targetHeight);
+                return;
+            }
+
+            // Keep the logical properties in step with the applied rect without another layout
+            // storm: the constructor seeds them and WPF re-applies them on a DPI or chrome change,
+            // so they must not go stale. Assigning a value the property already holds is a no-op.
+            Height = targetHeight;
+            Top = targetTop;
+            SelfSizedHeightChanged?.Invoke(targetHeight);
         }
-
-        Log.Information(
-            "SelfSizedHeight: stepping {Current:F0} -> {Target:F0} DIP (top {Top:F0}, physical {Px})",
-            ActualHeight, targetHeight, targetTop, rect.top);
-
-        var ok = PInvoke.SetWindowPos(
-            new HWND(_source.Handle),
-            HWND.Null,
-            rect.left,
-            (int)Math.Round(targetTop * scale),
-            rect.right - rect.left,
-            (int)Math.Round(targetHeight * scale),
-            SET_WINDOW_POS_FLAGS.SWP_NOZORDER | SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
-        if (!ok) {
-            Log.Warning("SelfSizedHeight: SetWindowPos failed for {Height}DIP", targetHeight);
-            return;
+        finally {
+            _selfSizing = false;
         }
-
-        // Keep the WPF property in sync without another layout storm.
-        _appliedSelfSizedHeight = targetHeight;
-        Height = targetHeight;
-        Top = targetTop;
-        SelfSizedHeightChanged?.Invoke(targetHeight);
     }
 
     internal Rectangle GetPhysicalBounds() {
@@ -400,7 +457,20 @@ public sealed partial class NativeFlyoutWindow : Window {
 
                 break;
 
+            case WM_SETTINGCHANGE:
+            case WM_DISPLAYCHANGE:
+                // Either can move or resize the taskbar (WM_SETTINGCHANGE carries SPI_SETWORKAREA
+                // on a taskbar move; WM_DISPLAYCHANGE changes the monitor layout), so the cached
+                // tray work-area top is no longer trustworthy (decision 0023). Nulling is free;
+                // the next self-size step re-resolves it from TrayIcon.
+                _taskbarWorkTopPx = null;
+                break;
+
             case WM_DPICHANGED:
+                // The cached work-area top is in physical pixels and the DPI scale just changed;
+                // drop it so the next self-size step re-resolves the tray monitor (decision 0023).
+                _taskbarWorkTopPx = null;
+
                 // Adopt the OS-suggested rect (physical px) via the raw handle.
                 var sugRect = System.Runtime.InteropServices.Marshal.PtrToStructure<Win32Helpers.RECT>(lParam);
                 _ = PInvoke.SetWindowPos(

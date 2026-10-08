@@ -912,29 +912,33 @@ Shared production easing (Fluent Existing Elements / Point to Point):
 
 - **`cubic-bezier(0.55, 0.55, 0, 1)`**
 
+Every production animation uses this curve — the native window slide and the
+XAML state/opacity/chevron transitions alike (decision 0023).
+
 Do not introduce arbitrary timing values for production behavior.
 
-### v1 interactive structural policy (decision 0005, amended by 0012/0013)
+### v1 interactive structural policy (decision 0005, amended by 0012/0013/0021/0023)
 
 While the flyout is **visible**, the native HWND height follows the reported
-content height through **animated steps** (decision 0013): one animation per
-settled content change, 167 ms on the shared Fluent curve, latest target
-retargeting mid-flight, the tray-adjacent edge frozen for the duration. The
-WebView child is pinned to its final size once per animation — the window
-clips/reveals it — so Chromium performs no per-frame work (the measured
-0003/0005 failure cause). Per-frame child resize, FLIP coordination, and
-cross-layer height interpolation remain banned.
+content height through **instant steps** (decisions 0012/0021): one clamped
+window-size change per settled content change, the tray-adjacent edge frozen,
+the step deduplicated against the window's actual height. The height is never
+interpolated — a 0 ms step is the truth, and no animation may sit between a
+content change and the geometry that reports it. Per-frame HWND resize,
+per-frame child resize, FLIP coordination, and cross-layer height
+interpolation remain banned.
 
 The window presents at its best-known height and converges to content truth
-within one or two reports; growth (devices arriving, card expansion) animates
-immediately. Overflow beyond the 560 epx ceiling scrolls inside a stable scroll
-container. Motion while open is limited to 83 ms feedback and 167 ms
-state/opacity/chevron; layout height changes in the web layer remain immediate.
+within one or two reports. Overflow beyond the 560 epx ceiling scrolls inside a
+stable scroll container. Motion while open is limited to 83 ms feedback and
+167 ms state/opacity/chevron.
 
 Opening and closing animate along the tray axis (decision 0013): open slides
 out of the tray edge over 167 ms; close (light-dismiss, Esc, toggle) slides
-into the tray edge over 83 ms, then hides. OS reduced-motion (client-area
-animation preference) reduces every one of these to the instant behavior.
+into the tray edge over 83 ms, then hides. The slide is a **position-only**
+translation — the window's size is fixed for its duration, so the reveal never
+resizes the window per frame. OS reduced-motion (client-area animation
+preference) reduces every one of these to the instant behavior.
 
 ### Examples
 
@@ -943,7 +947,7 @@ animation preference) reduces every one of these to the instant behavior.
 - flyout close: 83 ms (native slide into tray — decision 0013)
 - flyout open: 167 ms (native slide out of tray — decision 0013)
 - status change: 167 ms
-- device insertion/removal: 167 ms (native height step animation — decision 0013)
+- device insertion/removal: instant (native height step — decisions 0012/0021)
 - pairing state change: 167 ms (web-only)
 - card expansion feedback: 167 ms chevron / detail opacity (layout immediate)
 
@@ -955,8 +959,10 @@ No:
 - idle pulsing
 - glowing loops
 - FLIP coordinating native window-size changes
-- native structural height interpolation that resizes the WebView child per
-  frame (decision 0013: animated steps pin the child to its final size once)
+- per-frame HWND resize, including animating the window's height while it is
+  visible (decisions 0012/0021: the height is an instant step)
+- interpolating the flyout window's size during the open/close slide — the
+  slide is a position-only translation (decision 0023)
 - the retired Pass B.1 structural curve `cubic-bezier(0.1, 0.9, 0.2, 1)`
 - structural duration 250 ms
 

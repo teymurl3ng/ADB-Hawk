@@ -755,8 +755,8 @@ Never notified: metadata refresh (battery, model, version), `AdbRestoring`, wire
 - Borderless `Form`: `FormBorderStyle.None`, `ShowInTaskbar = false`, `WS_EX_TOOLWINDOW` (no taskbar button, no Alt-Tab entry), `TopMost` only while pinned, never activated on hover.
 - **Backdrop (v1):** `DWMWA_USE_IMMERSIVE_DARK_MODE` per theme, `DWMWA_WINDOW_CORNER_PREFERENCE = DWMWCP_ROUNDSMALL` (matches the 8 px design radius). **v1 does not enable** `DWMWA_SYSTEMBACKDROP_TYPE = DWMSBT_TRANSIENTWINDOW` — always paint the intentional opaque surface (`DESIGN.md` §22 / decision 0004). Keep `WS_CAPTION` and collapse non-client area in `WM_NCCALCSIZE` (borderless look + DWM corners). Answer `WM_NCACTIVATE` with `TRUE` while pinned (no focus stealing). After custom-frame establishment (and after theme changes), call `SetWindowPos(..., SWP_FRAMECHANGED)` via `RecalcNonClientFrame` so the first visible frame already has a collapsed non-client area.
 - **v1 opacity contract:** `shell.transparencyEnabled` is always `false` in production. Both windows paint the solid opaque host surface (`#202329` / `#F3F4F6`), never `Colors.Transparent`. Forced-colors still maps through system roles. Live Desktop Acrylic is deferred architecture work — no `backdrop-filter`, screenshot blur, repaint timers, or DWM jiggle.
-- **Sizing (decision 0021, amending 0013/0012/0005):** width is always `376 effective px × dpiScale`. Height is self-sized: the shell measures its own content (`ShellSizing`, clamp [160, 560]) and steps the window height in one instant change per settled transition, with the tray-adjacent edge frozen and the physical x/width preserved. Equal heights are suppressed by comparing `ActualHeight` (external `SetWindowPos` moves never update the WPF `Height` property). The scroll region absorbs overflow past 560; an animated height step (DESIGN 919-922) is recorded as unimplemented. Monitor/DPI/shell lifecycle events re-place the window.
-- **Open/close reveal (decision 0013):** open slides out of the tray edge over 167 ms; every hide path (light-dismiss, Esc, tray toggle, power/session) slides into the tray edge over 83 ms, then hides. A show during a close cancels it via the `_showGeneration` guard. OS reduced-motion (`SPI_GETCLIENTAREAANIMATION`, read in `SystemTheme` and piped through `ShellAppearanceChangedEvent`) reduces all of it to 0012 instant steps.
+- **Sizing (decision 0021, amending 0013/0012/0005; DESIGN §24 reconciled by 0023):** width is always `376 effective px × dpiScale`. Height is self-sized: the shell measures its own content (`ShellSizing`, clamp [160, 560]) and steps the window height in one instant change per settled transition, with the tray-adjacent edge frozen and the physical x/width preserved. Equal heights are suppressed by comparing `ActualHeight` (external `SetWindowPos` moves never update the WPF `Height` property). The scroll region absorbs overflow past 560. While the open/close reveal is in flight the self-sizer stands down behind the `IsBoundsAnimating` gate — one writer owns the window rect at a time — and the step it skipped is re-checked when the slide completes. The tray monitor's work-area top is cached between steps and invalidated on `WM_DPICHANGED`, `WM_SETTINGCHANGE` and `WM_DISPLAYCHANGE`. Monitor/DPI/shell lifecycle events re-place the window.
+- **Open/close reveal (decision 0013; amended by 0023):** open slides out of the tray edge over 167 ms; every hide path (light-dismiss, Esc, tray toggle, power/session) slides into the tray edge over 83 ms, then hides. The slide is a **position-only** translation on the composition clock (`CompositionTickSource`): the window's size is fixed for the flight, frames identical to the last applied one are skipped, and a size mismatch between the endpoints is logged and forced to the target size. A show during a close cancels it via the `_showGeneration` guard. OS reduced-motion (`SPI_GETCLIENTAREAANIMATION`, read in `SystemTheme` and piped through `ShellAppearanceChangedEvent`) reduces all of it to 0012 instant steps.
 - **First show:** Normal interactive first launch (no `--startup`, no fixture, no headless/selftest) shows the flyout once the dispatcher is running; the window self-sizes from its first measured content step within the first second (verified in logs: `SelfSizedHeight: stepping 500 -> 251 DIP`). `--startup` stays tray-only. Fixture/headed harness may show for visual capture. Second-instance named-pipe `toggle` is unchanged.
 
 ### 9.3 Placement
@@ -827,6 +827,10 @@ interaction state.
 src/AdbView/NativeUi/
   NativeFlyoutWindow.xaml(.cs)   frame, WndProc port, backdrop, self-sizing, pin, drag, dismiss
   StatusBubbleWindow.xaml(.cs)   bubble lifecycle, non-activation, placement, transient expiry
+  CompositionTickSource.cs       the reveal's composition-clock ITickSource (decision 0023)
+  DispatcherTimerTickSource.cs   Render-priority fallback tick (decision 0023)
+  Motion/
+    BezierEase.cs                DESIGN §24 curve as an EasingFunctionBase, delegating to Host/Easing
   QrSvgRenderer.cs               QR pairing surface
   Shell/
     NativeShellViewModel.cs      binds the latest snapshot; pairing/pin/dismiss commands
@@ -895,9 +899,21 @@ roles (`Highlight`, `HighlightText`, `GrayText`, …) rather than a hard-coded c
 ### 10.4 Animation architecture
 
 - WPF storyboards only, on the four `Duration` tokens (`Motion.*` resources). No per-frame
-  loop, no animation library, no `CompositionTarget.Rendering` choreography.
+  loop, no animation library. The single sanctioned exception is the flyout's window-bounds
+  clock: `CompositionTickSource` drives the reveal from `CompositionTarget.Rendering`, attached
+  only while an animation is in flight and detached on Stop (decision 0023) — content itself
+  stays on the WPF timing system, and no other use of the Rendering hook is permitted.
+- One writer owns the window rect at a time: while the reveal is in flight the self-sizer stands
+  down (the `IsBoundsAnimating` gate), and the reveal itself is a position-only translation —
+  the window's size is fixed for its duration (decision 0023; DESIGN §24). Height changes are
+  instant self-sizing steps, never interpolated (§9.2, decisions 0012/0021).
+- Every production animation carries the shared frozen curve `cubic-bezier(0.55, 0.55, 0, 1)`
+  (DESIGN §24): the window animator through `Host/Easing`, the XAML storyboards through
+  `NativeUi/Motion/BezierEase`, which delegates to the same math so the two cannot drift. The
+  documented exception is the pairing spinner's busy loop (a deliberately linear 850 ms rotation;
+  decision 0023 records it as a separate, unfixed defect).
 - Only cheap properties animate: `Opacity` and `RenderTransform`. Layout (`Width`, `Height`,
-  `Margin`) never animates; height changes are instant self-sizing steps (§9.2, decision 0021).
+  `Margin`) never animates.
 - Card expansion: chevron rotation 167 ms + detail opacity 167 ms; the height itself steps
   instantly through self-sizing.
 - Device card entry: opacity + 4–8 px translate 167 ms; removal is instant (a hold would delay
@@ -907,10 +923,12 @@ roles (`Highlight`, `HighlightText`, `GrayText`, …) rather than a hard-coded c
 - Battery values change discretely; no counting animation (`DESIGN.md §27`).
 - Reduced motion: `SystemTheme.ReadClientAreaAnimation()` (SPI 0x1042) drives the
   `ShellMotionGate`; when off, `AppHost` swaps `Controls.xaml` for `ControlsReduced.xaml`
-  (identical chrome, zero durations). A structural test pins key parity between the two
-  dictionaries.
+  (identical chrome, instant setters, zero durations). A structural test pins key parity between
+  the two dictionaries and that the animated twin's animations all carry the easing function.
 - Storyboards inside sealed templates must freeze, so timeline references are `StaticResource`;
-  the dictionary swap is the live-replacement mechanism, not a resource override.
+  the dictionary swap is the live-replacement mechanism, not a resource override. `BezierEase`
+  is instantiated inline per animation rather than as a shared resource for the same reason
+  (a shared mutable Freezable across frozen storyboards cannot be frozen).
 
 ### 10.5 Accessibility
 
@@ -961,8 +979,8 @@ Failure / detection / response matrix. Every response is *owned* — no global "
 | 26 | State | Reducer backlog grows unexpectedly | Producer storm or reducer bug | Do not drop events; continue draining and emit a rate-limited backlog warning once a diagnostic pending-count threshold is exceeded | — | No loss of semantic events; investigate producer/reducer cause |
 | 27 | Discovery (fallback browser, decision 0008 follow-through) | Soft-state staleness: announcements stop or instances withdraw while the server is Up | mDNS TTL expiry / TTL-0 goodbyes (no pure event mechanism covers missed packets — R-05 sanction per `research/2026-10-01-dnssd-fallback-browser.md`) | Browser loop sweeps expired entries and re-issues query bursts at ≈80 % of the smallest outstanding TTL (floor 60 s); goodbye packets evict immediately; the ADB server stream stays authoritative and the fallback fills only its empty gap | single loop slice 200 ms; requery floor 60 s | Offers survive a broken server browse; stale instances disappear |
 | 28 | Pairing (QR, decision 0010) | Unscanned QR session lingers with a live single-use credential | 2-minute session window (design authority) | StateEngine timer command quietly clears the card; a new session regenerates secret + instance name | 2 min | No stale scannable credentials; quiet surface return |
-| 29 | Shell (flyout sizing, decision 0012; native self-sizing decision 0021) | Content height changes while visible (device arrival, card expansion, font reflow) | Shell `LayoutUpdated` after each snapshot bind (event-driven; no timers) | One instant step to the clamped content height when it differs from the applied height (native: ShellSizing, bottom edge frozen, [160, 560] DIP clamp); equal heights suppressed; overflow past 560 epx scrolls in the stable container | 0 ms step | Window always matches content; no animation, no oscillation |
-| 30 | Shell (presentation animation, decision 0013; XAML motion decision 0021) | Same triggers as row 29, plus open/close, hover/press, card expansion, pairing phases | FlyoutRevealAnimator UI-thread tick (~16 ms; decision-sanctioned animation clock) + WPF token animations (`Motion.Feedback/State/Structural` in Themes/Controls.xaml) | Window slides 167/83 ms (unchanged); XAML motion animates opacity and RenderTransform ONLY (hover/press 83 ms; chevron + details fade 167 ms; badge/phase/bubble fades); reduced motion zeroes the tokens at window level via the ShellMotionGate (live override, no per-site branches) | 83/167 ms tokens | Motion explains change without delaying truth; layout never animates |
+| 29 | Shell (flyout sizing, decision 0012; native self-sizing decisions 0021/0023) | Content height changes while visible (device arrival, card expansion, font reflow) | Shell `LayoutUpdated` after each snapshot bind (event-driven; no timers) | One instant step to the clamped content height when it differs from the applied height (native: ShellSizing, bottom edge frozen, [160, 560] DIP clamp); equal heights suppressed; the step is suppressed while the reveal owns the window rect and re-checked on its completion; the tray work-area cache invalidates on DPI/setting/display change; overflow past 560 epx scrolls in the stable container | 0 ms step | Window always matches content; no animation, no oscillation, one writer per rect |
+| 30 | Shell (presentation animation, decisions 0013/0023; XAML motion decisions 0021/0023) | Same triggers as row 29, plus open/close, hover/press, card expansion, pairing phases | `FlyoutRevealAnimator` on the composition clock (`CompositionTickSource`, attached only in flight; `DispatcherTimerTickSource` at Render priority is the fallback) + WPF token animations (`Motion.Feedback/State/Structural` in Themes/Controls.xaml) | The reveal is a position-only slide at 167/83 ms on the frozen curve; identical frames are skipped; XAML motion animates opacity and RenderTransform ONLY, every animation carrying `BezierEase` (hover/press 83 ms; chevron + details fade 167 ms; badge/phase/bubble fades; the pairing spinner's linear loop is the documented exception); reduced motion zeroes the tokens via the ShellMotionGate dictionary swap (live override, no per-site branches) | 83/167 ms tokens | Motion explains change without delaying truth; layout never animates; no per-frame HWND resize |
 
 | 31 | Shell (status bubble, decision 0020) | A transient state (drop / offline / special mode) would linger forever as if current | The transient's own 60 s window, then the bubble hides (no periodic polling; a one-shot, generation-guarded expiry retargeted by the next state) | 60 s | Ambient truth without a stale badge; R-05 sanction per `research/2026-10-03-status-bubble-native-approaches.md` |
 
@@ -1090,7 +1108,7 @@ ADBView/
 │   │   ├── TrayIcon.cs
 │   │   ├── FlyoutPlacement.cs       # tray rect, taskbar edge, work area, DPI math
 │   │   ├── FlyoutInteractionPolicy.cs / ShellSizing.cs / ShellMotionGate.cs
-│   │   ├── FlyoutRevealAnimator.cs  # open/close slide (decision 0013)
+│   │   ├── FlyoutRevealAnimator.cs  # position-only open/close slide (decisions 0013/0023)
 │   │   ├── PairingSession.cs / QrPairingSession.cs
 │   │   ├── DeviceMetadataLifecycle.cs / DeviceTrackerLifecycle.cs / MdnsTrackerLifecycle.cs
 │   │   ├── BalloonNotificationSink.cs / ITrayBalloonHost.cs

@@ -205,6 +205,73 @@ public sealed class FlyoutRevealAnimatorTests {
         Assert.Equal(1, growthCompletions);
         Assert.False(animator.IsAnimating);
     }
+
+    // Decision 0023 / DESIGN §24: the reveal is a position-only translation — the window's size
+    // is fixed for the flight, so the slide never resizes the shadowed HWND per frame.
+
+    [Fact]
+    public void SlideIsPositionOnly_SizeNeverChangesMidFlight() {
+        using var ticks = new FakeTickSource();
+        var clock = new FakeClock();
+        var applied = new List<Rectangle>();
+        var animator = new FlyoutRevealAnimator(ticks, applied.Add, clock.Read);
+
+        animator.AnimateSlide(Rect(100, 600, 376, 392), Rect(100, 200, 376, 392), TimeSpan.FromMilliseconds(167));
+
+        for (int i = 0; i < 12 && animator.IsAnimating; i++) {
+            clock.Advance(20);
+            ticks.Tick();
+        }
+
+        Assert.NotEmpty(applied);
+        Assert.All(applied, frame => {
+            Assert.Equal(376, frame.Width);
+            Assert.Equal(392, frame.Height);
+        });
+        Assert.Equal(Rect(100, 200, 376, 392), applied[^1]);
+    }
+
+    [Fact]
+    public void SlideEndpointsDifferingInSizeAdoptTheTargetSize() {
+        // A stale origin (e.g. read after a layout pass stepped the height) must not turn the
+        // slide into a resize; the target size wins from the first applied frame.
+        using var ticks = new FakeTickSource();
+        var clock = new FakeClock();
+        var applied = new List<Rectangle>();
+        var animator = new FlyoutRevealAnimator(ticks, applied.Add, clock.Read);
+
+        animator.AnimateSlide(Rect(0, 600, 300, 300), Rect(0, 200, 376, 392), TimeSpan.FromMilliseconds(167));
+
+        clock.Advance(40);
+        ticks.Tick();
+
+        Assert.NotEmpty(applied);
+        Assert.All(applied, frame => {
+            Assert.Equal(376, frame.Width);
+            Assert.Equal(392, frame.Height);
+        });
+    }
+
+    [Fact]
+    public void IdenticalFramesAreNotReapplied() {
+        // The frame callback can fire more than once per composed frame; a rect identical to the
+        // one the window is already at is skipped rather than re-issuing SetWindowPos. That
+        // includes the start itself: the caller has already placed the window on `from`, so the
+        // progress-0 frame is a no-op too.
+        using var ticks = new FakeTickSource();
+        var clock = new FakeClock();
+        var applied = new List<Rectangle>();
+        var animator = new FlyoutRevealAnimator(ticks, applied.Add, clock.Read);
+
+        animator.AnimateBounds(Rect(0, 100, 376, 400), Rect(0, 40, 376, 460), TimeSpan.FromMilliseconds(167));
+
+        ticks.Tick(); // same wall-clock instant → same frame → still nothing applied
+        Assert.Empty(applied);
+
+        clock.Advance(167);
+        ticks.Tick(); // completion applies the target exactly once
+        Assert.Equal(Rect(0, 40, 376, 460), Assert.Single(applied));
+    }
 }
 
 public sealed class EasingTests {

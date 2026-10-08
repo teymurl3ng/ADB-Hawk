@@ -511,3 +511,20 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Open-slide origin/final heights use the measured content height (no post-open seed snap) | **LIVE PASS** | Before: origin/target carried the 500 DIP seed and self-sizing snapped 500→251 after the slide; now both are 251 DIP from the first layout pass |
 | Metadata probes never run on the UI thread | **AUTOMATED PASS** | `DeviceMetadataLifecycle` probes via `Task.Run` (existing tests); the 2 s `marketname` stall seen in the log is a device-side shell latency on a worker thread, correctly off-screen |
 | Owner re-check: open feels instant, no stray window at the left edge | **NOT EXERCISED** | Owner |
+
+## Animation jitter fixes: single-writer bounds, composition-clock slide, frozen curve in XAML (2026-10-08, decision 0023)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| The reveal is a position-only translation: width/height identical in every applied frame | **AUTOMATED PASS** | `SlideIsPositionOnly_SizeNeverChangesMidFlight`, `SlideEndpointsDifferingInSizeAdoptTheTargetSize` (stale-origin size mismatch is forced to the target size and logged) |
+| A frame identical to the last applied one is not re-issued (the composition callback can fire more than once per composed frame) | **AUTOMATED PASS** | `IdenticalFramesAreNotReapplied` — includes the start itself: the progress-0 frame is skipped because the caller has already placed the window on `from` |
+| Every XAML storyboard animation carries the frozen curve `cubic-bezier(0.55,0.55,0,1)` | **AUTOMATED PASS** | `MotionCurveTests` — Controls.xaml and DeviceCardView.xaml: every `DoubleAnimation` declares an easing function; PairingCardView.xaml allows exactly one (the documented spinner); no `CubicEase`/`QuadraticEase`/`KeySpline` anywhere |
+| XAML curve equals the code animator curve | **AUTOMATED PASS** | `BezierEaseTests` — `BezierEase.Ease(t)` ≡ `Easing.FluentPointToPoint(t)` over a 41-point grid (the composed `EasingMode.EaseIn` path, not just `EaseInCore`) |
+| Reduced-motion twin: key parity, no animations, instant setters for hover/press | **AUTOMATED PASS** | `ReducedMotionDictionaryTests` (3) — the empty triggers were replaced with real instant setters (an empty trigger is no behaviour, not instant behaviour) |
+| Self-sizing does not step while the reveal owns the window rect | **LIVE PASS** | Launch run 2026-10-08: the self-size step (500→251 DIP) lands *before* `bounds animation started`, and no `SelfSizedHeight: stepping` line appears between any slide's `started` and `completed` (three slides observed) |
+| Open/close slides and expand/collapse read smooth at 100 % and 200 % scaling | **NOT EXERCISED** | Owner's eyes; the pre-fix complaint ("jittery slide, jittery details") is the acceptance |
+| No black flash at the exposed strip during the slide or a height step | **NOT EXERCISED** | Background now seeds from the themed opaque brush (was `Brushes.Black`); needs the owner's eyes on a slow frame |
+| Tick-quality evidence: the flight completes on time with frame accounting in the log | **LIVE PASS** | Same machine, ~3 min apart — OLD binary: 167 ms open flight took **2035 ms** wall (started 14:49:16.298, completed 18.333). NEW binary: open **183 ms** (8 frames), close **102 ms** for the 83 ms flight (4 frames), toggle-reopen **180 ms** (7 frames); worst tick gap 31–47 ms at 125 % DPI. Endpoints differ in X only (470×314 constant) — position-only holds live |
+| The pairing spinner still runs linear 850 ms and ignores reduced motion | **NOT FIXED (documented)** | Decision 0023 non-change: a separate defect needing a §24 decision (fifth token or view-model flag) |

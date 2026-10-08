@@ -34,9 +34,15 @@
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
+                        <!-- Decision 0023: an empty trigger is NO behaviour, not the "instant
+                             behaviour" DESIGN 24 specifies for reduced motion. The animated twin
+                             fades these layers over Motion.Feedback; here the same visual state
+                             is applied outright. -->
                         <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="HoverLayer" Property="Opacity" Value="1"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="PressedLayer" Property="Opacity" Value="1"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.4"/>
