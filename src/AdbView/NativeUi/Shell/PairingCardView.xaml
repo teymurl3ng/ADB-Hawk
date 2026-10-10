@@ -137,18 +137,29 @@
                         <Ellipse.RenderTransform>
                             <RotateTransform x:Name="SpinnerRotation" Angle="0"/>
                         </Ellipse.RenderTransform>
-                        <Ellipse.Triggers>
-                            <EventTrigger RoutedEvent="Loaded">
-                                <BeginStoryboard>
-                                    <Storyboard>
-                                        <!-- Web parity: animate-spin-quiet, 0.85 s linear loop
-                                             (a busy indicator, not an idle loop). -->
-                                        <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
-                                                         From="0" To="360" Duration="0:0:0.85" RepeatBehavior="Forever"/>
-                                    </Storyboard>
-                                </BeginStoryboard>
-                            </EventTrigger>
-                        </Ellipse.Triggers>
+                        <Ellipse.Style>
+                            <Style TargetType="Ellipse">
+                                <Style.Triggers>
+                                    <!-- Decision 0024: the busy loop runs only while motion is enabled.
+                                         The loop's 850 ms period is not a swappable Motion.* token,
+                                         so the reduced-motion dictionary swap cannot reach it; the
+                                         gate arrives through the view model. Linear constant-velocity
+                                         rotation is deliberate (a busy indicator, not an idle loop). -->
+                                    <DataTrigger Binding="{Binding SpinnerEnabled}" Value="True">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <!-- Web parity: animate-spin-quiet, 0.85 s linear loop
+                                                         (a busy indicator, not an idle loop). -->
+                                                    <DoubleAnimation Storyboard.TargetProperty="RenderTransform.Angle"
+                                                                     From="0" To="360" Duration="0:0:0.85" RepeatBehavior="Forever"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Ellipse.Style>
                     </Ellipse>
                     <TextBlock Text="{Binding HeaderText}" FontSize="14" FontWeight="SemiBold"
                                Foreground="{DynamicResource Win.TextPrimary}" HorizontalAlignment="Center" Margin="0,0,0,4"/>

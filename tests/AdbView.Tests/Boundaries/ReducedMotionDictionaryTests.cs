@@ -54,4 +54,24 @@ public sealed class ReducedMotionDictionaryTests {
         Assert.Contains("<Duration x:Key=\"Motion.State\">0:0:0</Duration>", reduced, StringComparison.Ordinal);
         Assert.Contains("<Duration x:Key=\"Motion.Structural\">0:0:0</Duration>", reduced, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void RowCardOverlayStartsHiddenInBothVariants() {
+        // Decision 0024: the RowCardButton overlay must start at Opacity 0 in BOTH twins — the
+        // animated twin fades it in on first hover (an initial 1 made the first hover pop, since
+        // the enter animation ran 1→1), and the reduced twin's hover setter raises it to 1
+        // instantly (with no animations, a starting 0 would otherwise hide the fill forever).
+        foreach (var file in new[] { "Controls.xaml", "ControlsReduced.xaml" }) {
+            var xaml = ReadTheme(file);
+            var overlay = Regex.Match(xaml, "<Border x:Name=\"Overlay\"[^>]*>");
+            Assert.True(overlay.Success, file + " has no RowCardButton Overlay");
+            Assert.Contains("Opacity=\"0\"", overlay.Value, StringComparison.Ordinal);
+        }
+
+        var reduced = ReadTheme("ControlsReduced.xaml");
+        Assert.Contains(
+            "TargetName=\"Overlay\" Property=\"Opacity\" Value=\"1\"",
+            reduced,
+            StringComparison.Ordinal);
+    }
 }

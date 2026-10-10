@@ -527,4 +527,22 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Open/close slides and expand/collapse read smooth at 100 % and 200 % scaling | **NOT EXERCISED** | Owner's eyes; the pre-fix complaint ("jittery slide, jittery details") is the acceptance |
 | No black flash at the exposed strip during the slide or a height step | **NOT EXERCISED** | Background now seeds from the themed opaque brush (was `Brushes.Black`); needs the owner's eyes on a slow frame |
 | Tick-quality evidence: the flight completes on time with frame accounting in the log | **LIVE PASS** | Same machine, ~3 min apart — OLD binary: 167 ms open flight took **2035 ms** wall (started 14:49:16.298, completed 18.333). NEW binary: open **183 ms** (8 frames), close **102 ms** for the 83 ms flight (4 frames), toggle-reopen **180 ms** (7 frames); worst tick gap 31–47 ms at 125 % DPI. Endpoints differ in X only (470×314 constant) — position-only holds live |
-| The pairing spinner still runs linear 850 ms and ignores reduced motion | **NOT FIXED (documented)** | Decision 0023 non-change: a separate defect needing a §24 decision (fifth token or view-model flag) |
+| The pairing spinner still runs linear 850 ms and ignores reduced motion | **FIXED (decision 0024)** | Now gated by the snapshot's reduced-motion flag via the view model (`SpinnerEnabled`); the 850 ms period stays the documented non-token exception — see the 2026-10-10 section below |
+
+## Animation follow-up: reveal retargeting, position-before-show, appear-only fades, spinner gate (2026-10-10, decision 0024)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Open-reveal plan: visible window retargets from current bounds; hidden window reveals from the off-tray origin; reduced motion places at final with no slide | **AUTOMATED PASS** | `OpenRevealPlanTests` (4) — the visible/hidden × animated/reduced matrix |
+| Rapid toggle (open → close → open within the 83 ms close slide) shows no teleport off-screen | **NOT EXERCISED** | Owner: toggle fast from the tray; the window must slide back out from where it was, never vanish behind the tray first |
+| Display/DPI change while the flyout is open re-places it without vanishing | **NOT EXERCISED** | Owner: change resolution/scale with the flyout open; retarget slide or instant snap, no disappear/reappear |
+| First show never appears at the OS cascade position (pre-seeded DIP geometry) | **NOT EXERCISED** | Owner: fresh launch; the open slide starts at the tray edge, not the top-left |
+| Bubble fade is appear-only: a colour/detail change while visible does not blink | **AUTOMATED PASS** | `StatusBubblePolicyTests` (3) — `ShouldFadeIn(wasVisible, animationsEnabled)`; the window branch is thin over it |
+| Bubble fade carries the frozen curve and honours the reduced-motion gate | **NOT EXERCISED** | `BezierEase` on the code-behind `DoubleAnimation`; the gate reaches the bubble as `AnimationsEnabled` — needs the OS setting toggled both ways with the owner's eyes |
+| Pairing spinner is static under OS reduced motion; runs (linear 850 ms) otherwise | **AUTOMATED PASS** | `NativeShellViewModelTests` (4): gate off at snapshot, offer card, flag follows the gate across snapshots on the same card instance |
+| Pairing spinner static under reduced motion — live | **NOT EXERCISED** | Owner: start a pairing with the OS animation setting OFF; the dashed ring must not rotate |
+| `RowCardButton` hover overlay starts at Opacity 0 in both dictionary twins; reduced twin raises it instantly | **AUTOMATED PASS** | `ReducedMotionDictionaryTests.RowCardOverlayStartsHiddenInBothVariants` |
+| First hover on the QR entry row fades in (no pop) | **NOT EXERCISED** | Owner visual check; subsequent hovers already faded |
+| Reopen after a reduced-motion hide shows no flash at the previous on-screen position | **NOT EXERCISED** | Owner: OS animations OFF, open, close, reopen — the window must appear at the tray, not at its old spot first |

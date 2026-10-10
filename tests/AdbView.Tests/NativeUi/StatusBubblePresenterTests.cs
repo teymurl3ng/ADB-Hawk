@@ -234,3 +234,27 @@ public sealed class StatusBubblePresenterTests {
         Assert.Single(changes);
     }
 }
+
+/// <summary>
+/// Decision 0024: the bubble's fade is an appear transition. A state change while the bubble is
+/// already visible (colour or detail text) updates in place — re-fading from opacity 0 would
+/// blink the bubble off and on for every status-text change. Under reduced motion there is no
+/// fade at all.
+/// </summary>
+public sealed class StatusBubblePolicyTests {
+    [Fact]
+    public void HiddenBubbleFadesInOnAppear() {
+        Assert.True(StatusBubblePolicy.ShouldFadeIn(wasVisible: false, animationsEnabled: true));
+    }
+
+    [Fact]
+    public void VisibleBubbleDoesNotRefadeOnStateChange() {
+        Assert.False(StatusBubblePolicy.ShouldFadeIn(wasVisible: true, animationsEnabled: true));
+    }
+
+    [Fact]
+    public void ReducedMotionNeverFades() {
+        Assert.False(StatusBubblePolicy.ShouldFadeIn(wasVisible: false, animationsEnabled: false));
+        Assert.False(StatusBubblePolicy.ShouldFadeIn(wasVisible: true, animationsEnabled: false));
+    }
+}

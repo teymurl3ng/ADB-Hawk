@@ -43,6 +43,17 @@ public sealed partial class StatusBubbleWindow : Window {
     private HwndSource? _source;
     private ThemeKind _theme = ThemeKind.Dark;
     private BubbleState? _state;
+    private bool _animationsEnabled = true;
+
+    /// <summary>
+    /// Decision 0024: the reduced-motion gate, synced by AppHost with the shell's. The appear fade
+    /// runs only while animations are enabled; the gate previously reached only the flyout
+    /// window's nested token dictionary, so the bubble kept animating under OS reduced motion.
+    /// </summary>
+    internal bool AnimationsEnabled {
+        get => _animationsEnabled;
+        set => _animationsEnabled = value;
+    }
 
     public StatusBubbleWindow() {
         // Required: without this the named elements (Capsule) are null and Apply would crash.
@@ -136,6 +147,7 @@ public sealed partial class StatusBubbleWindow : Window {
 
         _detail = state.Detail;
         Dot.Background = ResolveBrush(state.Color);
+        bool wasVisible = IsVisible;
         if (_hovered) {
             Detail.Text = _detail;
             Detail.Visibility = Visibility.Visible;
@@ -146,14 +158,26 @@ public sealed partial class StatusBubbleWindow : Window {
 
         // Decision 0021: appear fade (Bare Minimum 83 ms per Motion in Windows) on the CONTENT -
         // a window-level fade needs the layered path (banned here), content opacity is free.
-        Shell.Opacity = 0;
-        Shell.BeginAnimation(
-            System.Windows.UIElement.OpacityProperty,
-            new System.Windows.Media.Animation.DoubleAnimation {
-                From = 0,
-                To = 1,
-                Duration = (System.Windows.Duration)Application.Current.Resources["Motion.Feedback"],
-            });
+        // Decision 0024: the fade is an APPEAR transition only. A state change while the bubble
+        // is already visible updates colour/detail in place; resetting opacity to 0 re-faded the
+        // bubble off and on for every status-text change. The fade carries the frozen shared
+        // curve (DESIGN §24) and honours the reduced-motion gate.
+        if (StatusBubblePolicy.ShouldFadeIn(wasVisible, _animationsEnabled)) {
+            Shell.Opacity = 0;
+            Shell.BeginAnimation(
+                System.Windows.UIElement.OpacityProperty,
+                new System.Windows.Media.Animation.DoubleAnimation {
+                    From = 0,
+                    To = 1,
+                    Duration = (System.Windows.Duration)Application.Current.Resources["Motion.Feedback"],
+                    EasingFunction = new Motion.BezierEase(),
+                });
+        }
+        else {
+            // Drop any in-flight fade (e.g. the gate toggled mid-fade) and show the content whole.
+            Shell.BeginAnimation(System.Windows.UIElement.OpacityProperty, null);
+            Shell.Opacity = 1;
+        }
     }
 
     private static SolidColorBrush ResolveBrush(BubbleColor color) {

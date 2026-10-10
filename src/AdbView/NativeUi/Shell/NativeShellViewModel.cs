@@ -178,14 +178,24 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>Applies an authoritative snapshot. Must be called on the shell Dispatcher.</summary>
     public void ApplySnapshot(AppSnapshot snapshot) {
+        // Decision 0024: the reduced-motion flag is snapshot-derived presentation state, like pin.
+        // The pairing spinner's busy loop is gated on it (the loop's 850 ms period is not a
+        // swappable Motion.* token, so the dictionary swap cannot reach it).
+        _animationsEnabled = !snapshot.Shell.ReducedMotion;
         // Pin state is snapshot-derived like everything else: user clicks post a SetPinnedEvent,
         // and this reflection is what updates the icon (the reducer is the single authority).
         ApplyPinned(snapshot.Shell.Pinned);
         ApplyDevices(snapshot.Devices, snapshot.GeneratedAt);
         ApplyPairing(snapshot);
+        if (PairingCard is not null) {
+            PairingCard.SetSpinnerEnabled(_animationsEnabled);
+        }
+
         ApplyPairingQr(snapshot.PairingQr);
         ApplyDiscoveryHealth(snapshot.DiscoveryHealth);
     }
+
+    private bool _animationsEnabled = true;
 
     private void ApplyPairing(AppSnapshot snapshot) {
         var op = snapshot.Pairing;
@@ -209,7 +219,7 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged, IDisposable
                     || PairingCard.OfferId != offer.Id
                     || PairingCard.OfferName != offer.DisplayName) {
                     PairingCard = new PairingCardViewModel(
-                        offer.Id, offer.DisplayName, PairingCardState.Offer, offer.Detail, RaisePairingAction);
+                        offer.Id, offer.DisplayName, PairingCardState.Offer, offer.Detail, _animationsEnabled, RaisePairingAction);
                 }
                 else {
                     PairingCard.Update(PairingCardState.Offer, offer.Detail);
@@ -238,7 +248,7 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged, IDisposable
         // Web parity: the operation's display name is authoritative (adapters.ts uses
         // snapshot.pairing.displayName), not an unrelated offer row.
         if (PairingCard is null) {
-            PairingCard = new PairingCardViewModel(op.OfferId, op.DisplayName, state, op.Detail, RaisePairingAction);
+            PairingCard = new PairingCardViewModel(op.OfferId, op.DisplayName, state, op.Detail, _animationsEnabled, RaisePairingAction);
             return;
         }
 

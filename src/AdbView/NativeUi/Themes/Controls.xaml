@@ -151,8 +151,11 @@
                             BorderBrush="{DynamicResource Win.CardBorder}"
                             BorderThickness="1">
                         <Grid>
+                            <!-- Decision 0024: the overlay starts at Opacity 0 like the Button
+                                 template's hover/press layers — without it the first hover's
+                                 enter animation ran 1→1 (a no-op) and the fill popped in. -->
                             <Border x:Name="Overlay" CornerRadius="8" Background="Transparent"
-                                    IsHitTestVisible="False"/>
+                                    Opacity="0" IsHitTestVisible="False"/>
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                         </Grid>
                     </Border>

@@ -29,12 +29,13 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public PairingCardViewModel(string offerId, string offerName, PairingCardState state, string? detail, Action<string, string, string?> raiseAction) {
+    public PairingCardViewModel(string offerId, string offerName, PairingCardState state, string? detail, bool spinnerEnabled, Action<string, string, string?> raiseAction) {
         _offerId = offerId;
         _offerName = offerName;
         _raiseAction = raiseAction;
         _state = state;
         _detail = detail;
+        SpinnerEnabled = spinnerEnabled;
         // QR sessions mint their own instance name (QrPairingRequest.InstancePrefix) and submit
         // the per-session secret themselves, so the user never types a code: those operations
         // must not present the typed-code affordances (decision 0017). Detected by prefix
@@ -71,6 +72,23 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
 
     /// <summary>True for an operation started by scanning this app's QR code.</summary>
     public bool IsQrOriginated { get; }
+
+    /// <summary>
+    /// Decision 0024: whether the pairing busy-loop spinner may run. Follows the snapshot's
+    /// reduced-motion flag — the loop is a hardcoded 850 ms period outside the swappable
+    /// Motion.* tokens, so the dictionary swap cannot reach it; the view-model flag can.
+    /// </summary>
+    public bool SpinnerEnabled { get; private set; }
+
+    /// <summary>Applies the reduced-motion gate; a no-op when unchanged.</summary>
+    public void SetSpinnerEnabled(bool enabled) {
+        if (SpinnerEnabled == enabled) {
+            return;
+        }
+
+        SpinnerEnabled = enabled;
+        OnPropertyChanged();
+    }
 
     /// <summary>
     /// The single action button the card renders. One button (not two overlapping ones) whose

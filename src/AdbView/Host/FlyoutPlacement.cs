@@ -104,5 +104,25 @@ internal static class FlyoutPlacement {
 
         return GetDefaultTrayAnchor(monitorWorkArea, monitorBounds, edge, dpiScale);
     }
+
+    /// <summary>
+    /// Decision 0024: the open reveal's placement plan. A window that is already visible (a re-open
+    /// during a close slide, or a re-place after a display change) must never be snapped to the
+    /// off-tray origin — that teleports it off-screen and reads as disappear/reappear. It retargets
+    /// from its current bounds (R-06 / DESIGN §26), exactly like the close path already did. A
+    /// hidden window reveals from the off-tray origin. Under reduced motion there is no slide: the
+    /// placement is the final bounds.
+    /// </summary>
+    internal readonly record struct OpenRevealPlan(Rectangle Placement, bool Slide) {
+        internal static OpenRevealPlan Resolve(
+            bool windowVisible,
+            bool reducedMotion,
+            Rectangle currentBounds,
+            Rectangle finalBounds,
+            Rectangle offscreenOrigin) =>
+            windowVisible
+                ? new OpenRevealPlan(reducedMotion ? finalBounds : currentBounds, Slide: !reducedMotion)
+                : new OpenRevealPlan(reducedMotion ? finalBounds : offscreenOrigin, Slide: !reducedMotion);
+    }
 }
 

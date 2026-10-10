@@ -118,14 +118,17 @@
                             BorderBrush="{DynamicResource Win.CardBorder}"
                             BorderThickness="1">
                         <Grid>
+                            <!-- Decision 0024: starts at Opacity 0 exactly like the animated twin;
+                                 the hover trigger raises it instantly (no animations here). -->
                             <Border x:Name="Overlay" CornerRadius="8" Background="Transparent"
-                                    IsHitTestVisible="False"/>
+                                    Opacity="0" IsHitTestVisible="False"/>
                             <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
                         </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Overlay" Property="Background" Value="{DynamicResource Win.BtnHover}"/>
+                            <Setter TargetName="Overlay" Property="Opacity" Value="1"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Overlay" Property="Background" Value="{DynamicResource Win.CardHover}"/>

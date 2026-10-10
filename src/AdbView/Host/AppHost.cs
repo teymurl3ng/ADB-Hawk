@@ -611,8 +611,65 @@ internal sealed class AppHost : IDisposable {
 
         _presenter?.Cancel();
         bool reducedMotion = !_animationsEnabled;
+        // Decision 0024: a window that is already visible (a re-open during a close slide, or a
+        // re-place after a display change) must NOT be snapped to the off-tray origin — that
+        // teleports it off-screen and reads as disappear/reappear. It retargets from where it is
+        // (R-06 / DESIGN §26), exactly like the close path already did.
+        bool alreadyVisible = window.IsVisible;
         window.TopMost = window.IsPinned;
-        window.Show();
+
+        if (!alreadyVisible && window.Handle != IntPtr.Zero) {
+            // Reopen: the handle persists across Hide(), so the reveal origin is applied BEFORE
+            // Show() — ShowWindow displays a window in its current size and position, so the
+            // flyout never becomes visible at its previous on-screen position (the flash the
+            // Show-then-place order produced).
+            var preBounds = FlyoutPlacement.CalculatePlacement(
+                FlyoutPlacement.ResolveAnchor(
+                    placement.Rect,
+                    monitor.WorkingArea,
+                    monitor.Bounds,
+                    placement.Edge,
+                    window.DpiScale),
+                placement.Edge,
+                monitor.WorkingArea,
+                window.DpiScale,
+                new Size(376, _currentEffectiveHeight));
+            window.SetPhysicalBounds(reducedMotion
+                ? preBounds
+                : SlideTarget(preBounds, placement.Edge, monitor.WorkingArea));
+            window.Show();
+        }
+        else {
+            if (!alreadyVisible) {
+                // First-ever show: the handle does not exist until Show() creates it, so the
+                // window cannot be positioned while hidden. Pre-seed the logical DIP geometry
+                // at the reveal origin — WindowStartupLocation.Manual positions the window from
+                // Left/Top when first shown — so the source is not created at the OS cascade
+                // position (observed live pre-fix: an open slide across the whole screen from the
+                // left edge).
+                var seedBounds = FlyoutPlacement.CalculatePlacement(
+                    FlyoutPlacement.ResolveAnchor(
+                        placement.Rect,
+                        monitor.WorkingArea,
+                        monitor.Bounds,
+                        placement.Edge,
+                        window.DpiScale),
+                    placement.Edge,
+                    monitor.WorkingArea,
+                    window.DpiScale,
+                    new Size(376, _currentEffectiveHeight));
+                var seedOrigin = reducedMotion
+                    ? seedBounds
+                    : SlideTarget(seedBounds, placement.Edge, monitor.WorkingArea);
+                double seedScale = window.DpiScale;
+                window.Left = seedOrigin.X / seedScale;
+                window.Top = seedOrigin.Y / seedScale;
+                window.Width = seedOrigin.Width / seedScale;
+                window.Height = seedOrigin.Height / seedScale;
+            }
+
+            window.Show();
+        }
 
         // Placement happens AFTER Show, never before: on the first show the handle does not
         // exist until Show() runs, so a pre-Show SetWindowPos silently no-ops and WPF applies
@@ -631,9 +688,13 @@ internal sealed class AppHost : IDisposable {
             monitor.WorkingArea,
             window.DpiScale,
             new Size(376, _currentEffectiveHeight));
-        window.SetPhysicalBounds(reducedMotion
-            ? physicalBounds
-            : SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea));
+        var plan = FlyoutPlacement.OpenRevealPlan.Resolve(
+            alreadyVisible,
+            reducedMotion,
+            window.GetPhysicalBounds(),
+            physicalBounds,
+            SlideTarget(physicalBounds, placement.Edge, monitor.WorkingArea));
+        window.SetPhysicalBounds(plan.Placement);
 
         if (!window.IsPinned) {
             Windows.Win32.PInvoke.SetForegroundWindow(new Windows.Win32.Foundation.HWND(window.Handle));
@@ -641,13 +702,10 @@ internal sealed class AppHost : IDisposable {
 
         _isVisible = window.ShellVisible;
 
-        if (reducedMotion) {
-            _suppressLightDismiss = false;
-        }
-
-        if (!reducedMotion) {
+        if (plan.Slide) {
             // Position-only reveal (decision 0023 / DESIGN §24): both endpoints are the same size,
-            // so the slide translates the window without resizing it per frame.
+            // so the slide translates the window without resizing it per frame. When the window was
+            // already visible the slide starts from where it is (decision 0024 retarget).
             _presenter?.AnimateSlide(
                 window.GetPhysicalBounds(),
                 physicalBounds,
@@ -666,6 +724,7 @@ internal sealed class AppHost : IDisposable {
                 });
         }
         else {
+            _suppressLightDismiss = false;
             _lightDismissArmed = true;
         }
 
@@ -964,6 +1023,7 @@ internal sealed class AppHost : IDisposable {
                 static (span, ct) => Task.Delay(span, ct));
             _statusBubble = new NativeUi.StatusBubbleWindow();
             _statusBubble.ApplyTheme(_lastAppliedTheme);
+            _statusBubble.AnimationsEnabled = _animationsEnabled;
             // Clicking the bubble opens the flyout — the same path as the tray's "Open ADB View".
             _statusBubble.OpenRequested += ShowFlyoutOnly;
             _statusBubblePresenter.Changed += OnStatusBubbleChanged;
@@ -1032,6 +1092,10 @@ internal sealed class AppHost : IDisposable {
             }
 
             window.ApplyTheme(_lastAppliedTheme);
+            // Decision 0024: the reduced-motion gate reaches the bubble as a flag — the token
+            // dictionary swap is scoped to the flyout window, so the app-level Motion.Feedback
+            // token the bubble's fade reads is never zeroed.
+            window.AnimationsEnabled = _animationsEnabled;
             AnchorStatusBubble(window);
             window.Apply(state);
         }

@@ -61,4 +61,14 @@ internal static class StatusBubblePolicy {
         BubbleColor.Red => "Win.Red",
         _ => "Win.BorderSubtle",
     };
+
+    /// <summary>
+    /// Decision 0021 records the bubble's fade as "content fade-in 83 ms on appear", and decision
+    /// 0024 makes that literal: the fade is an APPEAR transition. A state change while the bubble
+    /// is already visible (colour or detail text) updates in place — resetting opacity to 0 and
+    /// re-fading would blink the bubble off and on for every status-text change. Under reduced
+    /// motion there is no fade at all.
+    /// </summary>
+    public static bool ShouldFadeIn(bool wasVisible, bool animationsEnabled) =>
+        animationsEnabled && !wasVisible;
 }

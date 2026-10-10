@@ -282,5 +282,69 @@ public class FlyoutPlacementTests {
     }
 }
 
+/// <summary>
+/// Decision 0024: the open reveal's placement plan. A visible window (a re-open during a close
+/// slide, or a re-place after a display change) retargets from its current bounds — snapping it
+/// to the off-tray origin would teleport it off-screen (disappear/reappear). A hidden window
+/// reveals from the off-tray origin. Under reduced motion there is no slide.
+/// </summary>
+public sealed class OpenRevealPlanTests {
+    private static readonly Rectangle Current = new(100, 200, 376, 392);
+    private static readonly Rectangle Final = new(100, 600, 376, 392);
+    private static readonly Rectangle Origin = new(100, 1040, 376, 392);
+
+    [Fact]
+    public void VisibleWindowRetargetsFromCurrentBounds() {
+        var plan = FlyoutPlacement.OpenRevealPlan.Resolve(
+            windowVisible: true,
+            reducedMotion: false,
+            Current,
+            Final,
+            Origin);
+
+        Assert.Equal(Current, plan.Placement);
+        Assert.True(plan.Slide);
+    }
+
+    [Fact]
+    public void VisibleWindowUnderReducedMotionSnapsToFinal() {
+        var plan = FlyoutPlacement.OpenRevealPlan.Resolve(
+            windowVisible: true,
+            reducedMotion: true,
+            Current,
+            Final,
+            Origin);
+
+        Assert.Equal(Final, plan.Placement);
+        Assert.False(plan.Slide);
+    }
+
+    [Fact]
+    public void HiddenWindowRevealsFromTheOffTrayOrigin() {
+        var plan = FlyoutPlacement.OpenRevealPlan.Resolve(
+            windowVisible: false,
+            reducedMotion: false,
+            Current,
+            Final,
+            Origin);
+
+        Assert.Equal(Origin, plan.Placement);
+        Assert.True(plan.Slide);
+    }
+
+    [Fact]
+    public void HiddenWindowUnderReducedMotionPlacesAtFinal() {
+        var plan = FlyoutPlacement.OpenRevealPlan.Resolve(
+            windowVisible: false,
+            reducedMotion: true,
+            Current,
+            Final,
+            Origin);
+
+        Assert.Equal(Final, plan.Placement);
+        Assert.False(plan.Slide);
+    }
+}
+
 
 

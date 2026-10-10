@@ -76,9 +76,11 @@ public sealed class NativeShellViewModelTests {
         PairingOperationView? pairing = null,
         PairingQrView? qr = null,
         DiscoveryHealthView? health = null,
-        ImmutableArray<PairingOfferView>? offers = null) =>
+        ImmutableArray<PairingOfferView>? offers = null,
+        bool reducedMotion = false) =>
         StateEngine.CreateDefaultSnapshot() with {
             GeneratedAt = T0,
+            Shell = StateEngine.CreateDefaultSnapshot().Shell with { ReducedMotion = reducedMotion },
             PairingOffers = offers
                 ?? (pairing is null
                     ? ImmutableArray<PairingOfferView>.Empty
@@ -736,5 +738,53 @@ public sealed class NativeShellViewModelTests {
 
         await Task.Delay(80);
         Assert.Equal(PairingCardState.CodeEntry, vm.PairingCard!.State); // still showing, not cleared
+    }
+
+    // ---------- reduced-motion spinner gate (decision 0024) ----------
+
+    [Fact]
+    public void SpinnerRunsWhenMotionEnabled() {
+        using var vm = new NativeShellViewModel();
+
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Pairing)));
+
+        Assert.NotNull(vm.PairingCard);
+        Assert.True(vm.PairingCard!.SpinnerEnabled);
+    }
+
+    [Fact]
+    public void SpinnerIsGatedUnderReducedMotion() {
+        using var vm = new NativeShellViewModel();
+
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Pairing), reducedMotion: true));
+
+        Assert.NotNull(vm.PairingCard);
+        Assert.False(vm.PairingCard!.SpinnerEnabled);
+    }
+
+    [Fact]
+    public void OfferCardSpinnerIsGatedUnderReducedMotion() {
+        using var vm = new NativeShellViewModel();
+
+        vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer()), reducedMotion: true));
+
+        Assert.NotNull(vm.PairingCard);
+        Assert.False(vm.PairingCard!.SpinnerEnabled);
+    }
+
+    [Fact]
+    public void SpinnerFollowsTheGateAcrossSnapshots() {
+        using var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Pairing)));
+        var card = vm.PairingCard!;
+        Assert.True(card.SpinnerEnabled);
+
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Pairing), reducedMotion: true));
+        Assert.Same(card, vm.PairingCard);
+        Assert.False(card.SpinnerEnabled);
+
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.Pairing)));
+        Assert.Same(card, vm.PairingCard);
+        Assert.True(card.SpinnerEnabled);
     }
 }
