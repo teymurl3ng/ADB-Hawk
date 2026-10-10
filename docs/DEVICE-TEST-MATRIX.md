@@ -546,3 +546,20 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | `RowCardButton` hover overlay starts at Opacity 0 in both dictionary twins; reduced twin raises it instantly | **AUTOMATED PASS** | `ReducedMotionDictionaryTests.RowCardOverlayStartsHiddenInBothVariants` |
 | First hover on the QR entry row fades in (no pop) | **NOT EXERCISED** | Owner visual check; subsequent hovers already faded |
 | Reopen after a reduced-motion hide shows no flash at the previous on-screen position | **NOT EXERCISED** | Owner: OS animations OFF, open, close, reopen — the window must appear at the tray, not at its old spot first |
+
+## Slide clock + build identity (2026-10-10, decision 0025)
+
+Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Owner report "not fixed" traced to a stale binary: the 15:02 instance ran the installed exe last written 2026-10-06 10:11 (pre-0023/0024); its log session shows pre-0023 slide lines (no tick accounting) | **LIVE PASS** | Process path + file timestamp vs commit c433be7 (2026-10-10 12:30); the identity log line could not have distinguished builds (constant version) — see the next row |
+| Startup identity line carries the executable path and build (last-write) timestamp | **AUTOMATED PASS** | `AppHostIdentityTests` (2): `AppHost.BuildIdentity()` carries `version=`/`path=`/`built=`, stamp is a parseable `yyyy-MM-dd HH:mm` or explicit `unknown` |
+| Slide frame pacing on the composition clock is irregular (the measured defect) | **LIVE PASS** | 2026-10-10 log, build c433be7: open 6 frames/47 ms worst gap (first show), open 7/32 ms (quiet), open 10/16 ms, close 5/16 ms, close 4/32 ms — 4-10 frames per flight depending on incidental renders |
+| Slide frame pacing on the dispatcher clock is even, including quiet open slides | **LIVE PASS** | Re-measured after the clock switch, 2026-10-10 16:47 session (log `adbview-20261010.log`) |
+| A 167 ms open flight applies 10 frames with a 16 ms worst tick gap, on every flight | **LIVE PASS** | 16:47 session: 10/16 ms (first show), 10/16 ms, 10/16 ms — quiet opens previously starved at 6-7 frames / 32-47 ms gaps |
+| An 83 ms close flight applies 4-5 frames with a 16-31 ms worst tick gap | **LIVE PASS** | 16:47 session: 4/31 ms, 5/16 ms, 5/16 ms — closes run while visible, with metadata-driven UI work ahead of the tick at Render priority |
+| Timer interval quantization measured: 16 ms interval locks into a 31 ms period; 15 ms slips to 16-32 ms; 10 ms (below the 15.6 ms system tick) fires every tick | **LIVE PASS** | 16:40 / 16:43 / 16:47 sessions — the dispatcher's wait is tick-grid quantized; the interval must sit below the tick |
+| Rapid toggle (open during a close slide) retargets from the mid-flight position — no snap to the off-tray origin | **NOT EXERCISED** | Owner: toggle fast from the tray; the log's `bounds animation started {From}` must show a mid-flight From, not the origin X=1920 |
+| Owner runs a current build: installed copy at `AppData\Local\Programs\ADBView` replaced/repackaged (it is from 2026-10-06) | **NOT EXERCISED** | Owner: reinstall from current artifacts or run the repo's Release exe directly; the identity line now names the running build |
+| If the evenly-paced slide still reads jerky, the remaining cause is the shadowed-HWND slide (Microsoft's AnimateWindow warning) — rollback is instant open/close (decision 0013), an owner-facing DESIGN §24 decision | **NOT EXERCISED** | Owner perception call after testing a current build |

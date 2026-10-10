@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.Globalization;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -85,6 +87,23 @@ internal sealed class AppHost : IDisposable {
     /// <summary>Normal interactive / fixture first launch requests one deferred flyout show.</summary>
     internal static bool ShouldRequestInitialShow(bool headless, bool isFixtureMode, bool startupSilent) =>
         !headless && !startupSilent;
+
+    /// <summary>
+    /// Decision 0025: the startup identity string — assembly version, executable path, and the
+    /// executable's last-write (build) timestamp. The version alone cannot distinguish builds
+    /// (it is constant across local, published, and installed copies), which is how a stale
+    /// binary came to masquerade as an unfixed bug on 2026-10-10.
+    /// </summary>
+    internal static string BuildIdentity() {
+        var version = typeof(AppHost).Assembly.GetName().Version?.ToString() ?? "unknown";
+        var path = Environment.ProcessPath;
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) {
+            return $"version={version} path={(string.IsNullOrEmpty(path) ? "unknown" : path)} built=unknown";
+        }
+
+        var built = File.GetLastWriteTime(path).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        return $"version={version} path={path} built={built}";
+    }
 
 
     public AppHost(int sessionId, string fixtureSuffix = "", bool headless = false, bool startupSilent = false)
@@ -330,10 +349,17 @@ internal sealed class AppHost : IDisposable {
                 _nativeWindow.IsBoundsAnimating = () => _presenter?.IsAnimating == true;
             }
 
-            // Decision 0023: graceful presentation — the open/close reveal is a position-only
-            // slide on the composition clock, and self-sizing owns the height as instant steps.
+            // Decision 0025: graceful presentation — the open/close reveal is a position-only
+            // slide on the dispatcher clock (Render priority, 10 ms interval — below the
+            // 15.6 ms system timer tick so the cadence is the tick itself), and self-sizing owns
+            // the height as instant steps. The composition hook (CompositionTickSource) only
+            // fires when WPF renders, and a pure window move never dirties the visual tree, so
+            // the reveal's frame pacing rode on incidental renders (measured 2026-10-10: 4-10
+            // frames per flight, worst tick gap 16-47 ms on the same code). The dispatcher
+            // timer ticks reliably while the message loop runs; progress is wall-clock and
+            // identical frames are skipped, so a late tick still applies the correct frame.
             _presenter = new FlyoutRevealAnimator(
-                new NativeUi.CompositionTickSource(),
+                new NativeUi.DispatcherTimerTickSource(),
                 bounds => _nativeWindow?.SetPhysicalBounds(bounds));
 
             // Decision 0009: one active connect toward the paired device while waiting.
@@ -559,12 +585,15 @@ internal sealed class AppHost : IDisposable {
         ThemeKind theme = ResolveEffectiveTheme();
         _lastAppliedTheme = theme;
         _lastAppliedTransparency = transparency;
-        // Forensics 2026-10-03: stale binaries masqueraded as unfixed bugs (pin/theme fixes
-        // absent from every user session). Identity + resolved theme are logged at startup so
-        // one log glance answers "which build, which theme".
+        // Forensics 2026-10-03 and 2026-10-10: stale binaries masquerade as unfixed bugs
+        // (pin/theme fixes absent from every user session; the 2026-10-10 owner report traced
+        // to a four-day-old installed exe). Identity + resolved theme are logged at startup so
+        // one log glance answers "which build, which theme". The assembly version is constant
+        // (0.1.0.0) across builds, so the identity also carries the executable path and its
+        // last-write (build) timestamp — the two fields that actually distinguish builds.
         Log.Information(
-            "AppHost identity: version={Version} theme={Theme} transparency={Transparency}",
-            typeof(AppHost).Assembly.GetName().Version?.ToString() ?? "unknown",
+            "AppHost identity: {Identity} theme={Theme} transparency={Transparency}",
+            BuildIdentity(),
             theme,
             transparency);
 

@@ -5,6 +5,7 @@ namespace AdbView.Tests.Host;
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using AdbView.Host;
 using AdbView.State;
@@ -226,5 +227,41 @@ public sealed class EffectiveThemeTests {
         Assert.Equal(ThemeKind.Dark, EffectiveTheme.Resolve(ThemePreference.Dark, ThemeKind.Light));
         Assert.Equal(ThemeKind.Dark, EffectiveTheme.Resolve(ThemePreference.Dark, ThemeKind.Dark));
         Assert.Equal(ThemeKind.Light, EffectiveTheme.Resolve(ThemePreference.System, ThemeKind.Light));
+    }
+}
+
+/// <summary>
+/// Decision 0025: the startup identity line exists so one log glance answers "which build is
+/// running" (forensics 2026-10-03: stale binaries masquerade as unfixed bugs; on 2026-10-10 an
+/// owner report traced to a four-day-old installed exe). The assembly version alone is constant
+/// across builds, so the identity must carry the executable path and a build timestamp.
+/// </summary>
+public sealed class AppHostIdentityTests {
+    [Fact]
+    public void BuildIdentityCarriesVersionPathAndBuildStamp() {
+        var identity = AppHost.BuildIdentity();
+
+        Assert.Contains("version=", identity, StringComparison.Ordinal);
+        Assert.Contains("path=", identity, StringComparison.Ordinal);
+        Assert.Contains(" built=", identity, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BuildIdentityStampIsATimestampOrExplicitUnknown() {
+        var identity = AppHost.BuildIdentity();
+
+        const string marker = " built=";
+        var idx = identity.IndexOf(marker, StringComparison.Ordinal);
+        Assert.True(idx >= 0, "identity has no build stamp: " + identity);
+        var stamp = identity[(idx + marker.Length)..];
+        Assert.True(
+            stamp == "unknown"
+                || DateTime.TryParseExact(
+                    stamp,
+                    "yyyy-MM-dd HH:mm",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.None,
+                    out _),
+            "build stamp is neither a timestamp nor the explicit fallback: " + stamp);
     }
 }

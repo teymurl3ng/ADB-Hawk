@@ -5,18 +5,20 @@ using System.Windows.Media;
 using AdbView.Host;
 
 /// <summary>
-/// Decision 0023: ITickSource on the WPF composition clock. <see cref="CompositionTarget.Rendering"/>
-/// fires once per composed frame, so bounds frames align with what DWM composes instead of racing
-/// it from a timer queue — the research note (2026-10-07) records that a DispatcherTimer is
-/// explicitly not time-accurate and that a Send-priority tick outranks Render, which let geometry
-/// changes preempt the render pass that would present the previous frame.
+/// ITickSource on the WPF composition clock (decision 0023). <see cref="CompositionTarget.Rendering"/>
+/// fires once per composed frame — but only when WPF actually renders, and a position-only window
+/// move never dirties the visual tree, so during a pure slide the ticks ride on incidental renders
+/// (metadata updates, the age ticker, first-paint after Show). Measured 2026-10-10: the same
+/// flights took 4-10 frames with a 16-47 ms worst tick gap depending on background activity
+/// (decision 0025). Production therefore drives the reveal from
+/// <see cref="DispatcherTimerTickSource"/>; this source stays as the alternative for environments
+/// where a dispatcher timer must not run.
 ///
 /// <para>Attached on Start, detached on Stop: the WPF performance guidance is to detach the
 /// Rendering handler "at every opportunity", so the hook exists only while a reveal is in flight.
 /// The animator derives progress from the wall clock and skips a frame identical to the last
-/// applied one, so an extra callback per composed frame is idempotent. This is the one sanctioned
-/// window-bounds clock (ENGINEERING §10.4, decision 0023); content stays on the WPF timing
-/// system's storyboards.</para>
+/// applied one, so an extra callback per composed frame is idempotent. Content stays on the WPF
+/// timing system's storyboards.</para>
 /// </summary>
 internal sealed class CompositionTickSource : ITickSource {
     private Action? _tick;
