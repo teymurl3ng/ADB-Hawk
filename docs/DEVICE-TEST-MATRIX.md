@@ -4,16 +4,16 @@
 
 | Scenario | Result | Notes |
 |---|---|---|
-| Harness A: default-route ephemeral query, Wireless debugging on | **NOT EXERCISED** | Owner: run `pwsh -File scripts/probe-mdns.ps1`; report records each reply and errors |
-| Harness B: per-interface ephemeral query | **NOT EXERCISED** | Compare receiving interface, sender, instance and port against A with phone state unchanged |
-| Harness C: shared 5353 passive listener | **NOT EXERCISED** | 15 s; open pairing dialog during C for pairing service; C never sends |
+| Harness A: default-route ephemeral query, Wireless debugging on | **LIVE PASS (connect replies)** | Owner report `artifacts/probe-mdns-20261012-113318-807.md`: 4 queries, 2 relevant datagrams, two connect instances on Wi-Fi, no errors; no pairing replies |
+| Harness B: per-interface ephemeral query | **LIVE PASS (connect replies)** | Same report: 8 queries across Hyper-V/Wi-Fi addresses, 2 relevant datagrams on Wi-Fi, the same two connect instances, no errors; necessity of explicit egress is not established by this run |
+| Harness C: shared 5353 passive listener | **EXERCISED — 0 ADB replies** | Same report: 15 s, 8 datagrams, 0 relevant, no errors; no queries sent; does not distinguish blocked announcements from absence of announcements during this window |
 | QR scanned 10–40 s after start, including passive bind unavailable | **NOT EXERCISED** | Observe fallback pairing offer and successful handoff on owner host |
 | QR cancel/expiry/handoff stops 2 s queries; background floor stays 60 s | **NOT EXERCISED** | Owner: inspect Debug query evidence and test a fresh attempt after expiry |
 | QR server-generation change ends fast window | **NOT EXERCISED** | Observe an externally caused server change; this task never restarts it |
 | Per-interface egress with VPN/Hyper-V and contended 5353 | **NOT EXERCISED** | Information summaries record changed interface sets/send counts; success is not inferred from sends |
 | Roam/VPN toggle/address change and resume replace passive memberships | **NOT EXERCISED** | Owner: compare join/query evidence after 1 s event debounce; no adapter changes by the app |
 | Valid compressed PTR/SRV replies on the owner's phone produce fallback endpoints | **NOT EXERCISED** | Separately authorized parser fix; synthetic full-message compression is covered by regression tests, not live evidence |
-| No A/B/C replies, or A/B empty and C relevant | **NOT EXERCISED** | Return harness report; no-mode replies requires reporting/stop; C-only permits consideration of Task 4 |
+| No A/B/C replies, or A/B empty and C relevant | **CONDITION NOT MET** | Owner report: A and B both received connect replies; C received no ADB replies. Task 4 remains unimplemented |
 
 
 Real-hardware checklist for ADB View. Mocks and `FakeAdbServer` do not prove

@@ -31,13 +31,14 @@ Repository baseline 82f3df8; pinned .NET SDK 10.0.401 / net10.0-windows;
 current execution host reports Windows 10.0.26100.0 and PowerShell 7.6.6.
 Prior affected-host evidence records Windows 11 build 26100, adb 37.x and
 Samsung Galaxy A06 / Android 16. The harness records current OS, PowerShell,
-ADB server response and adapters on each run; exact current adb/device versions
-and host-mode results are NOT EXERCISED until the owner runs it.
+ADB server response and adapters on each run. Exact current adb/device versions
+remain unverified; host-mode results are now recorded below from the owner run.
 
 ## Findings
 
 - RFC 6762 sections 5.1 and 6.7 specify responses to ephemeral-port queries;
-  that specification does not prove the owner's phone answers them.
+  that specification alone does not prove the owner's phone answers them;
+  the owner measurement below now demonstrates connect replies for this run.
 - IP_MULTICAST_IF selects outgoing IPv4 multicast traffic using a four-byte
   IPv4 address in network byte order. It does not select receiving interfaces.
 - ReceiveMessageFrom returns IPPacketInformation; PacketInformation must be
@@ -114,13 +115,36 @@ never as successful zero replies, and uses no elevation.
 
 Offline harness query/parser/loopback tests; frozen-clock QR cadence, timeout,
 stop and unchanged-floor tests; fake-socket egress tests; event/debounce/rejoin
-and active-only failure tests. Full verify gate required. All real-phone rows
-remain NOT EXERCISED; no inferred live pass from mocks.
+and active-only failure tests. Full verify gate required. Application QR pairing,
+egress and resume/roam acceptance remain NOT EXERCISED; the harness rows now carry
+the owner measurements below. No inferred live pass from mocks.
 
 ## Open items
 
-Owner A/B/C results, legacy-unicast behavior, actual egress cause, resume/roam
-acceptance, and successful pairing on the affected host remain unresolved.
+The original failure's cause, pairing-service legacy-unicast behavior,
+resume/roam acceptance, and successful pairing on the affected host remain
+unresolved. Connect-service legacy-unicast replies were observed in the owner
+measurement below; this does not prove pairing acceptance or discovery during
+the historical broken-browse condition.
+
+Owner measurement reviewed 2026-10-12:
+`artifacts/probe-mdns-20261012-113318-807.md` (11:33:18–11:34:07 +05:00).
+
+| Mode | Queries | Datagrams | ADB datagrams | Observation |
+|---|---|---|---|---|
+| A, default-route ephemeral | 4 | 2 | 2 | Two connect instances received over Wi-Fi; no errors |
+| B, explicit per-interface ephemeral | 8 | 2 | 2 | Same two connect instances received over Wi-Fi; no errors |
+| C, passive shared 5353 | 0 | 8 | 0 | Other datagrams arrived, but no ADB service records; no errors |
+
+The ADB server itself reported two TLS connect instances and one legacy connect
+instance at the start of this run. Thus the historical empty-server-browse
+condition was not reproduced here. Default-route active reception worked despite
+the lower Hyper-V interface metric; the route hypothesis is not demonstrated by
+this run. No pairing-service records were received. Passive silence over 15 s
+does not prove blocked reception: a stable responder need not announce during
+that window, and C sent no queries. The conditional Task 4 predicate is false:
+A/B were not empty and C did not receive a relevant service. No shared-port QU
+or direct known-host unicast querying is authorized by these results.
 
 Validation on 2026-10-12: harness `-SelfTest` passed; 63 focused discovery/QR/DNS
 tests passed. The final full gate passed SDK pin, formatting and Release build
@@ -130,5 +154,7 @@ but failed at `MetadataHardwareSmokeTests.Observe_Metadata_On_SamsungA06_IfAttac
 changes (943 of 944 passed). Keeping the phone awake and a subsequent successful
 read-only transport selection did not resolve the full-suite failure; its cause
 is unproven. No assertion/test was removed or weakened. Publish smoke was not
-reached; no Release shell launch or installation was claimed. Live rows remain
-NOT EXERCISED and conditional Task 4 is unimplemented.
+reached; no Release shell launch or installation was claimed. The gate rerun after
+reviewing the owner report failed on the same test with the same 971/972 result.
+Application live acceptance remains NOT EXERCISED; the harness rows are updated
+from the report, and conditional Task 4 is unimplemented.
