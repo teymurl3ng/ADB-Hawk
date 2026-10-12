@@ -108,6 +108,8 @@ public sealed class MdnsFallbackTriggerTests {
 
         // No EnsureRunning: nothing to trigger, and it must not throw.
         life.TriggerQuery();
+        life.StartQrQueryWindow();
+        life.StopQrQueryWindow();
         Assert.Empty(factory.Sockets);
     }
 
@@ -131,5 +133,25 @@ public sealed class MdnsFallbackTriggerTests {
         await WaitForAsync(() => factory.Active.Sends.Count > afterInitial);
 
         life.Stop();
+    }
+
+    [Fact]
+    public async Task GenerationReplacementDoesNotCarryQrFastWindow() {
+        var factory = new RecordingSocketFactory();
+        long ticks = T0.UtcTicks;
+        using var life = new MdnsFallbackLifecycle(
+            _ => { }, () => Array.Empty<IPAddress>(), factory,
+            () => new DateTimeOffset(Interlocked.Read(ref ticks), TimeSpan.Zero));
+        life.EnsureRunning(1);
+        int domains = MdnsFallbackBrowser.ServiceDomains.Length;
+        await WaitForAsync(() => factory.Sockets.Count >= 2 && factory.Active.Sends.Count == domains);
+        life.StartQrQueryWindow();
+        await WaitForAsync(() => factory.Active.Sends.Count == 2 * domains);
+        life.EnsureRunning(2);
+        await WaitForAsync(() => factory.Sockets.Count >= 4 && factory.Sockets[3].Sends.Count == domains);
+        Interlocked.Exchange(ref ticks, T0.AddSeconds(2).UtcTicks);
+        await Task.Delay(650, TestContext.Current.CancellationToken);
+        Assert.Equal(domains, factory.Sockets[3].Sends.Count);
+        Assert.Equal(2, life.RunningGeneration);
     }
 }

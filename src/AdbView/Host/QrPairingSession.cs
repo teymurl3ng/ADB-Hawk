@@ -24,9 +24,11 @@ internal sealed class QrPairingSession {
     private readonly Action<string, string> _submitCode;
 
     private readonly Func<string, bool>? _isStartActive;
+    private readonly Action? _onEnded;
     private readonly object _gate = new();
     private QrPairingRequest? _request;
     private bool _fired;
+    private bool _published;
 
     /// <param name="isStartActive">Reports whether a handoff start actually took hold for an
     /// offer (the pair coordinator refuses while another operation is parked — decision 0017).
@@ -36,11 +38,13 @@ internal sealed class QrPairingSession {
         Action<AdbViewEvent> post,
         Action<string> startOffer,
         Action<string, string> submitCode,
-        Func<string, bool>? isStartActive = null) {
+        Func<string, bool>? isStartActive = null,
+        Action? onEnded = null) {
         _post = post;
         _startOffer = startOffer;
         _submitCode = submitCode;
         _isStartActive = isStartActive;
+        _onEnded = onEnded;
     }
 
     public bool IsActive {
@@ -67,6 +71,7 @@ internal sealed class QrPairingSession {
 
             _request = QrPairingRequest.Generate();
             _fired = false;
+            _published = false;
         }
 
         // Render outside the gate; QRCoder is pure computation on the payload.
@@ -117,6 +122,7 @@ internal sealed class QrPairingSession {
         }
 
         Log.Information("QR pairing session cancelled ({Instance}).", request.InstanceName);
+        _onEnded?.Invoke();
         // Generation 0 = user-initiated cancel: the reducer accepts whatever session is active.
         _post(new PairingQrClearedEvent(0));
     }
@@ -127,12 +133,28 @@ internal sealed class QrPairingSession {
         ArgumentNullException.ThrowIfNull(deviceState);
 
         if (snapshot.PairingQr is null) {
+            bool ended;
+            lock (_gate) {
+                // An older snapshot may arrive between Start and its accepted QR snapshot.
+                // Once published, clearing/expiry discards the credentials and query window.
+                ended = _published && _request is not null;
+                if (ended) {
+                    _request = null;
+                    _published = false;
+                }
+            }
+
+            if (ended) {
+                _onEnded?.Invoke();
+            }
+
             return;
         }
 
         QrPairingRequest? request;
         bool fired;
         lock (_gate) {
+            _published = true;
             request = _request;
             fired = _fired;
         }
@@ -185,6 +207,7 @@ internal sealed class QrPairingSession {
             return;
         }
 
+        _onEnded?.Invoke();
         try {
             _submitCode(offerId, secret);
             _post(new PairingQrClearedEvent(0));

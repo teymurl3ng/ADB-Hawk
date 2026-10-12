@@ -1,5 +1,20 @@
 # Device test matrix
 
+## Multicast-host discovery (2026-10-12, decision 0026)
+
+| Scenario | Result | Notes |
+|---|---|---|
+| Harness A: default-route ephemeral query, Wireless debugging on | **NOT EXERCISED** | Owner: run `pwsh -File scripts/probe-mdns.ps1`; report records each reply and errors |
+| Harness B: per-interface ephemeral query | **NOT EXERCISED** | Compare receiving interface, sender, instance and port against A with phone state unchanged |
+| Harness C: shared 5353 passive listener | **NOT EXERCISED** | 15 s; open pairing dialog during C for pairing service; C never sends |
+| QR scanned 10–40 s after start, including passive bind unavailable | **NOT EXERCISED** | Observe fallback pairing offer and successful handoff on owner host |
+| QR cancel/expiry/handoff stops 2 s queries; background floor stays 60 s | **NOT EXERCISED** | Owner: inspect Debug query evidence and test a fresh attempt after expiry |
+| QR server-generation change ends fast window | **NOT EXERCISED** | Observe an externally caused server change; this task never restarts it |
+| Per-interface egress with VPN/Hyper-V and contended 5353 | **NOT EXERCISED** | Information summaries record changed interface sets/send counts; success is not inferred from sends |
+| Roam/VPN toggle/address change and resume replace passive memberships | **NOT EXERCISED** | Owner: compare join/query evidence after 1 s event debounce; no adapter changes by the app |
+| No A/B/C replies, or A/B empty and C relevant | **NOT EXERCISED** | Return harness report; no-mode replies requires reporting/stop; C-only permits consideration of Task 4 |
+
+
 Real-hardware checklist for ADB View. Mocks and `FakeAdbServer` do not prove
 ADB integration; rows here record what was observed on physical devices.
 

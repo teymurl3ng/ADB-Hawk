@@ -35,6 +35,8 @@ internal sealed record MdnsFallbackInstance {
 internal sealed class MdnsFallbackBrowser {
     internal static readonly TimeSpan LoopSlice = TimeSpan.FromMilliseconds(200);
     internal static readonly TimeSpan RequeryFloor = TimeSpan.FromSeconds(60);
+    internal static readonly TimeSpan QrQueryInterval = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan QrQueryWindow = TimeSpan.FromMinutes(2);
     internal static readonly TimeSpan ExpiryFloor = TimeSpan.FromSeconds(5);
     internal static readonly TimeSpan ExpiryCeiling = TimeSpan.FromMinutes(75);
     internal static readonly TimeSpan RequeryDelay = TimeSpan.FromSeconds(1); // RFC 6762: ≥2 queries ~1 s apart
@@ -101,13 +103,16 @@ internal sealed class MdnsFallbackBrowser {
                 changed |= ReceiveInto(active, true, buffer, now);
                 changed |= SweepExpired(now);
 
-                if (Interlocked.Exchange(ref _triggerPending, 0) == 1) {
-                    Log.Information("Fallback browser: query burst triggered (QR session start).");
-                    SendQueryBurst(active);
+                bool qrActive = now.UtcTicks < Volatile.Read(ref _qrWindowUntilTicks);
+                if (!qrActive) {
+                    _nextQrQueryAt = null;
                 }
 
-                if (_nextRequeryAt is null || now >= _nextRequeryAt) {
+                bool triggered = Interlocked.Exchange(ref _triggerPending, 0) == 1;
+                if (triggered || _nextRequeryAt is null || now >= _nextRequeryAt
+                    || (qrActive && (_nextQrQueryAt is null || now >= _nextQrQueryAt))) {
                     SendQueryBurst(active);
+                    _nextQrQueryAt = qrActive ? now.Add(QrQueryInterval) : null;
                 }
 
                 if (changed) {
@@ -128,6 +133,19 @@ internal sealed class MdnsFallbackBrowser {
     }
 
     private DateTimeOffset? _nextRequeryAt;
+    private DateTimeOffset? _nextQrQueryAt;
+    private long _qrWindowUntilTicks;
+
+    /// <summary>Bounded QR discovery (decision 0026); repeated starts cannot extend it.</summary>
+    public void StartQrQueryWindow() {
+        if (Volatile.Read(ref _qrWindowUntilTicks) > _getUtcNow().UtcTicks) {
+            return;
+        }
+
+        Interlocked.Exchange(ref _qrWindowUntilTicks, _getUtcNow().Add(QrQueryWindow).UtcTicks);
+    }
+
+    public void StopQrQueryWindow() => Interlocked.Exchange(ref _qrWindowUntilTicks, 0);
 
     private bool TryBindPassive(IUdpSocket socket) {
         try {

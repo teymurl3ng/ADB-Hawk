@@ -339,7 +339,8 @@ internal sealed class AppHost : IDisposable {
                 post: evt => _stateEngine.Post(evt),
                 startOffer: offerId => _pairingSession.Start(offerId),
                 submitCode: (offerId, code) => _pairingSession.Submit(offerId, code),
-                isStartActive: offerId => _pairingSession.IsActive(offerId));
+                isStartActive: offerId => _pairingSession.IsActive(offerId),
+                onEnded: () => _mdnsFallbackLifecycle?.StopQrQueryWindow());
 
             // Decision 0023: one writer per window rect. Self-sizing stands down while the slide
             // owns the geometry, so an instant height step cannot fight the interpolation. The
@@ -1242,10 +1243,12 @@ internal sealed class AppHost : IDisposable {
     }
 
     private void StartQrPairingSession() {
-        // Decision 0016: the phone advertises only while its pairing dialog is open — a query
-        // burst now is what lets the fallback bridge the deaf-adb window (R-05: event, not timer).
+        // Decision 0026: cover a delayed scan using the existing browser loop, bounded by
+        // this QR attempt's lifetime. Session end stops it; generation changes discard it.
         _qrPairingSession?.Start();
-        _mdnsFallbackLifecycle?.TriggerQuery();
+        if (_qrPairingSession?.IsActive == true) {
+            _mdnsFallbackLifecycle?.StartQrQueryWindow();
+        }
     }
 
     private void OnPinChangeRequestedFromShell(bool pinned) {

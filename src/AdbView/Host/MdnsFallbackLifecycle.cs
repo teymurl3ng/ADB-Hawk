@@ -107,6 +107,18 @@ internal sealed class MdnsFallbackLifecycle : IDisposable {
         }
     }
 
+    public void StartQrQueryWindow() {
+        lock (_gate) {
+            _browser?.StartQrQueryWindow();
+        }
+    }
+
+    public void StopQrQueryWindow() {
+        lock (_gate) {
+            _browser?.StopQrQueryWindow();
+        }
+    }
+
     private void StartLocked(int generation) {
         var browser = _browserFactory();
         var cts = new CancellationTokenSource();

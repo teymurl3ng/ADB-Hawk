@@ -253,4 +253,49 @@ public sealed class QrPairingSessionTests {
         Assert.Contains(sink.Events, e => e is PairingQrClearedEvent);
         Assert.False(session.IsActive);
     }
+
+    [Fact]
+    public void AcceptedClearEndsQueryWindowAndDiscardsExpiredRequest() {
+        var sink = new EventSink();
+        var actions = new PairingActions();
+        int ended = 0;
+        var session = new QrPairingSession(sink.Post, actions.Start, actions.Submit, onEnded: () => ended++);
+        session.Start();
+        // An older snapshot before the started event is accepted cannot cancel the new request.
+        session.OnSnapshotPublished(SnapshotWithQr() with { PairingQr = null }, DeviceEngineState.Empty);
+        Assert.True(session.IsActive);
+        Assert.Equal(0, ended);
+        session.OnSnapshotPublished(SnapshotWithQr(), DeviceEngineState.Empty);
+        session.OnSnapshotPublished(SnapshotWithQr() with { PairingQr = null }, DeviceEngineState.Empty);
+        Assert.False(session.IsActive);
+        Assert.Null(session.GetActiveRequestForTest());
+        Assert.Equal(1, ended);
+        session.OnSnapshotPublished(SnapshotWithQr() with { PairingQr = null }, DeviceEngineState.Empty);
+        Assert.Equal(1, ended);
+        session.Start();
+        Assert.True(session.IsActive);
+        Assert.Equal(2, sink.Events.OfType<PairingQrStartedEvent>().Count());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CancelOrSuccessfulHandoffEndsQueryWindow(bool handoff) {
+        var sink = new EventSink();
+        var actions = new PairingActions();
+        int ended = 0;
+        var session = new QrPairingSession(sink.Post, actions.Start, actions.Submit, onEnded: () => ended++);
+        session.Start();
+        if (handoff) {
+            var request = session.GetActiveRequestForTest()!;
+            string offerId = "_adb-tls-pairing._tcp\u001f" + request.InstanceName;
+            session.OnSnapshotPublished(SnapshotWithQr(), StateWith(PairingRow(request.InstanceName), offerId));
+        }
+        else {
+            session.Cancel();
+        }
+
+        Assert.Equal(1, ended);
+        Assert.False(session.IsActive);
+    }
 }
