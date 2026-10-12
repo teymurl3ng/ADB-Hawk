@@ -73,6 +73,9 @@ Up, multicast-capable, non-loopback IPv4 addresses per burst, sharing the
 diagnostics provider used by the reference probe. On address-change/resume,
 set a pending flag and debounce 1 s in that same loop, replacing the passive
 socket to discard obsolete memberships and acquire current ones.
+Receive drains are nonblocking: the existing delay supplies the 200 ms slice;
+the prior two blocking 200 ms receive windows otherwise extended that slice.
+Failed bind setup disposes its newly allocated socket before propagating failure.
 
 ## Why
 

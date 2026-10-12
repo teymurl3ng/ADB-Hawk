@@ -71,6 +71,20 @@ public sealed class MdnsFallbackWindowTests {
         await harness.StepAsync(60).ConfigureAwait(true);
         Assert.Equal(2 * sends, harness.Factory.Active.Sends.Count);
     }
+
+    [Fact]
+    public async Task CancelAndRestartBetweenSlicesQueriesNewAttemptImmediately() {
+        var harness = new MdnsBrowserHarness();
+        await using var cleanup = harness.ConfigureAwait(true);
+        await harness.StartAsync().ConfigureAwait(true);
+        harness.Browser.StartQrQueryWindow();
+        await harness.StepAsync(0).ConfigureAwait(true);
+        int sends = harness.Factory.Active.Sends.Count;
+        harness.Browser.StopQrQueryWindow();
+        harness.Browser.StartQrQueryWindow();
+        await harness.StepAsync(0).ConfigureAwait(true);
+        Assert.Equal(sends + MdnsFallbackBrowser.ServiceDomains.Length, harness.Factory.Active.Sends.Count);
+    }
 }
 
 /// <summary>Pauses at each existing loop delay so tests can freeze/advance time without sleeps.</summary>
@@ -125,8 +139,9 @@ internal sealed class MdnsBrowserHarness : IAsyncDisposable {
 internal sealed class MdnsRecordingSocketFactory : IUdpSocketFactory {
     public List<MdnsRecordingSocket> Sockets { get; } = new();
     public MdnsRecordingSocket Active => Sockets[1];
+    public int? FailedBindNumber { get; set; }
     public IUdpSocket Create() {
-        var socket = new MdnsRecordingSocket();
+        var socket = new MdnsRecordingSocket { FailBind = Sockets.Count == FailedBindNumber };
         Sockets.Add(socket);
         return socket;
     }
@@ -137,10 +152,21 @@ internal sealed class MdnsRecordingSocket : IUdpSocket {
     public List<IPAddress> SendInterfaces { get; } = new();
     public List<IPAddress> SelectedInterfaces { get; } = new();
     public IPAddress? FailedInterface { get; set; }
+    public List<IPAddress> Joins { get; } = new();
+    public Queue<byte[]> Incoming { get; } = new();
+    public List<int> ReceiveTimeouts { get; } = new();
+    public bool Disposed { get; private set; }
+    public bool FailBind { get; set; }
     private IPAddress _selected = IPAddress.Any;
     public bool IsBound { get; private set; }
-    public void Bind(IPEndPoint endPoint, bool reuse) => IsBound = true;
-    public void JoinMulticastGroup(IPAddress group, IPAddress interfaceAddress) { }
+    public void Bind(IPEndPoint endPoint, bool reuse) {
+        if (FailBind) {
+            throw new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.AddressAlreadyInUse);
+        }
+
+        IsBound = true;
+    }
+    public void JoinMulticastGroup(IPAddress group, IPAddress interfaceAddress) => Joins.Add(interfaceAddress);
     public void SetMulticastInterface(IPAddress interfaceAddress) {
         if (interfaceAddress.Equals(FailedInterface)) {
             throw new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.NetworkUnreachable);
@@ -154,6 +180,15 @@ internal sealed class MdnsRecordingSocket : IUdpSocket {
         Sends.Add(packet.ToArray());
         SendInterfaces.Add(_selected);
     }
-    public int Receive(Span<byte> buffer, int timeoutMs) => -1;
-    public void Dispose() { }
+    public int Receive(Span<byte> buffer, int timeoutMs) {
+        ReceiveTimeouts.Add(timeoutMs);
+        if (Incoming.Count == 0) {
+            return -1;
+        }
+
+        var packet = Incoming.Dequeue();
+        packet.CopyTo(buffer);
+        return packet.Length;
+    }
+    public void Dispose() => Disposed = true;
 }

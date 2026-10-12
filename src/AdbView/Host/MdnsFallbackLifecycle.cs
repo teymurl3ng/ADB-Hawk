@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Threading;
 using System.Threading.Tasks;
 using AdbView.Adb;
@@ -28,6 +29,7 @@ internal sealed class MdnsFallbackLifecycle : IDisposable {
     private MdnsFallbackBrowser? _browser;
     private int? _runningGeneration;
     private int _disposed;
+    private readonly bool _observeNetworkChanges;
 
     public MdnsFallbackLifecycle(
         Action<AdbViewEvent> post,
@@ -45,6 +47,11 @@ internal sealed class MdnsFallbackLifecycle : IDisposable {
             _interfaces,
             _getUtcNow,
             OnInstances);
+        // Injected sockets are hermetic; only the production owner subscribes to OS events.
+        _observeNetworkChanges = socketFactory is null;
+        if (_observeNetworkChanges) {
+            NetworkChange.NetworkAddressChanged += OnNetworkAddressChanged;
+        }
     }
 
     public int? RunningGeneration {
@@ -119,6 +126,18 @@ internal sealed class MdnsFallbackLifecycle : IDisposable {
         }
     }
 
+    private void OnNetworkAddressChanged(object? sender, EventArgs e) => TriggerNetworkRejoin();
+
+    public void OnResume() => TriggerNetworkRejoin();
+
+    internal void TriggerNetworkRejoin() {
+        lock (_gate) {
+            if (Volatile.Read(ref _disposed) == 0) {
+                _browser?.TriggerNetworkRejoin();
+            }
+        }
+    }
+
     private void StartLocked(int generation) {
         var browser = _browserFactory();
         var cts = new CancellationTokenSource();
@@ -169,6 +188,10 @@ internal sealed class MdnsFallbackLifecycle : IDisposable {
     public void Dispose() {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) {
             return;
+        }
+
+        if (_observeNetworkChanges) {
+            NetworkChange.NetworkAddressChanged -= OnNetworkAddressChanged;
         }
 
         Stop();

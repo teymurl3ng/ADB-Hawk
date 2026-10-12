@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
@@ -37,6 +38,7 @@ internal sealed class MdnsFallbackBrowser {
     internal static readonly TimeSpan RequeryFloor = TimeSpan.FromSeconds(60);
     internal static readonly TimeSpan QrQueryInterval = TimeSpan.FromSeconds(2);
     internal static readonly TimeSpan QrQueryWindow = TimeSpan.FromMinutes(2);
+    internal static readonly TimeSpan NetworkRejoinDelay = TimeSpan.FromSeconds(1);
     internal static readonly TimeSpan ExpiryFloor = TimeSpan.FromSeconds(5);
     internal static readonly TimeSpan ExpiryCeiling = TimeSpan.FromMinutes(75);
     internal static readonly TimeSpan RequeryDelay = TimeSpan.FromSeconds(1); // RFC 6762: ≥2 queries ~1 s apart
@@ -76,7 +78,7 @@ internal sealed class MdnsFallbackBrowser {
 
     /// <summary>Runs until cancelled; returns on shutdown or a fatal setup error.</summary>
     public async Task RunAsync(CancellationToken cancellationToken) {
-        using var passive = _socketFactory.Create();
+        var passive = _socketFactory.Create();
         PassiveBound = TryBindPassive(passive);
 
         using var active = _socketFactory.Create();
@@ -86,6 +88,7 @@ internal sealed class MdnsFallbackBrowser {
 #pragma warning disable CA1031 // R-08: fatal setup failure is logged AND ends the session cleanly.
         catch (Exception ex) {
             Log.Warning(ex, "Fallback browser: ephemeral bind failed; session cannot run.");
+            passive.Dispose();
             return;
         }
 #pragma warning restore CA1031
@@ -99,18 +102,32 @@ internal sealed class MdnsFallbackBrowser {
             while (!cancellationToken.IsCancellationRequested) {
                 var now = _getUtcNow();
 
+                if (Interlocked.Exchange(ref _networkChangePending, 0) == 1) {
+                    _rejoinAt = now.Add(NetworkRejoinDelay);
+                }
+
+                bool rejoined = _rejoinAt is not null && now >= _rejoinAt;
+                if (rejoined) {
+                    _rejoinAt = null;
+                    passive.Dispose();
+                    passive = _socketFactory.Create();
+                    PassiveBound = TryBindPassive(passive);
+                    Log.Information("Fallback browser: network memberships refreshed (passive={Passive}).", PassiveBound);
+                }
+
                 bool changed = ReceiveInto(passive, PassiveBound, buffer, now);
                 changed |= ReceiveInto(active, true, buffer, now);
                 changed |= SweepExpired(now);
 
                 bool qrActive = now.UtcTicks < Volatile.Read(ref _qrWindowUntilTicks);
+                bool qrStarted = Interlocked.Exchange(ref _qrWindowPending, 0) == 1;
                 if (!qrActive) {
                     _nextQrQueryAt = null;
                 }
 
                 bool triggered = Interlocked.Exchange(ref _triggerPending, 0) == 1;
-                if (triggered || _nextRequeryAt is null || now >= _nextRequeryAt
-                    || (qrActive && (_nextQrQueryAt is null || now >= _nextQrQueryAt))) {
+                if (triggered || rejoined || _nextRequeryAt is null || now >= _nextRequeryAt
+                    || (qrActive && (qrStarted || _nextQrQueryAt is null || now >= _nextQrQueryAt))) {
                     SendQueryBurst(active);
                     _nextQrQueryAt = qrActive ? now.Add(QrQueryInterval) : null;
                 }
@@ -126,6 +143,7 @@ internal sealed class MdnsFallbackBrowser {
             // Expected on shutdown or server-generation change.
         }
         finally {
+            passive.Dispose();
             Instances.Clear();
             Publish();
             Log.Information("Fallback browser stopped.");
@@ -135,7 +153,23 @@ internal sealed class MdnsFallbackBrowser {
     private DateTimeOffset? _nextRequeryAt;
     private DateTimeOffset? _nextQrQueryAt;
     private long _qrWindowUntilTicks;
+    private int _qrWindowPending;
     private (string Interfaces, int Sent, int Failed)? _lastQuerySummary;
+    private int _networkChangePending;
+    private DateTimeOffset? _rejoinAt;
+
+    /// <summary>Network events only signal; socket work and debounce belong to the loop.</summary>
+    public void TriggerNetworkRejoin() => Interlocked.Exchange(ref _networkChangePending, 1);
+
+    private IReadOnlyList<IPAddress> GetInterfaceAddresses() {
+        try {
+            return _getInterfaceAddresses();
+        }
+        catch (NetworkInformationException ex) {
+            Log.Warning(ex, "Fallback browser: interface enumeration unavailable; using default egress.");
+            return Array.Empty<IPAddress>();
+        }
+    }
 
     /// <summary>Bounded QR discovery (decision 0026); repeated starts cannot extend it.</summary>
     public void StartQrQueryWindow() {
@@ -144,9 +178,13 @@ internal sealed class MdnsFallbackBrowser {
         }
 
         Interlocked.Exchange(ref _qrWindowUntilTicks, _getUtcNow().Add(QrQueryWindow).UtcTicks);
+        Interlocked.Exchange(ref _qrWindowPending, 1);
     }
 
-    public void StopQrQueryWindow() => Interlocked.Exchange(ref _qrWindowUntilTicks, 0);
+    public void StopQrQueryWindow() {
+        Interlocked.Exchange(ref _qrWindowUntilTicks, 0);
+        Interlocked.Exchange(ref _qrWindowPending, 0);
+    }
 
     private bool TryBindPassive(IUdpSocket socket) {
         try {
@@ -163,10 +201,11 @@ internal sealed class MdnsFallbackBrowser {
 #pragma warning restore CA1031
 
         bool joinedAny = false;
-        foreach (IPAddress address in _getInterfaceAddresses()) {
+        foreach (IPAddress address in GetInterfaceAddresses().Distinct()) {
             try {
                 socket.JoinMulticastGroup(MulticastEndpoint.Address, address);
                 joinedAny = true;
+                Log.Debug("Fallback browser: multicast joined on {Address}.", address);
             }
 #pragma warning disable CA1031 // R-08: per-interface join failure is logged and tolerated.
             catch (Exception ex) {
@@ -192,7 +231,7 @@ internal sealed class MdnsFallbackBrowser {
 
     private void SendQueryBurst(IUdpSocket active) {
         ushort messageId = (ushort)Environment.TickCount;
-        IPAddress[] interfaces = _getInterfaceAddresses().Distinct().OrderBy(address => address.ToString(), StringComparer.Ordinal).ToArray();
+        IPAddress[] interfaces = GetInterfaceAddresses().Distinct().OrderBy(address => address.ToString(), StringComparer.Ordinal).ToArray();
         IPAddress[] egress = interfaces.Length == 0 ? [IPAddress.Any] : interfaces;
         int sent = 0;
         int failed = 0;
@@ -256,7 +295,9 @@ internal sealed class MdnsFallbackBrowser {
         for (int i = 0; i < 8; i++) { // drain without starving the loop
             int received;
             try {
-                received = socket.Receive(buffer, (int)LoopSlice.TotalMilliseconds);
+                // The existing delay owns the 200 ms slice. Drain ready packets without adding
+                // two blocking receive windows that would stretch QR/rejoin cadence to 600 ms.
+                received = socket.Receive(buffer, 0);
             }
 #pragma warning disable CA1031 // R-08: receive failure is logged and ends this drain slice.
             catch (Exception ex) {

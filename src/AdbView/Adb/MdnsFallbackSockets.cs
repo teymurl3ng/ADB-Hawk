@@ -42,12 +42,19 @@ internal sealed class WindowsUdpSocket : IUdpSocket {
 
     public void Bind(IPEndPoint endPoint, bool reuse) {
         var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        if (reuse) {
-            socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
-        }
+        try {
+            if (reuse) {
+                socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            }
 
-        socket.Bind(endPoint);
-        _socket = socket;
+            socket.Bind(endPoint);
+            _socket = socket;
+        }
+        finally {
+            if (_socket != socket) {
+                socket.Dispose();
+            }
+        }
     }
 
     public void JoinMulticastGroup(IPAddress group, IPAddress interfaceAddress) {

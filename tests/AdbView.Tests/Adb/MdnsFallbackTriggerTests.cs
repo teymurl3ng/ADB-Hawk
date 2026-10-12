@@ -22,6 +22,8 @@ public sealed class MdnsFallbackTriggerTests {
 
     private sealed class RecordingSocket : IUdpSocket {
         public List<IPEndPoint> Sends { get; } = new();
+        private int _receives;
+        public int Receives => Volatile.Read(ref _receives);
 
         public bool IsBound { get; private set; }
 
@@ -34,7 +36,10 @@ public sealed class MdnsFallbackTriggerTests {
 
         public void SetMulticastInterface(IPAddress interfaceAddress) { }
 
-        public int Receive(Span<byte> buffer, int timeoutMs) => -1;
+        public int Receive(Span<byte> buffer, int timeoutMs) {
+            Interlocked.Increment(ref _receives);
+            return -1;
+        }
 
         public void Dispose() {
         }
@@ -155,5 +160,26 @@ public sealed class MdnsFallbackTriggerTests {
         await Task.Delay(650, TestContext.Current.CancellationToken);
         Assert.Equal(domains, factory.Sockets[3].Sends.Count);
         Assert.Equal(2, life.RunningGeneration);
+    }
+
+    [Fact]
+    public async Task LifecycleResumeForwardsDebouncedRejoinAndDisposalMakesEventsInert() {
+        var factory = new RecordingSocketFactory();
+        long ticks = T0.UtcTicks;
+        using var life = new MdnsFallbackLifecycle(
+            _ => { }, () => Array.Empty<IPAddress>(), factory,
+            () => new DateTimeOffset(Interlocked.Read(ref ticks), TimeSpan.Zero));
+        life.EnsureRunning(1);
+        await WaitForAsync(() => factory.Sockets.Count >= 2 && factory.Active.Sends.Count > 0);
+        int receives = factory.Active.Receives;
+        life.OnResume();
+        await WaitForAsync(() => factory.Active.Receives > receives);
+        Assert.Equal(2, factory.Sockets.Count);
+        Interlocked.Exchange(ref ticks, T0.AddSeconds(1).UtcTicks);
+        await WaitForAsync(() => factory.Sockets.Count == 3);
+        life.Dispose();
+        life.OnResume();
+        life.TriggerNetworkRejoin();
+        Assert.Equal(3, factory.Sockets.Count);
     }
 }

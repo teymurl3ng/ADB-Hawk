@@ -488,6 +488,7 @@ internal sealed class AppHost : IDisposable {
         }
 
         _metadataLifecycle?.OnResume();
+        _mdnsFallbackLifecycle?.OnResume();
     }
 
     private void OnSessionSwitch(object? sender, SessionSwitchEventArgs e) {
