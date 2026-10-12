@@ -122,7 +122,8 @@ internal static class DnsMessageCodec {
             }
 
             if (type == TypePtr
-                && TryDecodeName(message, offset, out string? target, out int _)
+                && TryDecodeName(message, offset, out string? target, out int dataEnd)
+                && dataEnd <= offset + dataLength
                 && target!.Length > 0) {
                 targets.Add(target);
             }
@@ -184,7 +185,7 @@ internal static class DnsMessageCodec {
                 return false;
             }
 
-            var record = ParseRecordData(name, type, ttl, message.Slice(offset, dataLength));
+            var record = ParseRecordData(name, type, ttl, message, offset, dataLength);
             if (record is not null) {
                 into.Add(record);
             }
@@ -195,10 +196,13 @@ internal static class DnsMessageCodec {
         return true;
     }
 
-    private static DnsRecord? ParseRecordData(string name, ushort type, uint ttl, ReadOnlySpan<byte> rdata) {
+    private static DnsRecord? ParseRecordData(string name, ushort type, uint ttl, ReadOnlySpan<byte> message, int dataOffset, int dataLength) {
+        ReadOnlySpan<byte> rdata = message.Slice(dataOffset, dataLength);
         switch (type) {
             case TypePtr:
-                if (!TryDecodeName(rdata, 0, out string? target, out _) || target is null) {
+                // RFC 1035 pointers are relative to the whole message, including in RDATA.
+                if (!TryDecodeName(message, dataOffset, out string? target, out int ptrEnd)
+                    || ptrEnd > dataOffset + dataLength || target is null) {
                     return null;
                 }
 
@@ -207,7 +211,8 @@ internal static class DnsMessageCodec {
             case TypeSrv: {
                     // priority(2) weight(2) port(2) target-name
                     if (rdata.Length < 7
-                        || !TryDecodeName(rdata, 6, out string? srvTarget, out _) || srvTarget is null) {
+                        || !TryDecodeName(message, dataOffset + 6, out string? srvTarget, out int srvEnd)
+                        || srvEnd > dataOffset + dataLength || srvTarget is null) {
                         return null;
                     }
 

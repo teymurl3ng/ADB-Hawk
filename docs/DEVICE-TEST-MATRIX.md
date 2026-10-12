@@ -12,6 +12,7 @@
 | QR server-generation change ends fast window | **NOT EXERCISED** | Observe an externally caused server change; this task never restarts it |
 | Per-interface egress with VPN/Hyper-V and contended 5353 | **NOT EXERCISED** | Information summaries record changed interface sets/send counts; success is not inferred from sends |
 | Roam/VPN toggle/address change and resume replace passive memberships | **NOT EXERCISED** | Owner: compare join/query evidence after 1 s event debounce; no adapter changes by the app |
+| Valid compressed PTR/SRV replies on the owner's phone produce fallback endpoints | **NOT EXERCISED** | Separately authorized parser fix; synthetic full-message compression is covered by regression tests, not live evidence |
 | No A/B/C replies, or A/B empty and C relevant | **NOT EXERCISED** | Return harness report; no-mode replies requires reporting/stop; C-only permits consideration of Task 4 |
 
 

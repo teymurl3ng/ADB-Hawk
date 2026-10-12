@@ -19,6 +19,7 @@ and Android legacy-unicast response behavior remain unverified.
 | Source | URL | Version / last updated |
 |---|---|---|
 | Multicast DNS, querying, legacy unicast, multiple interfaces/responders | https://www.rfc-editor.org/rfc/rfc6762 | RFC 6762, February 2013; consulted 2026-10-12 |
+| DNS message compression, section 4.1.4 | https://www.rfc-editor.org/rfc/rfc1035 | RFC 1035, November 1987; consulted 2026-10-12 |
 | Windows IPPROTO_IP socket options | https://learn.microsoft.com/en-us/windows/win32/winsock/ipproto-ip-socket-options | Updated 2026-05-07; consulted 2026-10-12 |
 | Socket.ReceiveMessageFrom | https://learn.microsoft.com/en-us/dotnet/api/system.net.sockets.socket.receivemessagefrom?view=net-10.0 | .NET 10 API; consulted 2026-10-12 |
 | NetworkChange.NetworkAddressChanged | https://learn.microsoft.com/en-us/dotnet/api/system.net.networkinformation.networkchange.networkaddresschanged?view=net-10.0 | .NET 10 API; consulted 2026-10-12 |
@@ -50,6 +51,13 @@ and host-mode results are NOT EXERCISED until the owner runs it.
   window uses the already sanctioned TTL-maintenance loop, not a new timer.
   Two-second repetition is a bounded owner-requested reliability tradeoff,
   not a claim that RFC 6762 mandates this cadence.
+- An additional offline reproduction on 2026-10-12 confirmed a parser defect:
+  the existing reference PTR reader returned one target from a valid name with
+  a pointer to message offset 12, but TryCollectRecords returned success with
+  zero records. ParseRecordData passed only the RDATA slice to its name decoder,
+  so message-relative PTR/SRV pointers could not resolve. RFC 1035 section 4.1.4
+  defines offsets relative to the complete DNS message. The owner explicitly
+  authorized a separate minimal parser-fix commit after this reproduction.
 
 ## Alternatives considered
 
@@ -76,6 +84,10 @@ socket to discard obsolete memberships and acquire current ones.
 Receive drains are nonblocking: the existing delay supplies the 200 ms slice;
 the prior two blocking 200 ms receive windows otherwise extended that slice.
 Failed bind setup disposes its newly allocated socket before propagating failure.
+The separately authorized parser fix keeps the complete message available while
+decoding PTR/SRV names, and bounds the consumed encoded bytes to RDLENGTH. Add
+compressed PTR/SRV/A regression packets and malformed-pointer checks; do not
+change query source port/class, DNS record semantics or the UI.
 
 ## Why
 
@@ -109,3 +121,14 @@ remain NOT EXERCISED; no inferred live pass from mocks.
 
 Owner A/B/C results, legacy-unicast behavior, actual egress cause, resume/roam
 acceptance, and successful pairing on the affected host remain unresolved.
+
+Validation on 2026-10-12: harness `-SelfTest` passed; 63 focused discovery/QR/DNS
+tests passed. The final full gate passed SDK pin, formatting and Release build
+but failed at `MetadataHardwareSmokeTests.Observe_Metadata_On_SamsungA06_IfAttached`
+(line 39: expected Ok, actual TransportFailed). Total 972: 971 passed, 1 failed,
+0 skipped; test exit 2. The same hardware test failed at baseline before product
+changes (943 of 944 passed). Keeping the phone awake and a subsequent successful
+read-only transport selection did not resolve the full-suite failure; its cause
+is unproven. No assertion/test was removed or weakened. Publish smoke was not
+reached; no Release shell launch or installation was claimed. Live rows remain
+NOT EXERCISED and conditional Task 4 is unimplemented.

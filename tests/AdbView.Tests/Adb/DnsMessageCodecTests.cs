@@ -54,6 +54,59 @@ public sealed class DnsMessageCodecTests {
     }
 
     [Fact]
+    public void FallbackRecordReaderResolvesPtrCompressionAgainstCompleteMessage() {
+        var message = BuildLegacyResponse(ServiceDomain, true, "adb-test", 12);
+        var records = new List<DnsMessageCodec.DnsRecord>();
+        Assert.True(DnsMessageCodec.TryCollectRecords(message, records));
+        Assert.Equal("adb-test._adb-tls-connect._tcp.local", Assert.Single(records).PtrTarget);
+    }
+
+    [Fact]
+    public void FallbackRecordReaderResolvesCompressedSrvAndAddressOwner() {
+        var message = DnsTestMessages.CompressedPairingResponse("adbview-test");
+        var browser = new MdnsFallbackBrowser(
+            new UnusedSocketFactory(), () => Array.Empty<System.Net.IPAddress>(),
+            () => new DateTimeOffset(2026, 10, 12, 0, 0, 0, TimeSpan.Zero), _ => { });
+        Assert.True(browser.Absorb(message, new DateTimeOffset(2026, 10, 12, 0, 0, 0, TimeSpan.Zero)));
+        var instance = Assert.Single(browser.Instances.Values);
+        Assert.Equal("adbview-test", instance.InstanceName);
+        Assert.Equal("phone.local", instance.Hostname);
+        Assert.Equal("192.168.1.5", instance.Ipv4);
+        Assert.Equal(40123, instance.Port);
+    }
+
+    [Theory]
+    [InlineData(0xff, 0xff)] // Pointer outside the message.
+    [InlineData(0xc0, 57)] // Pointer to itself: base packet's RDATA begins at offset 57.
+    public void InvalidCompressedPtrDoesNotCreateFallbackRecord(byte first, byte second) {
+        var query = DnsMessageCodec.BuildQuery(0, ServiceDomain);
+        var message = new List<byte>(query);
+        message[2] = 0x80;
+        message[7] = 1;
+        message.AddRange(new byte[] { 0xc0, 12, 0, 12, 0, 1, 0, 0, 0, 120, 0, 2, first, second });
+        var records = new List<DnsMessageCodec.DnsRecord>();
+        Assert.True(DnsMessageCodec.TryCollectRecords(message.ToArray(), records));
+        Assert.Empty(records);
+    }
+
+    [Fact]
+    public void PtrNameCannotConsumeBytesPastItsDeclaredRdata() {
+        var message = BuildLegacyResponse(ServiceDomain, true, "adb-test", 12);
+        int lengthOffset = DnsMessageCodec.BuildQuery(0, ServiceDomain).Length + 10;
+        BinaryPrimitives.WriteUInt16BigEndian(message.AsSpan(lengthOffset, 2), 1);
+        var records = new List<DnsMessageCodec.DnsRecord>();
+        Assert.True(DnsMessageCodec.TryCollectRecords(message, records));
+        Assert.Empty(records);
+        var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Assert.True(DnsMessageCodec.TryCollectPtrTargets(message, targets));
+        Assert.Empty(targets);
+    }
+
+    private sealed class UnusedSocketFactory : IUdpSocketFactory {
+        public IUdpSocket Create() => throw new InvalidOperationException("Parser tests never open sockets.");
+    }
+
+    [Fact]
     public void TryCollectPtrTargetsWithoutPointerCompressionReadsFullName() {
         // rdata carries the full instance name without compression.
         var message = BuildLegacyResponse(

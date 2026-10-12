@@ -212,6 +212,41 @@ internal static class DnsTestMessages {
         return bytes.ToArray();
     }
 
+    internal static byte[] CompressedPairingResponse(string instance) {
+        const string service = "_adb-tls-pairing._tcp.local";
+        var message = new List<byte>(DnsMessageCodec.BuildQuery(0x4242, service));
+        message[2] = 0x80;
+        message[7] = 3;
+        byte[] label = System.Text.Encoding.UTF8.GetBytes(instance);
+        int instanceOffset = message.Count + 12;
+        AddCompressedHeader(message, 12, DnsMessageCodec.TypePtr, (ushort)(label.Length + 3));
+        message.Add((byte)label.Length);
+        message.AddRange(label);
+        AddUInt16(message, 0xc00c); // PTR target's service suffix in the question.
+
+        AddCompressedHeader(message, instanceOffset, DnsMessageCodec.TypeSrv, 14);
+        AddUInt16(message, 0);
+        AddUInt16(message, 0);
+        AddUInt16(message, 40123);
+        int hostOffset = message.Count;
+        message.Add(5);
+        message.AddRange(System.Text.Encoding.ASCII.GetBytes("phone"));
+        int localOffset = 12 + 1 + "_adb-tls-pairing".Length + 1 + "_tcp".Length;
+        AddUInt16(message, (ushort)(0xc000 | localOffset)); // SRV target's .local suffix.
+
+        AddCompressedHeader(message, hostOffset, DnsMessageCodec.TypeA, 4);
+        message.AddRange(System.Net.IPAddress.Parse("192.168.1.5").GetAddressBytes());
+        return message.ToArray();
+    }
+
+    private static void AddCompressedHeader(List<byte> into, int nameOffset, ushort type, ushort length) {
+        AddUInt16(into, (ushort)(0xc000 | nameOffset));
+        AddUInt16(into, type);
+        AddUInt16(into, DnsMessageCodec.ClassInet);
+        AddUInt32(into, 120);
+        AddUInt16(into, length);
+    }
+
     private static void AddUInt16(List<byte> into, ushort value) {
         into.Add((byte)(value >> 8));
         into.Add((byte)(value & 0xFF));

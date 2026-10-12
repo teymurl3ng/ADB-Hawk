@@ -90,10 +90,7 @@ public sealed class MdnsFallbackRejoinTests {
         await harness.StepAsync(0).ConfigureAwait(true);
         await harness.StepAsync(1).ConfigureAwait(true);
         Assert.False(harness.Browser.PassiveBound);
-        harness.Factory.Active.Incoming.Enqueue(DnsTestMessages.Response(
-            DnsTestMessages.Ptr("_adb-tls-pairing._tcp.local", 120, "adbview-test._adb-tls-pairing._tcp.local"),
-            DnsTestMessages.Srv("adbview-test._adb-tls-pairing._tcp.local", 120, 40123, "phone.local"),
-            DnsTestMessages.A("phone.local", 120, "192.168.1.5")));
+        harness.Factory.Active.Incoming.Enqueue(DnsTestMessages.CompressedPairingResponse("adbview-test"));
         await harness.StepAsync(1.2).ConfigureAwait(true);
         var merged = MdnsEffectiveSet.Merge(adbRows, MdnsFallbackMapper.Map(harness.Browser.Instances.Values.ToImmutableArray()));
         var row = Assert.Single(merged);
