@@ -135,6 +135,7 @@ internal sealed class MdnsFallbackBrowser {
     private DateTimeOffset? _nextRequeryAt;
     private DateTimeOffset? _nextQrQueryAt;
     private long _qrWindowUntilTicks;
+    private (string Interfaces, int Sent, int Failed)? _lastQuerySummary;
 
     /// <summary>Bounded QR discovery (decision 0026); repeated starts cannot extend it.</summary>
     public void StartQrQueryWindow() {
@@ -191,15 +192,38 @@ internal sealed class MdnsFallbackBrowser {
 
     private void SendQueryBurst(IUdpSocket active) {
         ushort messageId = (ushort)Environment.TickCount;
-        foreach (string domain in ServiceDomains) {
-            try {
-                active.SendTo(DnsMessageCodec.BuildQuery(messageId, domain), MulticastEndpoint);
-            }
+        IPAddress[] interfaces = _getInterfaceAddresses().Distinct().OrderBy(address => address.ToString(), StringComparer.Ordinal).ToArray();
+        IPAddress[] egress = interfaces.Length == 0 ? [IPAddress.Any] : interfaces;
+        int sent = 0;
+        int failed = 0;
+        foreach (IPAddress address in egress) {
+            bool selected = false;
+            foreach (string domain in ServiceDomains) {
+                try {
+                    if (!selected) {
+                        // Any resets a previous explicit selection when the candidate list empties.
+                        active.SetMulticastInterface(address);
+                        selected = true;
+                    }
+
+                    active.SendTo(DnsMessageCodec.BuildQuery(messageId, domain), MulticastEndpoint);
+                    sent++;
+                    Log.Debug("Fallback browser: query sent on {Address} for {Domain}.", address, domain);
+                }
 #pragma warning disable CA1031 // R-08: per-domain send failure is logged; the loop continues.
-            catch (Exception ex) {
-                Log.Debug(ex, "Fallback browser: query send failed for {Domain}.", domain);
-            }
+                catch (Exception ex) {
+                    failed++;
+                    Log.Debug(ex, "Fallback browser: query send failed on {Address} for {Domain}.", address, domain);
+                }
 #pragma warning restore CA1031
+            }
+        }
+
+        var summary = (Interfaces: string.Join(",", interfaces.Select(address => address.ToString())), Sent: sent, Failed: failed);
+        if (_lastQuerySummary != summary) {
+            _lastQuerySummary = summary;
+            Log.Information("Fallback browser: query egress changed (interfaces={Interfaces}, sent={Sent}, failed={Failed}).",
+                interfaces.Length == 0 ? "default route" : summary.Interfaces, sent, failed);
         }
 
         _nextRequeryAt = _getUtcNow().Add(ComputeRequeryDelay());

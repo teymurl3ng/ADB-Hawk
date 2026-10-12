@@ -32,6 +32,8 @@ public sealed class MdnsFallbackTriggerTests {
 
         public void SendTo(ReadOnlySpan<byte> packet, IPEndPoint destination) => Sends.Add(destination);
 
+        public void SetMulticastInterface(IPAddress interfaceAddress) { }
+
         public int Receive(Span<byte> buffer, int timeoutMs) => -1;
 
         public void Dispose() {

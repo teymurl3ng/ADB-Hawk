@@ -19,6 +19,8 @@ internal interface IUdpSocket : IDisposable {
     /// <summary>Joins the multicast group on the given (already-bound) socket.</summary>
     void JoinMulticastGroup(IPAddress group, IPAddress interfaceAddress);
 
+    void SetMulticastInterface(IPAddress interfaceAddress);
+
     void SendTo(ReadOnlySpan<byte> packet, IPEndPoint destination);
 
     /// <summary>Receives one datagram or returns -1 after <paramref name="timeoutMs"/>.</summary>
@@ -51,6 +53,11 @@ internal sealed class WindowsUdpSocket : IUdpSocket {
     public void JoinMulticastGroup(IPAddress group, IPAddress interfaceAddress) {
         var option = new MulticastOption(group, interfaceAddress);
         _socket?.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.AddMembership, option);
+    }
+
+    public void SetMulticastInterface(IPAddress interfaceAddress) {
+        var socket = _socket ?? throw new InvalidOperationException("UDP socket is not bound.");
+        socket.SetSocketOption(SocketOptionLevel.IP, SocketOptionName.MulticastInterface, interfaceAddress.GetAddressBytes());
     }
 
     public void SendTo(ReadOnlySpan<byte> packet, IPEndPoint destination) {

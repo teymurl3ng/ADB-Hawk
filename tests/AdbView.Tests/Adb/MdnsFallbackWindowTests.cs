@@ -134,10 +134,26 @@ internal sealed class MdnsRecordingSocketFactory : IUdpSocketFactory {
 
 internal sealed class MdnsRecordingSocket : IUdpSocket {
     public List<byte[]> Sends { get; } = new();
+    public List<IPAddress> SendInterfaces { get; } = new();
+    public List<IPAddress> SelectedInterfaces { get; } = new();
+    public IPAddress? FailedInterface { get; set; }
+    private IPAddress _selected = IPAddress.Any;
     public bool IsBound { get; private set; }
     public void Bind(IPEndPoint endPoint, bool reuse) => IsBound = true;
     public void JoinMulticastGroup(IPAddress group, IPAddress interfaceAddress) { }
-    public void SendTo(ReadOnlySpan<byte> packet, IPEndPoint destination) => Sends.Add(packet.ToArray());
+    public void SetMulticastInterface(IPAddress interfaceAddress) {
+        if (interfaceAddress.Equals(FailedInterface)) {
+            throw new System.Net.Sockets.SocketException((int)System.Net.Sockets.SocketError.NetworkUnreachable);
+        }
+
+        _selected = interfaceAddress;
+        SelectedInterfaces.Add(interfaceAddress);
+    }
+
+    public void SendTo(ReadOnlySpan<byte> packet, IPEndPoint destination) {
+        Sends.Add(packet.ToArray());
+        SendInterfaces.Add(_selected);
+    }
     public int Receive(Span<byte> buffer, int timeoutMs) => -1;
     public void Dispose() { }
 }

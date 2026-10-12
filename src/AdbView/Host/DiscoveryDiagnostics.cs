@@ -22,7 +22,7 @@ internal interface INetworkDiagnosticsSource {
     /// <summary>Operational (Up) network adapters, loopback excluded.</summary>
     IReadOnlyList<NetworkAdapterProbeInfo> GetOperationalAdapters();
 
-    /// <summary>IPv4 addresses of Up, non-loopback adapters — multicast query candidates.</summary>
+    /// <summary>IPv4 addresses of Up, multicast-capable, non-loopback adapters; shared by browser and probe.</summary>
     IReadOnlyList<IPAddress> GetMulticastCandidateAddresses();
 }
 
@@ -115,13 +115,13 @@ internal sealed class WindowsNetworkDiagnosticsSource : INetworkDiagnosticsSourc
     public IReadOnlyList<IPAddress> GetMulticastCandidateAddresses() {
         var addresses = new List<IPAddress>();
         foreach (NetworkInterface nic in NetworkInterface.GetAllNetworkInterfaces()) {
-            if (nic.OperationalStatus != OperationalStatus.Up
-                || nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) {
+            if (!IsMulticastCandidate(nic.OperationalStatus, nic.NetworkInterfaceType, nic.SupportsMulticast)) {
                 continue;
             }
 
             foreach (IPAddressInformation unicast in nic.GetIPProperties().UnicastAddresses) {
-                if (unicast.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork) {
+                if (unicast.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork
+                    && !IPAddress.IsLoopback(unicast.Address)) {
                     addresses.Add(unicast.Address);
                 }
             }
@@ -129,6 +129,9 @@ internal sealed class WindowsNetworkDiagnosticsSource : INetworkDiagnosticsSourc
 
         return addresses;
     }
+
+    internal static bool IsMulticastCandidate(OperationalStatus status, NetworkInterfaceType type, bool supportsMulticast) =>
+        status == OperationalStatus.Up && type != NetworkInterfaceType.Loopback && supportsMulticast;
 }
 
 /// <summary>Renderable evidence extracted from raw source data (pure logic; unit-tested).</summary>
