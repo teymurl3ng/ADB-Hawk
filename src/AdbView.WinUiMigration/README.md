@@ -31,3 +31,14 @@ The headed suite includes motion-scenarios and static pairing-progress-reduced. 
 
 M08 adds a hidden top-level receiver, version-4 native tray and menu with existing separators/default item, owned local icon assets, fixed 32-DIP nonactivating bubble and native caption regions. It reuses Core aggregate/transient policy and snapshot tooltip wording. Explicit native fixtures use random GUID icons and memory-only menu checks. The native driver covers icon recreation/version negotiation, all theme checks, balloon payload severity/truncation and click destination, permanent/transient/suppression inputs, disposal and coalesced environment messages. It reuses the M02 guarded input API and owned underlay for real hover/down/click, native drag, outside activation, Esc and menu-loop cancellation. No in-product polling or machine preference change. Ordinary prior fixtures create none of these owners. Live backend/notification composition, single-instance/startup behavior, persisted preferences, actual power/session/full-screen sources and physical environment acceptance remain open M08 work. Old WPF assertions remain; the migration map names actual replacements and contract-superseded mechanisms. No candidate artifacts enter the installer/ZIP. Full hardware/accessibility/integrated performance/deployment/device/soak qualification remains later.
 
+## Live mode (M08 live-composition slice)
+
+`--live` composes the real `BackendRuntime` behind the candidate shell on an isolated identity (`AdbView.WinUiMigration.Live`, stable tray GUID, own log file `candidate-live.log` beside the executable). It never touches the production instance, preferences or log paths, and the installed app can remain running. Startup is tray-only — the flyout opens from the tray's Open/toggle, exactly like the product shape — and closing the window disposes the backend owners and removes the icon. Snapshots flow supervisor → StateEngine → mailbox/presenter with the WPF AppHost's ordering (pairing reconcile, visual projection, notification accept, metadata presentation state); pin and reduced-motion changes round-trip through the reducer; balloons deliver through the native tray with flyout-visible suppression; a second live launch is refused and logged (no forwarding yet).
+
+```powershell
+& './src/AdbView.WinUiMigration/bin/Release/net10.0-windows10.0.26100.0/win-x64/AdbView.WinUiMigration.exe' --live
+```
+
+Not composed yet (each a separate M08 item): persisted preferences (menu toggles are in-memory only), single-instance forwarding, the diagnosis/repair owners and the QR multicast fallback source (WPF-project-owned today; `CheckDiscovery`/`RepairDiscovery` log their not-composed status instead of silently doing nothing), actual theme/power/session/full-screen event sources, and physical DPI/work-area checks. Read-only ADB probing is the only backend side effect; pairing remains user-action-only.
+
+

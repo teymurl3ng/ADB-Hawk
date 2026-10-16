@@ -20,17 +20,35 @@ internal static class Program {
                 }
             }
             Stage("options parsed");
-            CandidateWindow.ValidateFixture(options.Fixture);
-            if (options.Fixture is "native-scenarios" or "native-bubble") {
-                string logPath = options.ResultPath is { } resultPath ? resultPath + ".native.log"
-                    : Path.Combine(AppContext.BaseDirectory, "candidate-" + options.InstanceSuffix + ".native.log");
+            if (options.Live) {
+                // M08 live-composition slice: an isolated log beside this nonshipping executable;
+                // production log/preference paths stay untouched.
+                string logPath = Path.Combine(AppContext.BaseDirectory, "candidate-live.log");
                 Log.Logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.File(logPath,
-                    formatProvider: System.Globalization.CultureInfo.InvariantCulture).CreateLogger();
+                    shared: true, formatProvider: System.Globalization.CultureInfo.InvariantCulture).CreateLogger();
                 ownsFixtureLog = true;
-                Log.Information("Native candidate fixture started with isolated instance {Instance}", options.InstanceName);
+                Log.Information("Live candidate starting with isolated identity {Identity}", options.InstanceName);
+            }
+            else {
+                CandidateWindow.ValidateFixture(options.Fixture);
+                if (options.Fixture is "native-scenarios" or "native-bubble") {
+                    string logPath = options.ResultPath is { } resultPath ? resultPath + ".native.log"
+                        : Path.Combine(AppContext.BaseDirectory, "candidate-" + options.InstanceSuffix + ".native.log");
+                    Log.Logger = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.File(logPath,
+                        formatProvider: System.Globalization.CultureInfo.InvariantCulture).CreateLogger();
+                    ownsFixtureLog = true;
+                    Log.Information("Native candidate fixture started with isolated instance {Instance}", options.InstanceName);
+                }
             }
             using var instance = new Mutex(true, options.InstanceName, out bool created);
             if (!created) {
+                if (options.Live) {
+                    // Single-instance forwarding is a separate M08 item: refuse and report, never
+                    // hijack another live candidate or the production instance.
+                    Log.Information("Live candidate: identity {Identity} is already owned; exiting without forwarding.", options.InstanceName);
+                    Console.Error.WriteLine("Another live candidate owns the identity; exiting (forwarding is pending M08 work).");
+                    return 0;
+                }
                 throw new InvalidOperationException("Candidate fixture identity is already owned; no forwarding is permitted.");
             }
             WinRT.ComWrappersSupport.InitializeComWrappers();
@@ -50,8 +68,16 @@ internal static class Program {
                     Stage("constructing candidate");
                     _window = new CandidateWindow(options);
                     Stage("candidate constructed");
-                    _window.ShowSurface();
-                    Stage("candidate activated");
+                    if (options.Live) {
+                        // Tray-only start: the flyout opens on the tray's Open/toggle, matching
+                        // the product shape and stealing no foreground at launch.
+                        _window.StartLiveBackend();
+                        Log.Information("Live candidate ready (tray-only; flyout opens from the tray).");
+                    }
+                    else {
+                        _window.ShowSurface();
+                        Stage("candidate activated");
+                    }
                 })) {
                     throw new InvalidOperationException("Candidate startup dispatch was rejected.");
                 }

@@ -1,6 +1,7 @@
 namespace AdbView.WinUiMigration;
 
 using System.Text.Json;
+using System.Threading;
 using AdbView.Presentation;
 using AdbView.State;
 using AdbView.WinUiMigration.Host;
@@ -32,6 +33,8 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
     private Control? _initialFocus;
     private TextBox? _codeInput => _presenter.Pairing?.CodeInput;
     private readonly FixtureShellActions _fixtureActions = new();
+    private LiveShell? _liveShell;
+    private bool _liveVisible;
     private bool _verificationStarted;
     private bool _disposed;
     private ScrollViewer BodyScroll => _presenter.ListScroll;
@@ -63,8 +66,20 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
         Stage("native placement complete");
         _motionSource = new SystemMotionPreferenceSource();
         _motionPolicy = new MotionPolicy(_motionSource.Enabled);
+        LiveShell? liveShell = null;
+        if (options.Live) {
+            // M08 live-composition slice: created before the presenter because the presenter's
+            // actions come from the backend adapter; its events fire only after Start(), which
+            // this constructor never performs.
+            liveShell = new LiveShell(
+                () => Volatile.Read(ref _liveVisible),
+                PublishLiveSnapshot,
+                work => DispatcherQueue.TryEnqueue(() => work()));
+            _liveShell = liveShell;
+        }
         _presenter = new SnapshotPresenter(Root, PageHost, BackButton, PinButton,
-            options.Fixture == "text-200" ? 2 : 1, options.ResultPath is null ? NativeClipboard.Copy : RecordFixtureCopy, _fixtureActions,
+            options.Fixture == "text-200" ? 2 : 1, options.ResultPath is null ? NativeClipboard.Copy : RecordFixtureCopy,
+            liveShell is not null ? liveShell.Actions : _fixtureActions,
             _motionPolicy, () => AdbView.Bridge.FixtureSnapshotProvider.T0 + _fixtureClock.Elapsed);
         _motionSubscription = new MotionPreferenceSubscription(_motionSource, DispatcherQueue, ApplyMotionPreference);
         _surface = new SurfaceTransitionController(() => { AppWindow.Show(); Activate(); }, () => AppWindow.Hide(), interactive => {
@@ -72,16 +87,37 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
             _presenter.SetPresentationVisible(interactive);
         });
         _mailbox = new SnapshotMailbox(action => DispatcherQueue.TryEnqueue(() => action()), RenderSnapshot);
-        if (options.Fixture is "native-scenarios" or "native-bubble") {
+        if (options.Live || options.Fixture is "native-scenarios" or "native-bubble") {
             _nativeOwner = new NativeShellOwner(this, Root, _presenter, _windowController, () => _presenter.Snapshot,
-                ShowSurface, HideSurface, Guid.Parse(options.InstanceName[CandidateOptions.IdentityPrefix.Length..]),
+                ShowSurface, HideSurface,
+                options.Live ? CandidateOptions.LiveTrayIdentity : Guid.Parse(options.InstanceName[CandidateOptions.IdentityPrefix.Length..]),
                 () => AdbView.Bridge.FixtureSnapshotProvider.T0 + _fixtureClock.Elapsed,
                 options.ResultPath is null ? Task.Delay : HoldBubbleDeadline);
+            if (liveShell is not null) {
+                liveShell.AttachTray(_nativeOwner.Tray);
+                // Pin stays snapshot-owned: the request rounds trips through the reducer.
+                _presenter.PinRequested += OnLivePinRequested;
+                // Reduced-motion changes are backend truth, not only local presentation.
+                AppearanceChangedRequested += OnLiveAppearanceChanged;
+            }
         }
-        _mailbox.Publish(DeviceFixtures.Snapshot(options.Fixture));
+        _mailbox.Publish(liveShell is not null ? liveShell.InitialSnapshot : DeviceFixtures.Snapshot(options.Fixture));
         Stage("initial snapshot published");
         Root.Loaded += OnLoaded;
         Closed += OnClosed;
+    }
+
+    private void PublishLiveSnapshot(AppSnapshot snapshot) {
+        if (!_disposed) { _mailbox.Publish(snapshot); }
+    }
+
+    private void OnLivePinRequested() {
+        bool? pinned = _presenter.Snapshot?.Shell.Pinned;
+        if (pinned is { } current) { _liveShell?.PostPinned(!current); }
+    }
+
+    private void OnLiveAppearanceChanged(ShellAppearanceChangedEvent appearance) {
+        _liveShell?.PostAppearance(appearance);
     }
 
     private readonly List<string> _fixtureCopies = [];
@@ -98,8 +134,19 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
             AppearanceChangedRequested?.Invoke(new ShellAppearanceChangedEvent(shell.Theme, shell.TransparencyEnabled, shell.ForcedColors, !enabled));
         }
     }
-    public void ShowSurface() { _surface.Open(); _nativeOwner?.VisibilityChanged(); }
-    public void HideSurface() { _surface.Close(); _nativeOwner?.VisibilityChanged(); }
+    public void ShowSurface() {
+        _liveVisible = true;
+        _surface.Open();
+        _nativeOwner?.VisibilityChanged();
+        _liveShell?.SetPresentationState(LivePinned);
+    }
+    public void HideSurface() {
+        _liveVisible = false;
+        _surface.Close();
+        _nativeOwner?.VisibilityChanged();
+        _liveShell?.SetPresentationState(LivePinned);
+    }
+    private bool LivePinned => _presenter.Snapshot?.Shell.Pinned ?? false;
     public void SuspendPresentation() => _surface.Suspend();
     public void ResumePresentation() => _surface.Resume();
 
@@ -264,10 +311,15 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
         Dispose();
     }
 
+    /// <summary>Starts the live backend after the window exists. Fixtures never call this: they
+    /// own their snapshots and must not touch ADB.</summary>
+    internal void StartLiveBackend() => _liveShell?.Start();
+
     public void Dispose() {
         if (_disposed) { return; }
         _disposed = true;
         Root.Loaded -= OnLoaded; Closed -= OnClosed;
+        _liveShell?.Dispose();
         _nativeOwner?.Dispose();
         _motionSubscription.Dispose(); _motionSource.Dispose(); _surface.Dispose();
         _mailbox.Dispose(); _presenter.Dispose();
