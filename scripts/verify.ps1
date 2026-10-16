@@ -1,6 +1,7 @@
 # THE gate (AGENTS.md R-12). Must pass before any phase is declared complete.
 # Runs: toolchain pin check, format check, full build, the C# test suite
-# (unit + boundary + native composition), and the Release publish smoke run.
+# (unit + boundary + native composition), headed WinUI candidate fixtures,
+# and the production Release publish smoke run.
 # Decision 0022: the web frontend is removed; the gate is dotnet-only.
 [CmdletBinding()]
 param()
@@ -32,6 +33,10 @@ Assert-Condition "dotnet SDK must be 10.0.401 (found '$sdkVersion'); see global.
 Write-Host 'verify: toolchain pin ok (dotnet 10.0.401).'
 
 # --- 2. Formatting ---
+# WinUI's design-time XAML loader resolves the Core Debug implementation assembly.
+# Build that metadata first so formatting validates the candidate without a missing-reference warning.
+dotnet build (Join-Path $repo 'src\AdbView.Core\AdbView.Core.csproj') -c Debug
+Assert-LastExitCode 'Core metadata for WinUI formatting'
 dotnet format (Join-Path $repo 'ADBView.sln') --verify-no-changes
 Assert-LastExitCode 'dotnet format'
 
@@ -41,6 +46,11 @@ Assert-LastExitCode 'dotnet format'
 # --- 4. C# tests (includes the repository/source-boundary tests) ---
 dotnet test (Join-Path $repo 'tests\AdbView.Tests\AdbView.Tests.csproj') -c Release --no-build
 Assert-LastExitCode 'dotnet test'
+
+# --- 4b. Actual WinUI XAML/UI-thread fixtures (M04 candidate, never packaged) ---
+# Missing interactive desktop/result is a failed/unexercised headed gate, not success.
+$candidateExe = Join-Path $repo 'src\AdbView.WinUiMigration\bin\Release\net10.0-windows10.0.26100.0\win-x64\AdbView.WinUiMigration.exe'
+& (Join-Path $PSScriptRoot 'test-native-ui.ps1') -ExecutablePath $candidateExe
 
 # --- 5. Release publish smoke run ---
 $smoke = Join-Path $repo 'artifacts\smoke'

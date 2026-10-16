@@ -32,7 +32,7 @@ public sealed class ChaosAuditTests {
     [Fact]
     public void No_Empty_Catch_Blocks_In_Product_Source() {
         var violations = new List<string>();
-        foreach (var file in SourceFiles(RootFile("src", "AdbView"), [".cs"])) {
+        foreach (var file in SourceFiles(RootFile("src"), [".cs"])) {
             var text = File.ReadAllText(file);
             foreach (Match m in EmptyBareCatch.Matches(text)) {
                 violations.Add($"{Rel(file)}: bare empty catch {{}} at index {m.Index}");
@@ -53,8 +53,8 @@ public sealed class ChaosAuditTests {
         // Sanctioned: `delay ?? Task.Delay` default injection and Backoff/tick owners.
         // Forbidden: bare `await Task.Delay(...)` loops inside Adb/ or State/.
         var roots = new[] {
-            RootFile("src", "AdbView", "Adb"),
-            RootFile("src", "AdbView", "State"),
+            RootFile("src", "AdbView.Core", "Adb"),
+            RootFile("src", "AdbView.Core", "State"),
         };
         var violations = new List<string>();
         foreach (var root in roots) {
@@ -90,7 +90,7 @@ public sealed class ChaosAuditTests {
     [Fact]
     public void State_Folder_Has_No_Lock_Statements() {
         var violations = new List<string>();
-        foreach (var file in SourceFiles(RootFile("src", "AdbView", "State"), [".cs"])) {
+        foreach (var file in SourceFiles(RootFile("src", "AdbView.Core", "State"), [".cs"])) {
             var lines = File.ReadAllLines(file);
             for (int i = 0; i < lines.Length; i++) {
                 if (LockStatement.IsMatch(lines[i])) {

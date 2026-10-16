@@ -50,6 +50,8 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged, IDisposable
     private PairingCardViewModel? _pairingCard;
     private DiscoveryHealthCardViewModel? _discoveryHealth;
     private PairingQrCardViewModel? _pairingQr;
+    private HealthView? _globalHealth;
+    private ImmutableArray<SubsystemWarningView> _warnings = [];
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action? StartQrRequested;
@@ -133,11 +135,17 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged, IDisposable
 
     public bool HasDevices => _devices.Count > 0;
 
-    public bool ShowEmptyState => _devices.Count == 0 && PairingCard is null && PairingQr is null;
+    public HealthView? GlobalHealth => _globalHealth;
+    public bool ShowGlobalHealth => _globalHealth is not null;
+    public ImmutableArray<SubsystemWarningView> Warnings => _warnings;
+    public bool ShowSubsystemWarnings => !ShowGlobalHealth && !_warnings.IsDefaultOrEmpty;
+    public bool ShowDiscoveryActive => !ShowGlobalHealth && _warnings.IsDefaultOrEmpty;
+
+    public bool ShowEmptyState => !ShowGlobalHealth && _devices.Count == 0 && PairingCard is null && PairingQr is null;
 
     /// <summary>Entry row visible whenever no pairing operation or QR session is active
     /// (decision 0010 "always when idle").</summary>
-    public bool ShowQrEntry => PairingCard is null && PairingQr is null;
+    public bool ShowQrEntry => !ShowGlobalHealth && PairingCard is null && PairingQr is null;
 
     public PairingCardViewModel? PairingCard {
         get => _pairingCard;
@@ -178,6 +186,15 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged, IDisposable
 
     /// <summary>Applies an authoritative snapshot. Must be called on the shell Dispatcher.</summary>
     public void ApplySnapshot(AppSnapshot snapshot) {
+        _globalHealth = snapshot.Health.Kind == GlobalHealthKind.Healthy ? null : snapshot.Health;
+        _warnings = snapshot.Warnings;
+        OnPropertyChanged(nameof(GlobalHealth));
+        OnPropertyChanged(nameof(ShowGlobalHealth));
+        OnPropertyChanged(nameof(Warnings));
+        OnPropertyChanged(nameof(ShowSubsystemWarnings));
+        OnPropertyChanged(nameof(ShowDiscoveryActive));
+        OnPropertyChanged(nameof(ShowEmptyState));
+        OnPropertyChanged(nameof(ShowQrEntry));
         // Decision 0024: the reduced-motion flag is snapshot-derived presentation state, like pin.
         // The pairing spinner's busy loop is gated on it (the loop's 850 ms period is not a
         // swappable Motion.* token, so the dictionary swap cannot reach it).
@@ -247,12 +264,12 @@ internal sealed class NativeShellViewModel : INotifyPropertyChanged, IDisposable
 
         // Web parity: the operation's display name is authoritative (adapters.ts uses
         // snapshot.pairing.displayName), not an unrelated offer row.
-        if (PairingCard is null) {
+        if (PairingCard is null || PairingCard.OfferId != op.OfferId) {
             PairingCard = new PairingCardViewModel(op.OfferId, op.DisplayName, state, op.Detail, _animationsEnabled, RaisePairingAction);
             return;
         }
 
-        PairingCard.Update(state, op.Detail);
+        PairingCard.Update(state, op.Detail, op.DisplayName);
     }
 
     /// <summary>How long a success pairing card stays after the operation clears
@@ -809,34 +826,6 @@ internal sealed class DeviceCardViewModel : INotifyPropertyChanged, IDisposable 
 
     private void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-}
-
-/// <summary>Age text formatting — exact port of ui/src/bridge/age.ts.</summary>
-internal static class AgeFormatter {
-    public static string Format(string template, DateTimeOffset since, DateTimeOffset now) {
-        var delta = now - since;
-        if (delta < TimeSpan.Zero) {
-            delta = TimeSpan.Zero;
-        }
-
-        string age;
-        if (delta.TotalSeconds < 5) {
-            age = "Just now";
-        }
-        else if (delta.TotalSeconds < 60) {
-            age = string.Create(CultureInfo.InvariantCulture, $"{(int)delta.TotalSeconds}s ago");
-        }
-        else if (delta.TotalMinutes < 60) {
-            age = delta.TotalMinutes == 2
-                ? "2 minutes ago"
-                : string.Create(CultureInfo.InvariantCulture, $"{(int)delta.TotalMinutes}m ago");
-        }
-        else {
-            age = string.Create(CultureInfo.InvariantCulture, $"{(int)delta.TotalHours}h ago");
-        }
-
-        return template.Replace("{age}", age, StringComparison.Ordinal);
-    }
 }
 
 /// <summary>Minimal relay command.</summary>

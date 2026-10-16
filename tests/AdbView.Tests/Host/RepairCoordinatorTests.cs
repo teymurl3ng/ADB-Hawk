@@ -16,13 +16,14 @@ public sealed class RepairCoordinatorTests {
     private sealed class FakeRunner : IAdbProcessRunner {
         public int KillCalls;
         public ProcessResult KillResult { get; set; } = new(0, "", "", false);
+        public Func<Task<ProcessResult>>? KillHandler { get; set; }
 
         public Task<ProcessResult> StartServerAsync(string executablePath, CancellationToken ct = default) =>
             throw new InvalidOperationException("Repair tests never start the server.");
 
         public Task<ProcessResult> KillServerAsync(string executablePath, CancellationToken ct = default) {
             KillCalls++;
-            return Task.FromResult(KillResult);
+            return KillHandler?.Invoke() ?? Task.FromResult(KillResult);
         }
     }
 
@@ -69,6 +70,49 @@ public sealed class RepairCoordinatorTests {
 
     private static NetworkAdapterProbeInfo Adapter(string name) =>
         new(name, name, NetworkInterfaceType.Ethernet);
+
+    [Fact]
+    public async Task RestartNonzeroExitAndUnexpectedExceptionBothPublishFailure() {
+        var (coordinator, runner, _, _, _, sink) = Create();
+        await coordinator.RebuildCatalogAsync(CancellationToken.None);
+        runner.KillResult = new ProcessResult(5, "", "denied", false);
+        await coordinator.RunAsync("restart-adb", 1, CancellationToken.None);
+        Assert.Equal(DiscoveryRepairOutcome.Failed, Assert.Single(sink.Events.OfType<DiscoveryRepairFinishedEvent>()).Outcome);
+        sink.Events.Clear();
+        runner.KillHandler = () => throw new System.ComponentModel.Win32Exception("synthetic launch failure");
+        await coordinator.RunAsync("restart-adb", 1, CancellationToken.None);
+        Assert.Single(sink.Events.OfType<DiscoveryRepairStartedEvent>());
+        Assert.Equal(DiscoveryRepairOutcome.Failed, Assert.Single(sink.Events.OfType<DiscoveryRepairFinishedEvent>()).Outcome);
+    }
+
+    [Fact]
+    public async Task ElevatedNonzeroExitDoesNotCreateUndoOrReportCompletion() {
+        var (coordinator, _, launcher, service, _, sink) = Create();
+        service.Result = true;
+        launcher.Result = new ProcessLaunchResult(ProcessLaunchOutcome.Launched, 5, null);
+        await coordinator.RebuildCatalogAsync(CancellationToken.None);
+        await coordinator.RunAsync("stop-service:Tailscale", 1, CancellationToken.None);
+        Assert.Equal(DiscoveryRepairOutcome.Failed, Assert.Single(sink.Events.OfType<DiscoveryRepairFinishedEvent>()).Outcome);
+        service.Result = false;
+        sink.Events.Clear();
+        await coordinator.RebuildCatalogAsync(CancellationToken.None);
+        Assert.DoesNotContain(Assert.Single(sink.Events.OfType<DiscoveryRepairCatalogEvent>()).Repairs,
+            repair => repair.Kind == DiscoveryRepairActionKind.StartService);
+    }
+
+    [Fact]
+    public async Task AppliedRepairRemainsReversibleAfterDiagnosticCardClears() {
+        var (coordinator, _, _, service, _, sink) = Create();
+        service.Result = true;
+        await coordinator.RebuildCatalogAsync(CancellationToken.None);
+        await coordinator.RunAsync("stop-service:Tailscale", 1, CancellationToken.None);
+        service.Result = false;
+        coordinator.OnSnapshotPublished(StateEngine.CreateDefaultSnapshot(), DeviceEngineState.Empty);
+        sink.Events.Clear();
+        await coordinator.RebuildCatalogAsync(CancellationToken.None);
+        Assert.Contains(Assert.Single(sink.Events.OfType<DiscoveryRepairCatalogEvent>()).Repairs,
+            repair => repair.Id == "start-service:Tailscale");
+    }
 
     private static (RepairCoordinator, FakeRunner, FakeLauncher, FakeServiceState, FakeDiagnostics, EventSink) Create(
         FakeDiagnostics? diagnostics = null) {

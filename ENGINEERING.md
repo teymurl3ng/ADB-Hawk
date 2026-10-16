@@ -4,6 +4,8 @@
 **Authority:** `DESIGN.md` is the frozen product/visual authority. This document is the frozen *engineering* authority. Where this document and `DESIGN.md` disagree about presentation, `DESIGN.md` wins. Where `DESIGN.md` is silent about mechanism, this document decides.
 **Companions:** `AGENTS.md` (enforceable agent rules), `PHASES.md` (implementation plan), `research/` (dated external-dependency findings).
 
+**Adopted shell migration (2026-10-15, decision 0029):** §23 and DESIGN §41 override conflicting project/shell/host/motion/deployment mechanics below for the replacement. Existing WPF/WinForms behavior remains the operational baseline until qualified cutover. Backend, security, state, failure and ADB ownership invariants remain binding. M02 must pass before production migration.
+
 Research basis for every version and API claim below: `research/2026-09-16-adb-protocol-and-wireless.md`, `research/2026-09-16-windows-host-integration.md`, `research/2026-10-05-webview-removal.md`, `research/2026-10-04-motion-system.md`.
 
 ---
@@ -645,7 +647,7 @@ The shell ticks a single 1 s `DispatcherTimer` only while the flyout is visible 
 | Race | Why it cannot happen |
 |---|---|
 | Two subsystems updating one device concurrently | Only the reducer writes state |
-| Stale device list overwriting a newer one | Lists carry `At`; the reducer ignores a list older than the one already applied |
+| Stale device list overwriting a newer one | Production owners stamp monotonic source sequences; older sequences are ignored even if UTC changes. Unsequenced legacy/test events retain the timestamp guard. |
 | Pairing success arriving after the user cancelled | Reducer checks the operation is still the active one and matches `OfferId`; otherwise the result is dropped and logged |
 | Metadata for a device that already disappeared | Reducer no-ops on unknown `DeviceId` |
 | Older snapshot painting over a newer one | `Revision` compared at publish time (native) and at receive time (web) |
@@ -991,6 +993,20 @@ Failure / detection / response matrix. Every response is *owned* — no global "
 
 | 31 | Shell (status bubble, decision 0020) | A transient state (drop / offline / special mode) would linger forever as if current | The transient's own 60 s window, then the bubble hides (no periodic polling; a one-shot, generation-guarded expiry retargeted by the next state) | 60 s | Ambient truth without a stale badge; R-05 sanction per `research/2026-10-03-status-bubble-native-approaches.md` |
 
+### 11.1 Reliability corrections (2026-10-15, decision 0027)
+
+Research: `research/2026-10-15-connection-reliability.md`. These corrections refine existing rows and do not introduce a new polling timer or product surface.
+
+- Rows 3/5: loss of the authoritative device stream starts the existing two-second grace whether detected by the server probe, stream failure, or intentional lifecycle stop. Repeated failures do not restart that deadline. Outage tokens are monotonic across recovery. Observer failures are logged and isolated; a terminal state-loop error closes its input, completes queued barriers, and invalidates stale displayed devices using the existing unavailable state.
+- Rows 4/22/23: resume/unlock and explicit restart verification interrupt the existing supervisor delay. Resume revalidates the monitoring session; a device-stream failure requests an immediate liveness/status probe without resetting every subsystem. Server-status version/executable changes can establish a new generation even when the host protocol number is unchanged. A same-binary restart that produces no observable event cannot be reliably identified from the protocol number alone.
+- Rows 8/9: the five/sixty-second discovery warning deadlines belong to the first failure of an outage. At sixty seconds, failed-source ADB services no longer override current fallback rows. An intentionally stopped tracker signals loss; valid received data cancels its outage. CLI launch errors recover with the tracker backoff; empty CLI documents are emitted and diagnostic output is continuously drained with bounded retention.
+- Rows 11/12/13: the pairing owner distinguishes deadline expiry from user cancellation and restores its operation invariants after exceptional failure. Post-pair connection responds to accepted internal discovery reconciliation even without a presentation delta. Endpoint identity and port are selected together; eligible endpoints advance after failure, a continuously present endpoint is attempted once, cancellation disarms the episode, and connection results never fabricate devices. The host-connect request uses its intended ten-second budget consistently.
+- Row 27: `Adb/MdnsRecordCache.cs` owns record-level PTR/SRV/TXT/A/AAAA correlation and expiry; `MdnsFallbackBrowser` retains network I/O and its existing maintenance loop. Records resolve across packet order and shared hostnames. Required missing records receive specific questions with bounded owned backoff. The sixty-second floor applies to an empty cache; known record refresh follows its TTL (80/85/90/95 percent), including legacy-unicast TTLs shorter than sixty seconds. Network rejoin clears the prior network cache. IPv6 addresses received through supported discovery paths are preserved; this does not add an IPv6 multicast socket or guess a link-local scope.
+- Presentation renders the existing backend health and warning fields, using frozen vocabulary. The native first-offer contract remains; active cards follow operation identity and same-operation name updates preserve typed input. Card and metadata reconciliation use the same effective discovery identity and prefer a connected duplicate transport.
+- Explicit repairs use the process runner's single twenty-second timeout owner, evaluate exit codes, always finish a started action with a result, and retain reversible-action bookkeeping until reversed or the session ends. No repair was made automatic.
+
+The regression suites and device-matrix repair section name the coverage for these rows. Phase 11 real hardware and soak acceptance remain separate.
+
 Chaos tests automate rows 1, 3, 5, 8, 11, 19, 24, 26 against the fake ADB server and a real Explorer restart (rows 16-18 retired with the WebView in decision 0022).
 
 ---
@@ -1176,6 +1192,8 @@ ADBView/
 
 ### NuGet (application) — 3 runtime + 2 build-time
 
+**Migration allowance:** Windows App SDK **2.5.1 stable** may be added as an exact central pin for the isolated M02 prototype and later WinUI shell, with the lock and dependency graph recorded. It is not added to the existing WPF app. An additional Windows SDK build-tools package may be introduced only after a specific version is researched, recorded here and centrally pinned in the same change. No preview or animation/tray/DI/MVVM helper packages are authorized. The App SDK avoid entry below is historical for the WPF baseline and is superseded only for this migration.
+
 | Package | Version | Class | Why |
 |---|---|---|---|
 | `QRCoder` | 1.8.0 (pinned) | **required** | QR-code pairing (decision 0010): pure C#, no transitive dependencies, MIT; payload rendering only — `research/2026-10-01-qr-pairing.md` |
@@ -1183,6 +1201,7 @@ ADBView/
 | `Serilog.Sinks.File` | 7.x (pinned) | **required** | Rolling local file sink |
 | `Microsoft.Extensions.ObjectPool`-style helpers | — | **avoid** | Not needed |
 | `Microsoft.Windows.CsWin32` | 0.3.333 | **required (build-time)** | Win32 bindings, `PrivateAssets=all` |
+| `Microsoft.WindowsAppSDK` | 2.5.1 | **M02 prototype; M04 temporary candidate; target WinUI shell only** | Stable WinUI and Composition; not referenced by the existing WPF executable; research/2026-10-15-winui-shell-rebuild.md and research/2026-10-16-winui-candidate-harness.md; candidate dependency graph locked in its packages.lock.json |
 | `Microsoft.CodeAnalysis.NetAnalyzers` | SDK-provided | **required (build-time)** | Warnings-as-errors gate |
 
 Nothing else. In particular, **avoid**: `AdvancedSharpAdbClient` (§2.5), `Google.Protobuf` (a ~40-line field reader covers the three messages we read, with cross-checked fixtures), `Microsoft.WindowsAppSDK` (§2.8), any DI container (`AppHost` is ~80 lines of explicit wiring), `MediatR`/event-bus libraries (one channel), `H.NotifyIcon`/tray wrappers (`NotifyIcon` suffices), `Newtonsoft.Json` (source-generated `System.Text.Json`), `Polly` (backoff is 30 lines and must be deterministic for tests), `System.Net.Http` (**build-breaking** if referenced), `Microsoft.Extensions.Hosting` (a generic host for one process is ceremony).
@@ -1408,3 +1427,42 @@ Removed before presenting this architecture, each because reliability did not de
 The remaining complexity is concentrated exactly where real Windows and real ADB are hostile — tray anchoring, DWM material, window lifetime, ADB server lifetime, wireless pairing semantics — and it is contained behind small, individually testable owners. Everything else is a straight line from an ADB event to one immutable snapshot to a frozen design.
 
 Sophistication here is meant to be invisible: the tray icon is right, the flyout says the true thing, nothing shouts, and it is still running correctly a month later.
+
+## 23. Adopted WinUI shell migration — decision 0029
+
+This section governs the replacement and overrides conflicting mechanics in §§1–3, 9–10, reliability rows 29/30, dependency exclusions in §15, testing/build/package assumptions in §§16–19 and shell risks/validation in §§20–22. The earlier WPF descriptions remain the supported baseline until M10, not a requirement to reproduce their mechanisms. DESIGN §41 owns the new interaction contract. `docs/WINUI-REBUILD-RUNBOOK.md` owns M00–M12 scope and acceptance; no production migration before M02 passes.
+
+### 23.1 Ownership
+
+Three permanent projects: UI-independent `src/AdbView.Core` (`net10.0-windows` without desktop UI flags), WinUI `src/AdbView` (`net10.0-windows10.0.26100.0`, minimum OS 10.0.22000.0) and current xUnit/MTP `tests/AdbView.Tests`. Core owns existing Adb/State/Notifications/Diagnostics, pure presentation policies and UI-independent lifecycle orchestration. Keep existing namespaces and behavior during extraction. Native interop, preferences/startup, single instance, environment events, tray/notification delivery and window orchestration belong to the executable Host. NativeUi owns WinUI views, adapters and platform motion, with no ADB execution/semantics.
+
+M02 permits `prototypes/WinUiShellProbe` outside the release solution and packages. M04–M10 permit a temporary WinUI candidate project while the old executable remains working; cutover removes that temporary project and WPF/WinForms references. No DI/MVVM/message-bus framework or additional product surface.
+
+### 23.2 Dispatcher, snapshots and motion
+
+One WinUI application dispatcher/message pump. The native tray/menu adapter uses existing CsWin32 and owns add/modify/delete/version, mouse/keyboard callbacks, balloon delivery/clicks and TaskbarCreated recovery via a top-level receiver. Do not retain a second WinForms pump. The bubble is nonactivating on both show and mouse interaction; user-opened flyout activates normally.
+
+One newest-only visual mailbox with monotonic revision rejection and race-safe drain/reset. Coalescing is restricted to visual snapshots: domain events, reconciliation, notification intents and user commands remain lossless and separately owned. No unconditional rebuilding of rows on every revision. Presentation navigation/focus/scroll state cannot invent device/pin/operation truth.
+
+Outer flyout size is selected before showing, stays fixed for content/navigation changes and is recomputed once on a real environment constraint change. One controller owns native bounds. No LayoutUpdated self-sizing, per-frame HWND positioning, application frame callback, polling animation timer or generic geometry engine in the replacement.
+
+Shared MotionPolicy and separate surface/content controllers use platform animations with DESIGN §41's recipes. Generation-checked completion, current-presented-value retargeting, same-target no-op, immediate semantic removal and live reduced motion are required. Native control states retain platform behavior without competing property writers. Progress/age work stops when its content is hidden.
+
+### 23.3 Reliability rows 29 and 30 (replacement shell)
+
+| Row | Trigger | Owner / handling | Required evidence |
+| --- | --- | --- | --- |
+| 29 | Content, navigation, DPI or work-area change | Content scrolls within the stable panel; no content-driven outer resize. Environment changes settle motion and recompute bounds once using the current monitor. Keyed scroll/focus restoration and stable scrollbar allowance. | Native bounds counts, small-work-area/text-scale/DPI fixtures, <=1 physical-pixel settled anchor error |
+| 30 | Open/close/navigation, interruptions, motion setting, hide/suspend/shutdown | Platform animations under one policy; current-value replacement and generation guards; latest semantics immediate; no hidden presentation clocks. Preferred bounded Acrylic, opaque visual fallback, then stationary opaque outer surface with internal motion only. | Real WinUI assertions, interruption and reduced-motion scenarios, recordings/presented-frame evidence, lifecycle/resource checks |
+
+The legacy row implementations stay tested until their equivalent replacement assertions pass; they are not considered proven by a new toolkit choice.
+
+### 23.4 Tests, dependencies and distribution
+
+Preserve all baseline assertions in `docs/WINUI-TEST-MIGRATION.csv`; xUnit references Core after migration. Temporarily retain old executable references while old Host/UI assertions are still being ported. XAML-dependent assertions execute inside the real WinUI application on its UI thread, through an isolated fixture verification mode with structured results, timeout and nonzero failure exit. A missing desktop/result is not PASS. Update source scans to cover every production project and retain negative boundary examples.
+
+Exact package additions follow §15 and the dated research note. Record resolved transitive packages and actual publish output; no manual native-file pruning or preview package. New source and dependencies remain under existing warnings-as-errors and security rules.
+
+Deployment target is an unpackaged self-contained directory, per-user Inno installer and portable ZIP: `WindowsPackageType=None`, `WindowsAppSDKSelfContained=true`, `SelfContained=true`, explicit RID, `PublishSingleFile=false`. Keep trimming/AOT disabled. WinUI native files/resources remain beside the executable. Test clean x64 startup, old-build upgrade, Run/startup-silent, single instance and uninstall; ARM64 build alone does not prove execution. Preserve installed production identity and paths only at cutover; isolate prototype/candidate/fixture identities.
+
+The existing gate remains mandatory. Headless publish smoke and actual headed UI startup are separately reported; smoke cannot certify XAML launch. On 2026-10-15 the owner approved up to **200 MiB working set** (209,715,200 bytes) for the complete WinUI application including its backend, superseding the historical <120 MB target for this replacement. Record private bytes too. Near-zero idle CPU, <120 ms warm flyout, <250 ms state visibility and lifetime targets remain unchanged, with the runbook's measurement details and honest baseline comparisons. Missing hardware, presentation traces or soak evidence leaves the corresponding gate open. Existing Phase 11 acceptance is not completed by contract adoption.

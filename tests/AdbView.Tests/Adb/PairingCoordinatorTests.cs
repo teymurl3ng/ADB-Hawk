@@ -16,6 +16,37 @@ using AdbView.Tests.Fakes;
 using Xunit;
 
 public sealed class PairingCoordinatorTests {
+    [Fact]
+    public async Task ClientCancellationResultAtCoordinatorDeadlineIsTimeout() {
+        var client = new FakeHostPairClient(async (_, _, ct) => {
+            try {
+                await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) {
+                return new HostPairResult(false, PairingFailureKind.Cancelled, "cancelled");
+            }
+            throw new InvalidOperationException("Unreachable");
+        });
+        var coordinator = new PairingCoordinator(client, pairTimeout: TimeSpan.FromMilliseconds(20));
+        var progress = new List<PairingProgressed>();
+        coordinator.Progressed += progress.Add;
+        Assert.True(coordinator.TryStart("deadline", Ep()));
+        await coordinator.SubmitAsync("deadline", "123456", TestContext.Current.CancellationToken);
+        Assert.Equal(AdbView.Adb.Model.PairingPhase.Failed, coordinator.CurrentPhase);
+        Assert.Equal(PairingFailureKind.Timeout, progress[^1].FailureKind);
+        Assert.True(coordinator.TryRetry("deadline", Ep()));
+    }
+
+    [Fact]
+    public async Task UnexpectedClientFailureReleasesInFlightPhaseForRetry() {
+        var client = new FakeHostPairClient((_, _, _) => throw new System.ComponentModel.Win32Exception("synthetic launch failure"));
+        var coordinator = new PairingCoordinator(client);
+        Assert.True(coordinator.TryStart("retry", Ep()));
+        await coordinator.SubmitAsync("retry", "123456", TestContext.Current.CancellationToken);
+        Assert.Equal(AdbView.Adb.Model.PairingPhase.Failed, coordinator.CurrentPhase);
+        Assert.True(coordinator.TryRetry("retry", Ep()));
+    }
+
     private sealed class Collector<T> {
         private readonly object _gate = new();
         private readonly List<T> _items = new();
@@ -373,7 +404,7 @@ public sealed class PairingCoordinatorTests {
     [Fact]
     public void Z_CoordinatorSource_NoStateOrUiDependency() {
         string text = System.IO.File.ReadAllText(
-            System.IO.Path.Combine(FindRepoRoot(), "src", "AdbView", "Adb", "PairingCoordinator.cs"));
+            System.IO.Path.Combine(FindRepoRoot(), "src", "AdbView.Core", "Adb", "PairingCoordinator.cs"));
         foreach (var token in new[] {
             "AdbView.State", "StateEngine", "AppSnapshot", "PairingOfferView",
             "PairingOperationView", "DeviceView", "BridgeCoordinator",

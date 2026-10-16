@@ -19,14 +19,15 @@ internal sealed class AppHost : IDisposable {
     private readonly SingleInstance? _singleInstance;
     private readonly TrayIcon? _trayIcon;
     private readonly PowerAndSession? _powerAndSession;
-    private readonly StateEngine? _stateEngine;
-    private readonly Adb.AdbServerSupervisor? _supervisor;
-    private readonly DeviceTrackerLifecycle? _deviceTrackerLifecycle;
-    private readonly MdnsTrackerLifecycle? _mdnsTrackerLifecycle;
-    private readonly MdnsFallbackLifecycle? _mdnsFallbackLifecycle;
-    private readonly PairingSession? _pairingSession;
-    private readonly QrPairingSession? _qrPairingSession;
-    private readonly PostPairConnectCoordinator? _postPairConnect;
+    private readonly BackendRuntime? _backend;
+    private StateEngine? _stateEngine => _backend?.StateEngine;
+    private Adb.AdbServerSupervisor? _supervisor => _backend?.Supervisor;
+    private DeviceTrackerLifecycle? _deviceTrackerLifecycle => _backend?.DeviceTrackerLifecycle;
+    private MdnsTrackerLifecycle? _mdnsTrackerLifecycle => _backend?.MdnsTrackerLifecycle;
+    private MdnsFallbackLifecycle? _mdnsFallbackLifecycle => _backend?.MdnsFallbackLifecycle;
+    private PairingSession? _pairingSession => _backend?.PairingSession;
+    private QrPairingSession? _qrPairingSession => _backend?.QrPairingSession;
+
     private FlyoutRevealAnimator? _presenter;
     private bool _animationsEnabled = true;
     private bool _animationsEverLogged;
@@ -34,8 +35,8 @@ internal sealed class AppHost : IDisposable {
     private NativeUi.Shell.NativeShellViewModel? _shellViewModel;
     private NativeUi.StatusBubbleWindow? _statusBubble;
     private NativeUi.StatusBubblePresenter? _statusBubblePresenter;
-    private readonly DeviceMetadataLifecycle? _metadataLifecycle;
-    private readonly NotificationCoordinator? _notificationCoordinator;
+    private DeviceMetadataLifecycle? _metadataLifecycle => _backend?.MetadataLifecycle;
+    private NotificationCoordinator? _notificationCoordinator => _backend?.NotificationCoordinator;
     private readonly INotificationSink? _notificationSink;
     private readonly BalloonNotificationSink? _balloonSink;
     private readonly UserPreferences? _userPreferences;
@@ -44,8 +45,7 @@ internal sealed class AppHost : IDisposable {
     private int _discoveryCheckRunning;
     private long _lastServerGeneration;
     private bool _lastSeenDiscoveryCard;
-    private readonly System.Threading.CancellationTokenSource _appLifetimeCts = new();
-    private Task? _supervisorTask;
+
     private readonly string _fixtureSuffix;
     private readonly bool _headless;
     private readonly bool _isFixtureMode;
@@ -104,7 +104,6 @@ internal sealed class AppHost : IDisposable {
         var built = File.GetLastWriteTime(path).ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
         return $"version={version} path={path} built={built}";
     }
-
 
     public AppHost(int sessionId, string fixtureSuffix = "", bool headless = false, bool startupSilent = false)
         : this(
@@ -170,7 +169,7 @@ internal sealed class AppHost : IDisposable {
             if (!_singleInstance.IsOwner) {
                 UsesRealBalloonNotificationSink = false;
                 _notificationSink = NullNotificationSink.Instance;
-                _notificationCoordinator = null;
+
                 _balloonSink = null;
                 if (_singleInstance.TrySendToggleCommand(1000)) {
                     Log.Information("Toggled existing instance. Exiting.");
@@ -293,8 +292,9 @@ internal sealed class AppHost : IDisposable {
             ? FixtureSnapshotProvider.GetSnapshot(initialFixture, isPinned: false, revision: 1)
             : StateEngine.CreateDefaultSnapshot(isPinned: false, revision: 1);
 
-        _stateEngine = new StateEngine(initialSnapshot);
-        _stateEngine.SnapshotPublished += OnSnapshotPublished;
+        _backend = new BackendRuntime(initialSnapshot);
+        _backend.StateEngine.SnapshotPublished += OnSnapshotPublished;
+        _backend.StateEngine.StateReconciled += OnStateReconciled;
 
         if (!_headless && !_isFixtureMode) {
             PostCurrentShellAppearance();
@@ -302,46 +302,15 @@ internal sealed class AppHost : IDisposable {
         }
 
         if (!_isFixtureMode) {
-            _supervisor = supervisorFactory != null
-                ? supervisorFactory()
-                : new Adb.AdbServerSupervisor(
-                    connectionFactory: () => new Adb.Protocol.AdbHostConnection(),
-                    locator: new Adb.AdbExecutableLocator(),
-                    processRunner: new Adb.AdbProcessRunner(),
-                    backoff: new Adb.Backoff());
-
-            _deviceTrackerLifecycle = new DeviceTrackerLifecycle(
-                post: evt => _stateEngine.Post(evt),
-                trackerFactory: deviceTrackerFactory);
-
-            _mdnsTrackerLifecycle = new MdnsTrackerLifecycle(
-                post: evt => _stateEngine.Post(evt),
-                trackerFactory: mdnsTrackerFactory);
-
-            // Decision 0008 follow-through: first-party fallback browser (headed production only;
-            // interface candidates come from the diagnostics source). Tests/fixtures stay hermetic.
-            if (_networkDiagnosticsSource is not null) {
-                _mdnsFallbackLifecycle = new MdnsFallbackLifecycle(
-                    post: evt => _stateEngine.Post(evt),
-                    interfaces: () => _networkDiagnosticsSource.GetMulticastCandidateAddresses());
-            }
-
-            _pairingSession = new PairingSession(
-                post: evt => _stateEngine.Post(evt),
-                resolveOffer: offerId => {
-                    var state = _stateEngine.CurrentDeviceState;
-                    return state.OfferBindings.TryGetValue(offerId, out var binding) ? binding : null;
-                },
-                coordinator: pairingCoordinator);
-
-            // Decision 0010: QR pairing session hands off into the same pairing flow.
-            _qrPairingSession = new QrPairingSession(
-                post: evt => _stateEngine.Post(evt),
-                startOffer: offerId => _pairingSession.Start(offerId),
-                submitCode: (offerId, code) => _pairingSession.Submit(offerId, code),
-                isStartActive: offerId => _pairingSession.IsActive(offerId),
-                onEnded: () => _mdnsFallbackLifecycle?.StopQrQueryWindow());
-
+            _backend.InitializeServices(
+                supervisorFactory,
+                deviceTrackerFactory,
+                mdnsTrackerFactory,
+                pairingCoordinator,
+                metadataProbe,
+                _networkDiagnosticsSource is not null
+                    ? () => _networkDiagnosticsSource.GetMulticastCandidateAddresses()
+                    : null);
             // Decision 0023: one writer per window rect. Self-sizing stands down while the slide
             // owns the geometry, so an instant height step cannot fight the interpolation. The
             // gate is a delegate — it is only invoked once the window lays out, long after the
@@ -363,16 +332,7 @@ internal sealed class AppHost : IDisposable {
                 new NativeUi.DispatcherTimerTickSource(),
                 bounds => _nativeWindow?.SetPhysicalBounds(bounds));
 
-            // Decision 0009: one active connect toward the paired device while waiting.
-            _postPairConnect = new PostPairConnectCoordinator(new Adb.HostConnectClient());
-
-            _metadataLifecycle = new DeviceMetadataLifecycle(
-                postMetadata: (gen, evt) => _stateEngine.PostMetadata(gen, evt),
-                probe: metadataProbe);
-
-            _stateEngine.MetadataTargetsChanged += targets => _metadataLifecycle.OnTargetsChanged(targets);
-
-            _supervisor.StateChanged += OnSupervisorStateChanged;
+            _backend.Supervisor!.StateChanged += OnSupervisorStateChanged;
         }
 
         // Decision 0022: the shell binds snapshots directly (no bridge/envelope hop). This ctor
@@ -380,9 +340,9 @@ internal sealed class AppHost : IDisposable {
         // exists synchronously, so the current snapshot is applied once here (PostCurrentShell-
         // Appearance's async post publishes again; the shell is idempotent).
         if (_shellViewModel is not null) {
-            _shellViewModel.ApplySnapshot(_stateEngine.CurrentSnapshot);
+            _shellViewModel.ApplySnapshot(_backend.StateEngine.CurrentSnapshot);
             if (_nativeWindow is not null) {
-                _nativeWindow.IsPinned = _stateEngine.CurrentSnapshot.Shell.Pinned;
+                _nativeWindow.IsPinned = _backend.StateEngine.CurrentSnapshot.Shell.Pinned;
             }
 
             // Decision 0020: the status bubble is opt-in, so nothing is constructed until the
@@ -400,7 +360,7 @@ internal sealed class AppHost : IDisposable {
                 diagnosticsSource: _networkDiagnosticsSource,
                 launcher: processLauncher ?? new WindowsElevatedProcessLauncher(),
                 serviceState: serviceStateSource ?? new ScServiceStateSource(),
-                post: evt => _stateEngine.Post(evt),
+                post: evt => _backend.StateEngine.Post(evt),
                 runDiscoveryCheck: RunDiscoveryCheckAsync);
         }
 
@@ -432,18 +392,13 @@ internal sealed class AppHost : IDisposable {
         // Explicit lambda: method-group Task.Delay can bind ambiguously across TFMs.
         Func<TimeSpan, CancellationToken, Task> delay = notificationDelay
             ?? ((TimeSpan d, CancellationToken ct) => Task.Delay(d, ct));
-        _notificationCoordinator = new NotificationCoordinator(
+        _backend.InitializeNotifications(
+            initialSnapshot,
             clock,
             delay,
             _notificationSink,
-            suppressDelivery: () => IsFlyoutVisible);
-        if (_userPreferences is not null) {
-            _notificationCoordinator.SetNotificationsEnabled(_userPreferences.NotificationsEnabled);
-        }
-
-        // Silent baseline: first authoritative snapshot establishes NotifierState with zero balloons.
-        _notificationCoordinator.AcceptSnapshot(initialSnapshot);
-
+            suppressDelivery: () => IsFlyoutVisible,
+            notificationsEnabled: _userPreferences?.NotificationsEnabled ?? true);
         Log.Information(
             "AppHost notifications: RealBalloonSink={RealBalloon} Fixture={Fixture} Headless={Headless}",
             UsesRealBalloonNotificationSink,
@@ -477,6 +432,9 @@ internal sealed class AppHost : IDisposable {
     private void OnPowerSuspend(object? sender, EventArgs e) {
         _notificationCoordinator?.OnSuspend();
         _metadataLifecycle?.OnSuspend();
+        _deviceTrackerLifecycle?.Stop();
+        _mdnsTrackerLifecycle?.Stop();
+        _mdnsFallbackLifecycle?.Stop();
         if (_isVisible && _nativeWindow?.IsPinned != true) {
             HideFlyout();
         }
@@ -489,11 +447,13 @@ internal sealed class AppHost : IDisposable {
 
         _metadataLifecycle?.OnResume();
         _mdnsFallbackLifecycle?.OnResume();
+        _supervisor?.RequestProbe();
     }
 
     private void OnSessionSwitch(object? sender, SessionSwitchEventArgs e) {
         if (e.Reason == SessionSwitchReason.SessionUnlock && _stateEngine is not null) {
             _notificationCoordinator?.RebaselineForResume(_stateEngine.CurrentSnapshot);
+            _supervisor?.RequestProbe();
         }
 
         if (_isVisible && _nativeWindow?.IsPinned != true) {
@@ -503,10 +463,7 @@ internal sealed class AppHost : IDisposable {
 
     private void OnSupervisorStateChanged(Adb.Model.AdbServerStateChanged state) {
         _lastServerGeneration = Math.Max(_lastServerGeneration, state.Generation);
-        _stateEngine?.Post(new AdbServerStateChangedEvent(state));
-        _deviceTrackerLifecycle?.OnServerStateChanged(state);
-        _mdnsTrackerLifecycle?.OnServerStateChanged(state);
-        _mdnsFallbackLifecycle?.OnServerStateChanged(state);
+        _backend?.AcceptServerState(state);
         if (state.Phase == Adb.Model.AdbServerPhase.Up) {
             _repairCoordinator?.OnServerUp(state.Generation);
         }
@@ -519,8 +476,11 @@ internal sealed class AppHost : IDisposable {
         }
 
         await coordinator
-            .RunAsync(repairId, Interlocked.Read(ref _lastServerGeneration), _appLifetimeCts.Token)
+            .RunAsync(repairId, Interlocked.Read(ref _lastServerGeneration), _backend?.LifetimeToken ?? CancellationToken.None)
             .ConfigureAwait(false);
+        if (repairId == "restart-adb") {
+            _supervisor?.RequestProbe();
+        }
     }
 
     private void OnSnapshotPublished(AppSnapshot snapshot) {
@@ -534,21 +494,16 @@ internal sealed class AppHost : IDisposable {
         // the tray icon. The tray's own tooltip is the bubble's status text.
         _statusBubblePresenter?.Accept(snapshot.Health.Tray, snapshot.Health.TrayTooltip);
         if (_repairCoordinator is not null && _stateEngine is not null) {
-            _repairCoordinator.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
             if (_lastSeenDiscoveryCard && snapshot.DiscoveryHealth is null) {
                 _lastSeenDiscoveryCard = false;
             }
             else if (!_lastSeenDiscoveryCard && snapshot.DiscoveryHealth is not null) {
                 // Card just appeared (or reappeared): refresh the evidence-gated offer set.
                 _lastSeenDiscoveryCard = true;
-                _ = _repairCoordinator.RebuildCatalogAsync(_appLifetimeCts.Token);
+                _ = _repairCoordinator.RebuildCatalogAsync(_backend?.LifetimeToken ?? CancellationToken.None);
             }
         }
 
-        if (_stateEngine is not null) {
-            _postPairConnect?.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
-            _qrPairingSession?.OnSnapshotPublished(snapshot, _stateEngine.CurrentDeviceState);
-        }
         ApplyNativeShellFromSnapshot(snapshot);
         _notificationCoordinator?.AcceptSnapshot(snapshot);
 
@@ -570,6 +525,16 @@ internal sealed class AppHost : IDisposable {
     private void ApplyTrayFromSnapshot(AppSnapshot snapshot) =>
         _trayIcon?.Apply(snapshot.Health.Tray, snapshot.Health.TrayTooltip);
 
+    private void OnStateReconciled(AppSnapshot snapshot) {
+        if (_stateEngine is null) {
+            return;
+        }
+
+        var state = _stateEngine.CurrentDeviceState;
+        _backend?.Reconcile(snapshot);
+        _repairCoordinator?.OnSnapshotPublished(snapshot, state);
+    }
+
     public void Run() {
         if (_singleInstance is not { IsOwner: true }) return;
 
@@ -578,9 +543,7 @@ internal sealed class AppHost : IDisposable {
             return;
         }
 
-        if (_supervisor != null) {
-            _supervisorTask = Task.Run(() => _supervisor.RunAsync(_appLifetimeCts.Token));
-        }
+        _backend?.Start();
 
         // v1: intentional opaque surface only (decision 0004 — Acrylic deferred).
         bool transparency = ShellMaterialPolicy.ResolveTransparencyEnabled();
@@ -836,7 +799,6 @@ internal sealed class AppHost : IDisposable {
         PostCurrentShellAppearance();
     }
 
-
     /// <summary>Decision 0008: measure when the flyout opens while the health card is visible.</summary>
     private void MaybeStartDiscoveryCheck() {
         if (_networkDiagnosticsSource is null || _stateEngine is null) {
@@ -901,7 +863,7 @@ internal sealed class AppHost : IDisposable {
                     DiscoveryDiagnostics.Collect(source, Environment.ProcessId, ResolveProcessName),
                     source.GetMulticastCandidateAddresses())).ConfigureAwait(false);
             var probe = await Adb.MdnsReferenceProbe
-                .ProbeAsync(interfaces, _appLifetimeCts.Token)
+                .ProbeAsync(interfaces, _backend?.LifetimeToken ?? CancellationToken.None)
                 .ConfigureAwait(false);
 
             var diagnosis = new DiscoveryDiagnosis(
@@ -1013,7 +975,7 @@ internal sealed class AppHost : IDisposable {
         bool pinned = _nativeWindow?.IsPinned
             ?? _stateEngine?.CurrentSnapshot.Shell.Pinned
             ?? false;
-        _metadataLifecycle?.SetPresentationState(_isVisible, pinned);
+        _backend?.SetPresentationState(_isVisible, pinned);
     }
 
     private void TryCompletePendingInitialShow() {
@@ -1336,29 +1298,10 @@ internal sealed class AppHost : IDisposable {
             return;
         }
 
-        // Phase 8C: stop notification intents before producer teardown can invent removals.
-        _notificationCoordinator?.BeginShutdown();
-
-        _appLifetimeCts.Cancel();
-        try {
-            if (_supervisorTask != null && !_supervisorTask.IsCompleted) {
-                _supervisorTask.Wait(TimeSpan.FromSeconds(2));
-            }
-        }
-        catch (Exception ex) when (ex is OperationCanceledException or AggregateException) {
-            // Clean shutdown
-        }
+        _backend?.BeginShutdown();
 
         DisposeStatusBubble();
-        _pairingSession?.Dispose();
-        _metadataLifecycle?.Dispose();
-        _mdnsTrackerLifecycle?.Dispose();
-        _mdnsFallbackLifecycle?.Dispose();
-        _deviceTrackerLifecycle?.Dispose();
-        _stateEngine?.Dispose();
-        _appLifetimeCts.Dispose();
-
-        _notificationCoordinator?.Dispose();
+        _backend?.Dispose();
         _balloonSink?.Dispose();
 
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;

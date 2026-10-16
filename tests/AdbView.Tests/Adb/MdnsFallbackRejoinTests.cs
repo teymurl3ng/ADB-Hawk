@@ -13,6 +13,20 @@ using Xunit;
 
 public sealed class MdnsFallbackRejoinTests {
     [Fact]
+    public async System.Threading.Tasks.Task NetworkRejoinInvalidatesPreviousNetworkEndpoints() {
+        var harness = new MdnsBrowserHarness();
+        await using var cleanup = harness.ConfigureAwait(true);
+        await harness.StartAsync().ConfigureAwait(true);
+        harness.Factory.Active.Incoming.Enqueue(DnsTestMessages.CompressedPairingResponse("adbview-old-network"));
+        await harness.StepAsync(0.2).ConfigureAwait(true);
+        Assert.Single(harness.Browser.Instances);
+        harness.Browser.TriggerNetworkRejoin();
+        await harness.StepAsync(0.4).ConfigureAwait(true);
+        await harness.StepAsync(1.4).ConfigureAwait(true);
+        Assert.Empty(harness.Browser.Instances);
+        Assert.True(harness.Factory.Sockets[0].Disposed);
+    }
+    [Fact]
     public async System.Threading.Tasks.Task AddressEventsCoalesceAndRejoinOnlyAfterOneSecondOfQuiet() {
         var harness = new MdnsBrowserHarness();
         await using var cleanup = harness.ConfigureAwait(true);

@@ -19,6 +19,26 @@ public sealed class MdnsEffectiveSetTests {
     private const string ConnectType = "_adb-tls-connect._tcp";
     private const string PairingType = "_adb-tls-pairing._tcp";
 
+    [Theory]
+    [InlineData(2, 1)]
+    [InlineData(3, 2)]
+    [InlineData(4, 3)]
+    public void MergeHandlesSpareBuilderCapacity(int adbCount, int fallbackCount) {
+        var adb = ImmutableArray.CreateBuilder<RawMdnsService>();
+        var fallback = ImmutableArray.CreateBuilder<RawMdnsService>();
+        for (int i = 0; i < adbCount; i++) {
+            adb.Add(Service(ConnectType, "adb-" + i, MdnsServiceKind.Connect));
+        }
+        for (int i = 0; i < fallbackCount; i++) {
+            fallback.Add(Service(PairingType, "fallback-" + i, MdnsServiceKind.Pairing));
+        }
+
+        var merged = MdnsEffectiveSet.Merge(adb.ToImmutable(), fallback.ToImmutable());
+        Assert.Equal(adbCount + fallbackCount, merged.Length);
+        Assert.Equal(adb[0], merged[0]);
+        Assert.Equal(fallback[fallbackCount - 1], merged[^1]);
+    }
+
     [Fact]
     public void AdbRowsWinPerInstanceKeyAndFallbackFillsOnlyMissingKeys() {
         var adb = ImmutableArray.Create(

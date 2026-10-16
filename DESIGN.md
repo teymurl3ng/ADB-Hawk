@@ -1,9 +1,11 @@
 # ADB View — Design Authority
 
-**Status:** Frozen for v1 implementation  
+**Status:** Adopted shell amendment 2026-10-15; earlier shell mechanics superseded as listed in §41
 **Purpose:** Governing visual, interaction, and product-design specification for ADB View  
 **Target:** Windows 11 system-tray ADB status utility  
 **Primary UI:** native WPF shell (Fluent 2) hosted by the native C# Windows shell (decision 0022: the v1 WebView2 frontend was removed after the native shell reached full parity)
+
+**Current implementation versus target:** the existing WPF shell remains operational during migration. The owner-authorized WinUI replacement is governed by §41, which overrides conflicting shell layout, motion, ownership and deployment assumptions below. Semantic states, vocabulary, product boundary and existing actions remain authoritative. A prototype is required before production migration; adoption is not a claim that WinUI is proven.
 
 ---
 
@@ -1442,4 +1444,54 @@ State changes should be driven by data, not by alternate markup families.
 
 ---
 
-**ADB View v1 design status: FROZEN**
+**ADB View v1 semantic/product contract retained; replacement shell governed below.**
+
+## 41. Adopted stable WinUI shell — decision 0029
+
+**Adopted 2026-10-15 on the owner's instruction to begin the researched rebuild.** This section overrides conflicting shell mechanics in §§2–10, 15–16, 19, 22–30, 34–40. The earlier WPF layout and implementation text describes the supported baseline until M10; it is not authority for the replacement. Semantic states, guidance, health scope, icon identity, vocabulary, notification policy, existing actions, product scope and privacy remain unchanged.
+
+### 41.1 Stable panel and navigation
+
+- New UI is WinUI 3, with the existing two product surfaces: flyout and optional bubble. The host also owns native tray/menu plumbing. No browser surface or additional product window.
+- Flyout is initially **376 × 480 DIP**, each dimension clamped to work-area size minus **16 DIP**, with an **8 DIP** margin where possible. Include the actual shadow/envelope extent in placement; use target-monitor DPI and round native pixel bounds once.
+- Outer size is fixed for the open session. Content, device count, metadata and pairing phases never resize it. DPI/work-area/monitor changes may settle motion and make one immediate recomputation. Pinned native drag changes position only.
+- One stable header and scrollable body. Native focusable device rows open a details page in the same content region; Back restores keyed scroll/focus. This replaces collapsed/expanded device cards. Pairing uses the same region and stable action placement across code, QR, working, waiting and error phases.
+- Header contains app identity, pin and contextual Back. No new settings/reconnect/refresh/help chrome. Initial padding **16 DIP**, section gap **12 DIP**, header minimum **48 DIP**, controls minimum **32 DIP**. Text scaling may enlarge content and scroll; never clip required actions to preserve these minimums.
+- Preserve visual identity, typography, semantic colors and icon assets; native theme resources own control states. Reserve stable scrollbar space so overflow cannot change wrapping width. Long device data stays readable/copyable without widening the panel.
+- All existing diagnosis, repair/undo, pairing and copy actions remain available. Local wireless failure stays local. A removed device or invalid QR is removed from visual, hit-test and accessibility trees immediately; no stale outgoing live page.
+
+### 41.2 Input and lifetime
+
+Opening from user action activates the flyout; snapshots do not. Unpinned genuine outside activation dismisses it; owned popups/menus do not. Pinned mode survives deactivation and enables native header drag. Esc closes an owned popup first, then returns from a subpage, then hides the flyout even when pinned. Tray toggle toggles; Open always shows/activates. Hide does not silently unpin; pin still resets on process restart.
+
+Back/light dismiss are presentation actions, not automatic pairing submission, retry or cancellation. Active pairing remains reachable from the list; explicit Cancel retains its existing meaning. Unsubmitted codes are cleared on leaving/hiding, never logged or persisted. Pairing success never implies connected-device truth.
+
+Bubble is **32 × 32 DIP**, stationary with a normal tooltip, and never expands on hover. Preserve aggregate-state meanings and permanent/60-second transient lifetimes, idle hiding and full-screen suppression. Hide it while the flyout is visible. Show/click/tooltip never activates the bubble; its click explicitly opens the flyout.
+
+### 41.3 App-owned motion
+
+| Recipe | Behavior | Duration / cubic curve |
+| --- | --- | --- |
+| SurfaceEnter | Whole visible surface opacity 0→1 and 12→0 DIP travel from tray direction | 167 ms, (0,0,0,1) |
+| SurfaceExit | Current surface opacity→0 and current position→12 DIP toward tray | 167 ms, (1,0,1,1) |
+| ContentNavigate | Incoming content only, opacity 0→1 and 12→0 DIP horizontal travel, reversed for Back | 167 ms, (0,0,0,1) |
+| Feedback | Nonsemantic app-owned highlight/opacity | 83 ms, linear |
+| SemanticUpdate / EnvironmentChange | Latest semantic content, validity, command state, DPI, contrast and reduced motion | 0 ms |
+
+These are shared platform-animation recipes. Native control focus/press/hover/scroll behavior keeps platform defaults; custom effects never compete for the same properties. No text/QR/window scaling, Width/Height/Margin animation, bounce, overshoot, stagger, idle decorative loop or production per-frame application callback. The old WPF 333 ms token and point-to-point curve are historical baseline mechanics, not additional replacement recipes.
+
+Same-target requests are no-ops. Interrupted surface effects retarget from the presented value, with position continuity and maximum 167 ms for a replacement segment. Generation-checked completions cannot hide reopened/disposed windows. Close disables content interaction immediately; native hide waits only for the current exit completion. Incoming user navigation replaces the previous destination without queuing. Semantic updates never wait for animation.
+
+Read reduced motion before first show and react to its event immediately. Disable/settle all current effects, including busy rotation; use static progress wording instead. Re-enable only future effects. Age and progress work runs only while its content is visible. Suspend/shutdown cancels presentation lifetimes without delaying backend cleanup.
+
+### 41.4 Rendering and platform gate
+
+Preferred: a supported transparent bounded WinUI envelope containing `SystemBackdropElement` Desktop Acrylic, with outline/shadow moving as one visible panel. If only material fails, use the same envelope with opaque visual material. If transparent-envelope correctness fails, use an ordinary opaque native surface with immediate outer show/hide and internal navigation motion only. This last fallback explicitly disables SurfaceEnter/Exit. Never animate children inside an unanimated visible host rectangle and call it whole-surface motion.
+
+Prove stable-package APIs, actual presentation, current-value interruption, cross-process margin hit testing, focus, DPI and self-contained startup in M02 before production migration. No preview dependency, per-frame HWND motion/resize or new renderer to bypass a failure. A failed gate retains the current app and records the evidence.
+
+### 41.5 Acceptance authority
+
+`docs/WINUI-REBUILD-RUNBOOK.md` §§3–9 supplies the detailed interaction matrix, M00–M12 sequence, measurement methods and numerical budgets. `docs/WINUI-TEST-MIGRATION.csv` preserves every baseline assertion. Pass requires static captures plus temporal evidence, keyboard/UIA/contrast testing, latest-snapshot correctness, package validation and honest real-hardware/soak status. A successful compile, callback counter or screenshot alone does not prove motion or release readiness.
+
+**Owner-approved resource amendment, 2026-10-15:** the complete WinUI application, including the ADB/backend, may use up to **200 MiB working set** (209,715,200 bytes). This replaces the historical 120 MB working-set target for the replacement only. Record private bytes and retain every other latency, idle, traffic and lifetime threshold. A prototype within this ceiling does not prove the integrated application fits.

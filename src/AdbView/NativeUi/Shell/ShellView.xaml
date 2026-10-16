@@ -43,6 +43,40 @@
         <!-- Scroll region: content scrolls under the fixed header -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="0,0,0,8">
             <StackPanel Margin="16,4,16,0">
+                <!-- Existing global health contract; wording is supplied by the backend. -->
+                <Border CornerRadius="8" BorderThickness="1" Padding="14" Margin="0,0,0,12"
+                        Visibility="{Binding ShowGlobalHealth, Converter={StaticResource BoolToVisibility}}">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="{DynamicResource Win.AccentSurface}"/>
+                            <Setter Property="BorderBrush" Value="{DynamicResource Win.AccentBorder}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding GlobalHealth.Kind}" Value="AdbUnavailable">
+                                    <Setter Property="Background" Value="{DynamicResource Win.RedSurface}"/>
+                                    <Setter Property="BorderBrush" Value="{DynamicResource Win.RedBorder}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel>
+                        <TextBlock Text="{Binding GlobalHealth.Title}" FontSize="13.5" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Win.TextPrimary}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding GlobalHealth.Detail}" FontSize="12" Margin="0,4,0,0"
+                                   Foreground="{DynamicResource Win.TextSecondary}" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding GlobalHealth.Hint}" FontSize="12" Margin="0,4,0,0"
+                                   Foreground="{DynamicResource Win.TextSecondary}" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding GlobalHealth.Hint}" Value="{x:Null}">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
                 <!-- Empty state -->
                 <Border CornerRadius="8" Background="{DynamicResource Win.Card}"
                         BorderBrush="{DynamicResource Win.CardBorder}" BorderThickness="1"
@@ -55,11 +89,14 @@
                                   Stroke="{DynamicResource Win.TextMuted}" StrokeThickness="1.5"
                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
                         </Grid>
-                        <TextBlock Text="No devices connected" FontSize="14" FontWeight="SemiBold"
+                        <TextBlock Text="No ADB devices" FontSize="14" FontWeight="SemiBold"
                                    Foreground="{DynamicResource Win.TextPrimary}" HorizontalAlignment="Center" Margin="0,0,0,4"/>
-                        <TextBlock Text="Attach a device via USB or connect over Wi-Fi to observe ADB state."
+                        <TextBlock Text="Connect a device using USB or wireless debugging."
                                    FontSize="12" Foreground="{DynamicResource Win.TextSecondary}"
                                    TextAlignment="Center" MaxWidth="220" TextWrapping="Wrap" LineHeight="18"/>
+                        <TextBlock Text="Wireless discovery active" FontSize="12" Margin="0,8,0,0"
+                                   Foreground="{DynamicResource Win.TextSecondary}" HorizontalAlignment="Center"
+                                   Visibility="{Binding ShowDiscoveryActive, Converter={StaticResource BoolToVisibility}}"/>
                     </StackPanel>
                 </Border>
 
@@ -106,6 +143,23 @@
                         Visibility="{Binding ShowDiscoveryHealth, Converter={StaticResource BoolToVisibility}}">
                     <shell:DiscoveryHealthCardView DataContext="{Binding DiscoveryHealth}"/>
                 </Border>
+                <!-- Existing local warning contract; it never rewrites device state. -->
+                <ItemsControl ItemsSource="{Binding Warnings}" Margin="0,12,0,0"
+                              Visibility="{Binding ShowSubsystemWarnings, Converter={StaticResource BoolToVisibility}}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border CornerRadius="8" Background="{DynamicResource Win.Card}"
+                                    BorderBrush="{DynamicResource Win.CardBorder}" BorderThickness="1" Padding="14" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Title}" FontSize="13.5" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource Win.TextPrimary}" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding Detail}" FontSize="12" Margin="0,4,0,0"
+                                               Foreground="{DynamicResource Win.TextSecondary}" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
             </StackPanel>
         </ScrollViewer>
     </Grid>

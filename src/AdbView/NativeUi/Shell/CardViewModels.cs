@@ -127,7 +127,10 @@ internal sealed class PairingCardViewModel : INotifyPropertyChanged {
 
     public SolidColorBrush PrimaryForeground => (SolidColorBrush)Application.Current.Resources[PrimaryForegroundKey];
 
-    public void Update(PairingCardState state, string? detail) {
+    public void Update(PairingCardState state, string? detail, string? offerName = null) {
+        if (offerName is not null) {
+            OfferName = offerName;
+        }
         var phaseChanged = State != state;
         State = state;
         Detail = detail;

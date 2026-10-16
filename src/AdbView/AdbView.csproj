@@ -20,10 +20,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="QRCoder" />
     <PackageReference Include="Serilog" />
-    <PackageReference Include="Serilog.Sinks.File" />
     <PackageReference Include="Microsoft.Windows.CsWin32" PrivateAssets="all" ExcludeAssets="runtime" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AdbView.Core\AdbView.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">

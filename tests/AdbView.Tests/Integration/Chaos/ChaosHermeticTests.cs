@@ -32,9 +32,10 @@ using Xunit;
 /// </summary>
 public sealed class ChaosHermeticTests {
     private sealed class CollectingSink : ILogEventSink {
-        public List<LogEvent> Events { get; } = new();
+        private readonly System.Collections.Concurrent.ConcurrentQueue<LogEvent> _events = new();
+        public List<LogEvent> Events => _events.ToList();
 
-        public void Emit(LogEvent logEvent) => Events.Add(logEvent);
+        public void Emit(LogEvent logEvent) => _events.Enqueue(logEvent);
     }
 
     private sealed class CountingSink : INotificationSink {

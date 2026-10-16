@@ -1,0 +1,33 @@
+# Temporary WinUI candidate — M08 in progress
+
+Nonshipping fixture-only executable, allowed by decision 0029 / M04–M10. References Core, never the WPF executable. One generated WinUI Application and one dispatcher. Uses M02's stationary opaque fallback B and self-contained startup settings. No backend, registry or production mutex/IPC. Only explicit native fixtures create an isolated tray/receiver/bubble and use memory-only preference checks. The installed app can remain running.
+
+Build through `ADBView.sln`. Run the headed suite from the repository root in PowerShell 7:
+
+```powershell
+./scripts/test-native-ui.ps1 -ExecutablePath './src/AdbView.WinUiMigration/bin/Release/net10.0-windows10.0.26100.0/win-x64/AdbView.WinUiMigration.exe'
+```
+
+Interactive inspection, with a fresh identity each time:
+
+```powershell
+$candidateInstance = [guid]::NewGuid().ToString('N')
+& './src/AdbView.WinUiMigration/bin/Release/net10.0-windows10.0.26100.0/win-x64/AdbView.WinUiMigration.exe' --fixture=details "--instance=$candidateInstance"
+```
+
+Supported fixtures are listed in `NativeUi/DeviceFixtures.cs` and the headed runner: 29 gate cases including list, pairing, motion and native scenario drivers, all pairing phases, static reduced-motion busy status, nonsecret QR and discovery diagnosis. A separate motion-recording fixture is driven only by the temporal script. Pairing captures contain no submitted code or real credentials. Unknown options/fixtures fail before UI/instance initialization. `--verify=<absolute-path>` runs assertions after XAML loads, writes correlated JSON and a fixture-only startup trace, closes the owned window, exits 0/1. The runner treats timeout, crash, unavailable foreground desktop or missing result as failure and cleans only the Process it launched.
+
+M05 implements a latest-revision one-slot visual mailbox, keyed device rows, immediate list/details navigation, keyed Back scroll/focus restoration and exact current-snapshot copy values. One Host controller writes bounds once before show; updates/navigation never resize or move the window. Native row/Back/copy Invoke paths are verified on the XAML UI thread. Copy feedback preserves the existing cancellable 1,200 ms one-shot hold; fixture verification injects a recording clipboard writer and leaves the user's clipboard untouched. Pin emits a separate request; only accepted snapshots change its icon/tooltip. Fixture mode never starts the backend.
+
+M06 adds stable pairing controls and action positions, draft erasure on leave/hide/identity change, QR decoding from a restricted local SVG stream and immediate invalidation with stale-completion rejection. The operation page takes priority during the backend's operation-before-QR-clear publication interval. Pairing success keeps the snapshot's waiting wording; only device snapshots establish connection. Back restores keyed list scroll/focus and never cancels implicitly. Diagnosis controls retain identity/focus; repair/undo use current opaque IDs. The notification-open destination returns to the current list.
+
+`IShellActions` is the command port. `BackendShellActions` delegates to the existing runtime sessions and existing diagnosis callbacks with current-snapshot checks; backend bindings/generations remain authoritative. The executable deliberately composes `FixtureShellActions`, including in interactive fixture inspection: it records identities/counts, never codes, and performs no actual pairing or repair. M08 will compose the live lifetime, existing diagnosis/repair callbacks and native notification subscription. No new repair or automatic recovery policy exists here.
+
+M07 adds the named shared motion policy, incoming-content controller and immediate fallback-B surface controller. The root surface remains stationary; only PageHost opacity/translation animate. Same-target requests do nothing; replacement uses the proven Composition StartingValue mechanism and a generation-checked scoped completion. No outgoing live page, scale/geometry animation or production per-frame callback exists. Semantic invalidation is immediate. Native busy indicators follow page visibility and effective motion; reduced motion uses the existing snapshot status text. The one-second age ticker formats only the visible route and stops while hidden or on pairing. Leaving/hiding also cancels copy acknowledgement holds. Discarded detail pages explicitly detach native copy handlers.
+
+The system preference is read before first show. UISettings changes marshal to the dispatcher and settle effects immediately; the existing ShellAppearanceChangedEvent destination is exposed for M08 composition. Either system-disabled or snapshot-reduced wins. Actual power/session sources are M08; suspend/resume boundaries are already exercised by the fixture. Native control focus/hover/press behavior retains platform defaults.
+
+The headed suite includes motion-scenarios and static pairing-progress-reduced. The motion driver has a separate 60-second bound for its matched 500-cycle workloads and 10-second snapshot burst; all older fixtures retain their 20-second bound. `scripts/test-native-motion.ps1` runs a separate owned motion-recording fixture through the existing M02 cropped DXGI observer. Analyze its printed prefix with `python scripts/analyze-native-motion.py <prefix>`. The fixture handshake, delays and pixel instrumentation are test-only; interactive fixture inspection does not record. No real credentials are used.
+
+M08 adds a hidden top-level receiver, version-4 native tray and menu with existing separators/default item, owned local icon assets, fixed 32-DIP nonactivating bubble and native caption regions. It reuses Core aggregate/transient policy and snapshot tooltip wording. Explicit native fixtures use random GUID icons and memory-only menu checks. The native driver covers icon recreation/version negotiation, all theme checks, balloon payload severity/truncation and click destination, permanent/transient/suppression inputs, disposal and coalesced environment messages. It reuses the M02 guarded input API and owned underlay for real hover/down/click, native drag, outside activation, Esc and menu-loop cancellation. No in-product polling or machine preference change. Ordinary prior fixtures create none of these owners. Live backend/notification composition, single-instance/startup behavior, persisted preferences, actual power/session/full-screen sources and physical environment acceptance remain open M08 work. Old WPF assertions remain; the migration map names actual replacements and contract-superseded mechanisms. No candidate artifacts enter the installer/ZIP. Full hardware/accessibility/integrated performance/deployment/device/soak qualification remains later.
+

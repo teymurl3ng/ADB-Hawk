@@ -1,13 +1,25 @@
-param([string]$Fixture = "connected-usb")
+param(
+    [string]$Fixture = "connected-usb",
+    [string]$ExecutablePath = "src\AdbView\bin\Release\net10.0-windows\AdbView.exe",
+    [string]$OutputDirectory = "$PSScriptRoot\..\artifacts\visual\phase-2"
+)
 
-$AppPath = "src\AdbView\bin\Release\net10.0-windows\AdbView.exe"
+$AppPath = (Resolve-Path -LiteralPath $ExecutablePath).Path
 if (-not (Test-Path $AppPath)) {
     Write-Error "Release build not found at $AppPath"
     exit 1
 }
 
 Write-Host "Launching ADB View with fixture: $Fixture"
-$Process = Start-Process -FilePath $AppPath -ArgumentList "--test-fixture=$Fixture" -PassThru
+if ([IO.Path]::GetFileName($AppPath) -eq 'AdbView.WinUiMigration.exe') {
+    if ($Fixture -notin @('empty','list','details','pairing','adb-unavailable','adb-restoring','wireless-unavailable','wireless-restoring',
+        'two-devices','multi-device','many-devices','long-names','missing-metadata','unknown','unauthorized','offline','connected-wifi','text-200','list-scenarios',
+        'pairing-scenarios','pairing-offer','pairing-progress','pairing-progress-reduced','pairing-success','pairing-failure','pairing-qr','discovery-health','motion-scenarios','native-scenarios','native-bubble')) { throw 'Unsupported candidate capture fixture.' }
+    $captureInstance = [guid]::NewGuid().ToString('N')
+    $Process = Start-Process -FilePath $AppPath -ArgumentList @("--fixture=$Fixture", "--instance=$captureInstance") -PassThru
+} else {
+    $Process = Start-Process -FilePath $AppPath -ArgumentList "--test-fixture=$Fixture" -PassThru
+}
 Write-Host "PID: $($Process.Id)"
 
 Start-Sleep -Seconds 5
@@ -33,6 +45,9 @@ public class NativeCapture {
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError=true)]
+    public static extern bool PostMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
     public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
@@ -117,7 +132,7 @@ public class NativeCapture {
         return results;
     }
 
-    public static IntPtr FindFlyoutWindow(int processId) {
+    public static IntPtr FindFlyoutWindow(int processId, bool statusBubble) {
         IntPtr found = IntPtr.Zero;
         EnumWindows((hWnd, lParam) => {
             int pid;
@@ -126,7 +141,7 @@ public class NativeCapture {
                 var titleLen = GetWindowTextLength(hWnd);
                 var title = new StringBuilder(titleLen + 1);
                 GetWindowText(hWnd, title, titleLen + 1);
-                if (title.ToString() == "ADB View") {
+                if (statusBubble ? title.ToString() == "ADB View status" : title.ToString() == "ADB View" || title.ToString() == "ADB View - WinUI candidate") {
                     found = hWnd;
                     return false;
                 }
@@ -134,6 +149,21 @@ public class NativeCapture {
             return true;
         }, IntPtr.Zero);
         return found;
+    }
+
+    public static bool CloseCandidate(int processId) {
+        bool posted = false;
+        EnumWindows((window, parameter) => {
+            int pid;
+            GetWindowThreadProcessId(window, out pid);
+            if (pid != processId) return true;
+            var title = new StringBuilder(128);
+            GetWindowText(window, title, title.Capacity);
+            if (title.ToString() != "ADB View - WinUI candidate") return true;
+            posted = PostMessage(window, 0x10, IntPtr.Zero, IntPtr.Zero);
+            return false;
+        }, IntPtr.Zero);
+        return posted;
     }
 
     public static Bitmap CaptureWindow(IntPtr hWnd) {
@@ -203,7 +233,7 @@ foreach ($info in $windowInfo) {
     Write-Host "  $info"
 }
 
-$hwnd = [NativeCapture]::FindFlyoutWindow($Process.Id)
+$hwnd = [NativeCapture]::FindFlyoutWindow($Process.Id, ($Fixture -eq 'native-bubble'))
 if ($hwnd -eq [IntPtr]::Zero) {
     Write-Error "Could not find ADB View flyout window."
     Stop-Process -Id $Process.Id -Force
@@ -219,11 +249,17 @@ if ($bmp -eq $null) {
     exit 1
 }
 
-$outDir = "$PSScriptRoot\..\artifacts\visual\phase-2"
+$outDir = $OutputDirectory
 if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 
 $bmp.Save("$outDir\native-$Fixture.png", [System.Drawing.Imaging.ImageFormat]::Png)
 $bmp.Dispose()
 
-Stop-Process -Id $Process.Id -Force
+if ([IO.Path]::GetFileName($AppPath) -eq 'AdbView.WinUiMigration.exe') {
+    if (-not [NativeCapture]::CloseCandidate($Process.Id) -or -not $Process.WaitForExit(2000)) {
+        Stop-Process -Id $Process.Id -Force
+        throw 'Candidate capture cleanup did not exit gracefully; forced only the owned process.'
+    }
+    if ($Process.ExitCode -ne 0) { throw "Candidate capture cleanup failed: exit $($Process.ExitCode)." }
+} else { Stop-Process -Id $Process.Id -Force }
 Write-Host "Captured native-$Fixture.png"

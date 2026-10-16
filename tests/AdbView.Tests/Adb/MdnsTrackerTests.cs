@@ -18,6 +18,33 @@ using AdbView.Tests.Fakes;
 using Xunit;
 
 public sealed class MdnsTrackerTests {
+    [Fact]
+    public async Task CliEmptyDocumentIsEmittedWhilePipeRemainsOpen() {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        using var output = new System.IO.Pipes.AnonymousPipeServerStream(System.IO.Pipes.PipeDirection.Out);
+        using var input = new System.IO.Pipes.AnonymousPipeClientStream(System.IO.Pipes.PipeDirection.In, output.ClientSafePipeHandle);
+        var cli = new MdnsTrackServicesCli(TimeSpan.FromMilliseconds(10));
+        await using var documents = cli.ReadDocumentsAsync(input, stop.Token).GetAsyncEnumerator(stop.Token);
+        try {
+            await output.WriteAsync(Encoding.UTF8.GetBytes("Services:\n\n"), stop.Token);
+            await output.FlushAsync(stop.Token);
+            Assert.True(await documents.MoveNextAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2), stop.Token));
+            Assert.Empty(MdnsServicesProtoTextParser.Parse(documents.Current.Span));
+        }
+        finally {
+            await stop.CancelAsync();
+        }
+    }
+
+    [Fact]
+    public async Task BoundedDiagnosticRetentionStillDrainsAllBytes() {
+        var bytes = new byte[256 * 1024];
+        Array.Fill(bytes, (byte)'x');
+        using var input = new System.IO.MemoryStream(bytes);
+        var retained = await MdnsTrackServicesCli.DrainBoundedAsync(input, 64 * 1024, TestContext.Current.CancellationToken);
+        Assert.Equal(64 * 1024, retained.Length);
+        Assert.Equal(input.Length, input.Position);
+    }
     private sealed class Collector<T> {
         private readonly object _gate = new();
         private readonly List<T> _items = new();
@@ -541,7 +568,7 @@ public sealed class MdnsTrackerTests {
     [Fact]
     public void W_MdnsTrackerSource_HasNoStateOrUiDependency() {
         string text = System.IO.File.ReadAllText(
-            System.IO.Path.Combine(FindRepoRoot(), "src", "AdbView", "Adb", "MdnsTracker.cs"));
+            System.IO.Path.Combine(FindRepoRoot(), "src", "AdbView.Core", "Adb", "MdnsTracker.cs"));
         foreach (var token in new[] {
             "AdbView.State", "StateEngine", "PairingOfferView",
             "PairingOperationView", "BridgeCoordinator", "System.Windows.Forms",

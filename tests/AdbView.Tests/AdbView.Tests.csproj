@@ -16,9 +16,14 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\AdbView\AdbView.csproj" />
+    <ProjectReference Include="..\..\src\AdbView.Core\AdbView.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\CandidateOptions.cs" Link="Candidate\CandidateOptions.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\BubbleVisibility.cs" Link="Candidate\BubbleVisibility.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\NativeUi\Motion\MotionPolicy.cs" Link="Candidate\MotionPolicy.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\NativeUi\Motion\SurfaceTransitionController.cs" Link="Candidate\SurfaceTransitionController.cs" />
     <None Include="Fixtures\Adb\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

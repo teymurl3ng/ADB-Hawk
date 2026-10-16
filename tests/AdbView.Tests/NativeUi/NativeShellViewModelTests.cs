@@ -12,6 +12,65 @@ using AdbView.State;
 using Xunit;
 
 public sealed class NativeShellViewModelTests {
+    [Theory]
+    [InlineData("adb-unavailable")]
+    [InlineData("adb-restoring")]
+    public void GlobalHealthIsRenderedInsteadOfHealthyEmptyAndQrEntry(string fixture) {
+        using var vm = new NativeShellViewModel();
+        var snapshot = AdbView.Bridge.FixtureSnapshotProvider.GetSnapshot(fixture);
+        vm.ApplySnapshot(snapshot);
+        Assert.True(vm.ShowGlobalHealth);
+        Assert.Equal(snapshot.Health.Title, vm.GlobalHealth!.Title);
+        Assert.Equal(snapshot.Health.Detail, vm.GlobalHealth.Detail);
+        Assert.False(vm.ShowEmptyState);
+        Assert.False(vm.ShowQrEntry);
+        vm.ApplySnapshot(AdbView.Bridge.FixtureSnapshotProvider.GetSnapshot("empty"));
+        Assert.False(vm.ShowGlobalHealth);
+        Assert.True(vm.ShowEmptyState);
+        Assert.True(vm.ShowQrEntry);
+    }
+
+    [Theory]
+    [InlineData("wireless-unavailable")]
+    [InlineData("wireless-restoring")]
+    public void LocalWarningPreservesConnectedUsbTruth(string fixture) {
+        using var vm = new NativeShellViewModel();
+        var snapshot = AdbView.Bridge.FixtureSnapshotProvider.GetSnapshot(fixture);
+        vm.ApplySnapshot(snapshot);
+        Assert.True(vm.ShowSubsystemWarnings);
+        Assert.Equal(snapshot.Warnings[0].Title, Assert.Single(vm.Warnings).Title);
+        Assert.Equal(DeviceStateKind.Connected, Assert.Single(vm.Devices).State);
+        Assert.False(vm.ShowGlobalHealth);
+        Assert.False(vm.ShowDiscoveryActive);
+    }
+
+    [Fact]
+    public void DifferentOperationReplacesCardAndRoutesRetryToCurrentOffer() {
+        using var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(offers: ImmutableArray.Create(Offer())));
+        var previous = vm.PairingCard;
+        string? requestedId = null;
+        vm.PairingActionRequested += (_, id, _) => requestedId = id;
+        var operation = Operation(PairingPhase.Failed) with { OfferId = "offer-2", DisplayName = "Other phone" };
+        vm.ApplySnapshot(Snapshot(pairing: operation));
+        Assert.NotSame(previous, vm.PairingCard);
+        Assert.Equal("Other phone", vm.PairingCard!.OfferName);
+        vm.PairingCard.RetryCommand.Execute(null);
+        Assert.Equal("offer-2", requestedId);
+    }
+
+    [Fact]
+    public void SameOperationNameRefreshPreservesTypedCode() {
+        using var vm = new NativeShellViewModel();
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode)));
+        var card = vm.PairingCard!;
+        card.CodeInput = "123456";
+        vm.ApplySnapshot(Snapshot(pairing: Operation(PairingPhase.AwaitingCode) with { DisplayName = "Updated name" }));
+        Assert.Same(card, vm.PairingCard);
+        Assert.Equal("123456", card.Code);
+        Assert.Equal("Updated name", card.OfferName);
+    }
+
     private static readonly DateTimeOffset T0 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private const string OfferId = "offer-1";

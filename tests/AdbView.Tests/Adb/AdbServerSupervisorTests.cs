@@ -21,6 +21,84 @@ using Xunit;
 public sealed class AdbServerSupervisorTests {
     private DateTimeOffset _now = new(2026, 9, 18, 12, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public async Task RecoveryLaunchExceptionDoesNotEndSupervisorIteration() {
+        await using var server = new FakeAdbServer();
+        server.SetHandler((socket, _) => { socket.Close(); return Task.CompletedTask; });
+        var runner = new TestProcessRunner {
+            Handler = (_, _) => throw new System.ComponentModel.Win32Exception("synthetic launch failure"),
+        };
+        var supervisor = new AdbServerSupervisor(connectionFactory: () => new AdbHostConnection(server.EndPoint),
+            locator: new TestExecutableLocator { Result = @"C:\fake\adb.exe" }, processRunner: runner, getUtcNow: () => _now);
+        await supervisor.RunIterationAsync(TestContext.Current.CancellationToken);
+        _now = _now.AddSeconds(11);
+        var failed = await supervisor.RunIterationAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(AdbServerPhase.Unavailable, failed.Phase);
+        Assert.Equal(2, runner.CallCount);
+        server.AssertNoKillCommandSent();
+    }
+
+    [Fact]
+    public async Task MissingExecutableLaunchIsAnObservedFailureResult() {
+        var result = await new AdbProcessRunner().StartServerAsync(
+            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "adb.exe"), TestContext.Current.CancellationToken);
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("launch failed", result.StandardError, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ExplicitRevalidationRefreshesCapabilitiesAtSameProtocolVersion() {
+        await using var server = new FakeAdbServer();
+        int statusQueries = 0;
+        server.SetHandler(async (socket, command) => {
+            if (command == "host:version") {
+                await socket.SendAsync("OKAY00040029"u8.ToArray(), SocketFlags.None);
+            }
+            else {
+                statusQueries++;
+                var payload = CreateServerStatusPayload();
+                await socket.SendAsync(Encoding.ASCII.GetBytes($"OKAY{payload.Length:X4}"), SocketFlags.None);
+                await socket.SendAsync(payload, SocketFlags.None);
+            }
+        });
+        var supervisor = new AdbServerSupervisor(connectionFactory: () => new AdbHostConnection(server.EndPoint));
+        var first = await supervisor.RunIterationAsync();
+        supervisor.RequestProbe();
+        var second = await supervisor.RunIterationAsync();
+        Assert.Equal(first.Generation + 1, second.Generation);
+        Assert.Equal(first.ProtocolVersion, second.ProtocolVersion);
+        Assert.Equal(2, statusQueries);
+        server.AssertNoKillCommandSent();
+    }
+
+    [Fact]
+    public async Task RequestProbeInterruptsLongBackoff() {
+        await using var server = new FakeAdbServer();
+        var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var stop = new CancellationTokenSource();
+        var supervisor = new AdbServerSupervisor(connectionFactory: () => new AdbHostConnection(server.EndPoint),
+            locator: new TestExecutableLocator(), delay: (_, ct) => {
+                waiting.TrySetResult();
+                return Task.Delay(TimeSpan.FromMinutes(1), ct);
+            });
+        var running = supervisor.RunAsync(stop.Token);
+        await waiting.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        var recovered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        server.SetHandler(async (socket, command) => {
+            byte[] response = command == "host:version" ? "OKAY00040029"u8.ToArray() : "OKAY0000"u8.ToArray();
+            await socket.SendAsync(response, SocketFlags.None);
+        });
+        supervisor.StateChanged += state => { if (state.Phase == AdbServerPhase.Up) recovered.TrySetResult(); };
+        supervisor.RequestProbe();
+        try {
+            await recovered.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        }
+        finally {
+            await stop.CancelAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => running);
+        }
+    }
+
     private sealed class TestProcessRunner : IAdbProcessRunner {
         public int CallCount { get; private set; }
         public List<string> ExecutablePathsCalled { get; } = new();

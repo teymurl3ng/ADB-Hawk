@@ -123,7 +123,6 @@ internal sealed class RepairCoordinator {
 
     /// <summary>Characters permitted in adapter/service targets on a command line (amendment).</summary>
     internal static readonly char[] AllowedTargetChars = [' ', '(', ')', '-', '.', '_', '\''];
-    private static readonly TimeSpan KillTimeout = TimeSpan.FromSeconds(10);
 
     private readonly IAdbProcessRunner _processRunner;
     private readonly IAdbExecutableLocator _executableLocator;
@@ -136,16 +135,18 @@ internal sealed class RepairCoordinator {
     private ImmutableArray<DiscoveryRepairDescriptor> _catalog =
         ImmutableArray<DiscoveryRepairDescriptor>.Empty;
 
-    // Applied-but-not-reverted admin actions this session — they unlock the undo entries
-    // (decision 0008 amendment) and reset when the card clears.
+    // Applied-but-not-reverted actions unlock the existing undo entries for this session.
     private readonly HashSet<string> _stoppedServices = new(StringComparer.Ordinal);
     private readonly HashSet<string> _disabledAdapters = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _bookkeepingGate = new();
 
     // Restart recovery: armed when Restart ADB completes; fires the re-measure once, on the
     // first mDNS frame of the new server session (event-driven; R-05).
     private long _preKillGeneration;
     private DateTimeOffset _restartCompletedAt = DateTimeOffset.MinValue;
     private bool _awaitingRestartMeasure;
+    private long _lastMdnsSequence;
+    private long _restartMdnsSequence;
     private int _busy;
 
     public RepairCoordinator(
@@ -196,7 +197,7 @@ internal sealed class RepairCoordinator {
                 DiscoveryRepairActionKind.StopService,
                 TailscaleServiceName));
         }
-        else if (_stoppedServices.Contains(TailscaleServiceName)) {
+        else if (WasServiceStopped(TailscaleServiceName)) {
             // Stopped by us this session — offer the undo even though it no longer "runs".
             builder.Add(new DiscoveryRepairDescriptor(
                 "start-service:" + TailscaleServiceName,
@@ -218,7 +219,11 @@ internal sealed class RepairCoordinator {
         }
 
         // Disabled adapters vanish from the Up-enumeration; the undo entry keeps them reachable.
-        foreach (string disabled in _disabledAdapters) {
+        string[] disabledAdapters;
+        lock (_bookkeepingGate) {
+            disabledAdapters = _disabledAdapters.ToArray();
+        }
+        foreach (string disabled in disabledAdapters) {
             if (!presentAdapters.Contains(disabled) && IsValidTarget(disabled)) {
                 builder.Add(new DiscoveryRepairDescriptor(
                     "enable-adapter:" + disabled,
@@ -238,6 +243,8 @@ internal sealed class RepairCoordinator {
             return;
         }
 
+        bool started = false;
+        bool finished = false;
         try {
             var descriptor = _catalog.FirstOrDefault(r => r.Id == repairId);
             if (descriptor is null) {
@@ -246,6 +253,7 @@ internal sealed class RepairCoordinator {
             }
 
             _post(new DiscoveryRepairStartedEvent(repairId));
+            started = true;
             var outcome = descriptor.Kind switch {
                 DiscoveryRepairActionKind.RestartAdb => await RestartAdbAsync(currentServerGeneration, ct).ConfigureAwait(false),
                 DiscoveryRepairActionKind.StopService => await LaunchAdminAsync(
@@ -264,21 +272,24 @@ internal sealed class RepairCoordinator {
             };
 
             _post(new DiscoveryRepairFinishedEvent(repairId, outcome));
+            finished = true;
 
             if (outcome == DiscoveryRepairOutcome.Completed) {
-                switch (descriptor.Kind) {
-                    case DiscoveryRepairActionKind.StopService:
-                        _stoppedServices.Add(descriptor.Target!);
-                        break;
-                    case DiscoveryRepairActionKind.StartService:
-                        _stoppedServices.Remove(descriptor.Target!);
-                        break;
-                    case DiscoveryRepairActionKind.DisableAdapter:
-                        _disabledAdapters.Add(descriptor.Target!);
-                        break;
-                    case DiscoveryRepairActionKind.EnableAdapter:
-                        _disabledAdapters.Remove(descriptor.Target!);
-                        break;
+                lock (_bookkeepingGate) {
+                    switch (descriptor.Kind) {
+                        case DiscoveryRepairActionKind.StopService:
+                            _stoppedServices.Add(descriptor.Target!);
+                            break;
+                        case DiscoveryRepairActionKind.StartService:
+                            _stoppedServices.Remove(descriptor.Target!);
+                            break;
+                        case DiscoveryRepairActionKind.DisableAdapter:
+                            _disabledAdapters.Add(descriptor.Target!);
+                            break;
+                        case DiscoveryRepairActionKind.EnableAdapter:
+                            _disabledAdapters.Remove(descriptor.Target!);
+                            break;
+                    }
                 }
 
                 // Undo actions unlock; completed primary actions leave the card.
@@ -287,6 +298,12 @@ internal sealed class RepairCoordinator {
                     or DiscoveryRepairActionKind.DisableAdapter) {
                     await _runDiscoveryCheck().ConfigureAwait(false);
                 }
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) {
+            Log.Warning(ex, "Discovery repair failed ({RepairId}).", repairId);
+            if (started && !finished) {
+                _post(new DiscoveryRepairFinishedEvent(repairId, DiscoveryRepairOutcome.Failed));
             }
         }
         finally {
@@ -317,28 +334,37 @@ internal sealed class RepairCoordinator {
     /// reset — the restart itself may transiently clear the card). Card-clear resets session
     /// repair bookkeeping (fresh episode, fresh catalog).
     /// </summary>
-    public async void OnSnapshotPublished(AppSnapshot snapshot, DeviceEngineState deviceState) {
+    public void OnSnapshotPublished(AppSnapshot snapshot, DeviceEngineState deviceState) {
+        _lastMdnsSequence = deviceState.LatestMdnsSequence;
         if (_awaitingRestartMeasure
-            && deviceState.LatestAppliedMdnsAt is DateTimeOffset frame
-            && frame >= _restartCompletedAt) {
+            && (deviceState.LatestMdnsSequence > 0
+                ? deviceState.LatestMdnsSequence > _restartMdnsSequence
+                : deviceState.LatestAppliedMdnsAt is DateTimeOffset frame && frame >= _restartCompletedAt)) {
             _awaitingRestartMeasure = false;
-            await _runDiscoveryCheck().ConfigureAwait(false);
+            _ = MeasureAfterRestartAsync();
         }
 
         if (snapshot.DiscoveryHealth is not null) {
             return;
         }
 
-        // Card cleared: reset the episode's offer set and undo bookkeeping. The restart-recovery
+        // Card cleared: reset the episode's offer set, retaining undo bookkeeping. The restart-recovery
         // flags are NOT touched — during a restart the card legitimately vanishes (server down →
         // Restoring), and the one-shot post-restart measure must still fire.
-        if (_catalog.IsEmpty && _stoppedServices.Count == 0 && _disabledAdapters.Count == 0) {
+        if (_catalog.IsEmpty) {
             return;
         }
 
         _catalog = ImmutableArray<DiscoveryRepairDescriptor>.Empty;
-        _stoppedServices.Clear();
-        _disabledAdapters.Clear();
+    }
+
+    private async Task MeasureAfterRestartAsync() {
+        try {
+            await _runDiscoveryCheck().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException) {
+            Log.Warning(ex, "Discovery repair verification failed.");
+        }
     }
 
     private bool _awaitingServerRestart;
@@ -353,15 +379,15 @@ internal sealed class RepairCoordinator {
         // Decision 0008 amendment: the single sanctioned kill. Recovery is the supervisor's.
         var result = await _processRunner
             .KillServerAsync(adb, ct)
-            .WaitAsync(KillTimeout, ct)
             .ConfigureAwait(false);
-        if (result.TimedOut) {
-            Log.Warning("Restart ADB: kill-server timed out.");
+        if (result.TimedOut || result.ExitCode != 0) {
+            Log.Warning("Restart ADB failed (exit {ExitCode}, timeout {TimedOut}).", result.ExitCode, result.TimedOut);
             return DiscoveryRepairOutcome.Failed;
         }
 
         _preKillGeneration = currentServerGeneration;
         _restartCompletedAt = App.SystemClock.UtcNow;
+        _restartMdnsSequence = _lastMdnsSequence;
         _awaitingServerRestart = true;
         return DiscoveryRepairOutcome.Completed;
     }
@@ -372,9 +398,15 @@ internal sealed class RepairCoordinator {
         CancellationToken ct) {
         var result = await _launcher.LaunchAsync(fileName, arguments, ct).ConfigureAwait(false);
         return result.Outcome switch {
-            ProcessLaunchOutcome.Launched => DiscoveryRepairOutcome.Completed,
+            ProcessLaunchOutcome.Launched when result.ExitCode == 0 => DiscoveryRepairOutcome.Completed,
             ProcessLaunchOutcome.Declined => DiscoveryRepairOutcome.Declined,
             _ => DiscoveryRepairOutcome.Failed,
         };
+    }
+
+    private bool WasServiceStopped(string service) {
+        lock (_bookkeepingGate) {
+            return _stoppedServices.Contains(service);
+        }
     }
 }

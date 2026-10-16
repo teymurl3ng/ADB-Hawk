@@ -7,8 +7,12 @@ using Xunit;
 
 public sealed class FixtureSnapshotProviderTests {
     [Fact]
-    public void CanonicalFixtureNamesContainsAllEighteen() {
-        Assert.Equal(18, FixtureSnapshotProvider.CanonicalFixtureNames.Length);
+    public void CanonicalFixtureNamesContainsAllTwentyTwo() {
+        Assert.Equal(22, FixtureSnapshotProvider.CanonicalFixtureNames.Length);
+        Assert.Contains("adb-unavailable", FixtureSnapshotProvider.CanonicalFixtureNames);
+        Assert.Contains("adb-restoring", FixtureSnapshotProvider.CanonicalFixtureNames);
+        Assert.Contains("wireless-unavailable", FixtureSnapshotProvider.CanonicalFixtureNames);
+        Assert.Contains("wireless-restoring", FixtureSnapshotProvider.CanonicalFixtureNames);
         var expected = new[] {
             "empty", "connected-usb", "connected-wifi", "expanded",
             "unauthorized", "offline", "recovery", "bootloader",

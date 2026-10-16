@@ -1,0 +1,26 @@
+<Window
+    x:Class="WinUiShellProbe.ProbeWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="ADB View — isolated WinUI feasibility probe">
+    <Grid x:Name="Envelope" Width="424" Height="540" RequestedTheme="Dark">
+    <Grid x:Name="Root" Width="376" Height="480" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="24,24,0,0">
+        <Grid x:Name="BackdropHost" IsHitTestVisible="False">
+            <Border x:Name="OpaquePanel" CornerRadius="8" Background="#202329" />
+        </Grid>
+        <Grid Padding="16" RowSpacing="12">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="48" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                <Button x:Name="BackButton" Content="Back" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="ADB View" Style="{StaticResource TitleTextBlockStyle}" VerticalAlignment="Center" />
+                <ToggleButton x:Name="PinButton" Grid.Column="2" Content="Pin" AutomationProperties.Name="Pin probe" Visibility="Collapsed" VerticalAlignment="Center" />
+            </Grid>
+            <Grid x:Name="ContentRegion" Grid.Row="1" />
+        </Grid>
+    </Grid>
+    </Grid>
+</Window>

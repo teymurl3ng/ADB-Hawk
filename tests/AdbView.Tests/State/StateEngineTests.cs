@@ -7,13 +7,200 @@ namespace AdbView.Tests.State;
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Threading;
 using System.Threading.Tasks;
+using AdbView.Adb;
 using AdbView.Adb.Model;
+using AdbView.Adb.Protocol;
+using AdbView.Host;
 using AdbView.State;
+using AdbView.Tests.Fakes;
 using Xunit;
 
 public sealed class StateEngineTests {
+    private static RawDevice ConnectedPhone(string serial = "192.0.2.10:40123", int state = 8) => new() {
+        Serial = serial,
+        ProtoState = state,
+        ConnectionType = 2,
+        Format = RawDeviceFormat.ProtoBinary,
+    };
+
+    private static RawMdnsService ConnectService(string instance = "adb-A-aa", int port = 40123) => new() {
+        InstanceName = instance,
+        ServiceType = "_adb-tls-connect._tcp",
+        Kind = MdnsServiceKind.Connect,
+        Ipv4 = "192.0.2.10",
+        Port = port,
+        Serial = "A",
+        Format = RawMdnsFormat.Fallback,
+    };
+
+    [Fact]
+    public async Task FakeDiscoveryStreamTriggersConnectionAfterPairingWithoutVisibleDelta() {
+        await using var engine = new StateEngine();
+        var pairedOffer = ConnectService() with { Kind = MdnsServiceKind.Pairing, ServiceType = "_adb-tls-pairing._tcp" };
+        engine.Post(new MdnsServicesReceivedEvent(ImmutableArray.Create(pairedOffer), DateTimeOffset.UtcNow));
+        await engine.DrainAsync();
+        string offerId = Assert.Single(engine.CurrentSnapshot.PairingOffers).Id;
+        engine.Post(new PairingProgressedEvent(offerId, AdbView.Adb.Model.PairingPhase.PairedWaitingForDevice,
+            null, PairingFailureKind.None, "Audit phone"));
+        // Complete expected pairing-service withdrawal before the connect advertisement arrives.
+        engine.Post(new MdnsServicesReceivedEvent(ImmutableArray<RawMdnsService>.Empty, DateTimeOffset.UtcNow));
+        await engine.DrainAsync();
+        long waitingRevision = engine.CurrentSnapshot.Revision;
+        var connected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new FakeHostConnectClient((_, port) => {
+            Assert.Equal(40123, port);
+            connected.TrySetResult();
+            return Task.FromResult(new HostConnectResult(HostConnectOutcome.Connected, null));
+        });
+        using var coordinator = new PostPairConnectCoordinator(client);
+        engine.StateReconciled += snapshot => coordinator.OnSnapshotPublished(snapshot, engine.CurrentDeviceState);
+        await using var server = new FakeAdbServer();
+        server.SetHandler(async (socket, _) => {
+            await FakeAdbMdns.SendOkayAsync(socket);
+            var raw = FakeAdbMdns.EncodeMdnsService("adb-A-aa", "_adb-tls-connect._tcp", 40123, "192.0.2.10");
+            var tls = FakeAdbMdns.EncodeTlsService(raw);
+            await FakeAdbMdns.SendFrameAsync(socket, FakeAdbMdns.EncodeMdnsServices(tls: new[] { tls }));
+        });
+        using var life = new MdnsTrackerLifecycle(evt => engine.Post(evt), () => new MdnsTracker(
+            connectionFactory: () => new AdbHostConnection(server.EndPoint),
+            delay: (delay, ct) => Task.Delay(delay, ct)));
+        life.EnsureRunning(1);
+        await connected.Task.WaitAsync(TimeSpan.FromSeconds(3));
+        await engine.DrainAsync();
+        Assert.Equal(waitingRevision, engine.CurrentSnapshot.Revision);
+        Assert.Empty(engine.CurrentSnapshot.Devices);
+        Assert.Equal(1, client.CallCount);
+        server.AssertNoKillCommandSent();
+    }
+
+    [Fact]
+    public void FailedDiscoveryExpiresOldAuthorityAndUsesFreshFallbackEndpoint() {
+        var at = DateTimeOffset.UtcNow;
+        var old = ConnectService() with { Kind = MdnsServiceKind.Pairing, ServiceType = "_adb-tls-pairing._tcp" };
+        var fresh = old with { Port = 40124, Format = RawMdnsFormat.Fallback };
+        var listed = StateReducer.ReduceWithDeviceState(StateEngine.CreateDefaultSnapshot(), DeviceEngineState.Empty,
+            new MdnsServicesReceivedEvent(ImmutableArray.Create(old), at), at);
+        var fallback = StateReducer.ReduceWithDeviceState(listed.Snapshot, listed.DeviceState,
+            new MdnsFallbackReceivedEvent(ImmutableArray.Create(fresh), at), at);
+        var failed = StateReducer.ReduceWithDeviceState(fallback.Snapshot, fallback.DeviceState,
+            new MdnsTrackerFailedEvent("eof"), at);
+        var expired = StateReducer.ReduceWithDeviceState(failed.Snapshot, failed.DeviceState,
+            new WirelessDiscoveryUnavailableExpiredEvent(failed.WirelessUnavailable.Generation), at.AddSeconds(60));
+        Assert.Empty(expired.DeviceState.LatestMdnsServices);
+        Assert.Equal(40124, Assert.Single(expired.DeviceState.OfferBindings).Value.Port);
+        Assert.Single(expired.Snapshot.PairingOffers);
+        Assert.Equal(Vocabulary.Wireless.UnavailableTitle, Assert.Single(expired.Snapshot.Warnings).Title);
+    }
+
+    [Fact]
+    public async Task MixedDiscoveryDoesNotPreventLaterDisconnect() {
+        await using var engine = new StateEngine();
+        var at = DateTimeOffset.UtcNow;
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray.Create(ConnectedPhone()), at));
+        engine.Post(new MdnsServicesReceivedEvent(ImmutableArray.Create(ConnectService(), ConnectService("adb-B-bb")), at));
+        engine.Post(new MdnsFallbackReceivedEvent(ImmutableArray.Create(ConnectService("adb-C-cc")), at));
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray<RawDevice>.Empty, at.AddSeconds(1)));
+        await engine.DrainAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Empty(engine.CurrentSnapshot.Devices);
+        Assert.True(engine.Post(new SetPinnedEvent(true)));
+        await engine.DrainAsync();
+        Assert.True(engine.CurrentSnapshot.Shell.Pinned);
+    }
+
+    [Fact]
+    public async Task FailingObserverDoesNotStopTruthOrOtherObservers() {
+        await using var engine = new StateEngine();
+        int received = 0;
+        engine.SnapshotPublished += _ => throw new InvalidOperationException("synthetic observer failure");
+        engine.SnapshotPublished += _ => received++;
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray.Create(ConnectedPhone()), DateTimeOffset.UtcNow));
+        engine.Post(new DeviceListReceivedEvent(ImmutableArray<RawDevice>.Empty, DateTimeOffset.UtcNow));
+        await engine.DrainAsync().WaitAsync(TimeSpan.FromSeconds(3));
+        Assert.Empty(engine.CurrentSnapshot.Devices);
+        Assert.Equal(2, received);
+    }
+
+    [Fact]
+    public async Task InternalDiscoveryChangesNotifyWithoutInventingSnapshotRevision() {
+        await using var engine = new StateEngine();
+        int snapshots = 0;
+        int reconciliations = 0;
+        engine.SnapshotPublished += _ => snapshots++;
+        engine.StateReconciled += _ => reconciliations++;
+        engine.Post(new MdnsServicesReceivedEvent(ImmutableArray.Create(ConnectService()), DateTimeOffset.UtcNow));
+        await engine.DrainAsync();
+        Assert.Equal(0, snapshots);
+        Assert.Equal(1, reconciliations);
+        Assert.Single(engine.CurrentDeviceState.LatestMdnsServices);
+    }
+
+    [Fact]
+    public void ServerLossArmsGraceOnceAndNewOutageGetsFreshToken() {
+        var at = DateTimeOffset.UtcNow;
+        var connected = StateReducer.ReduceWithDeviceState(StateEngine.CreateDefaultSnapshot(), DeviceEngineState.Empty,
+            new DeviceListReceivedEvent(ImmutableArray.Create(ConnectedPhone()), at), at);
+        var lost = StateReducer.ReduceWithDeviceState(connected.Snapshot, connected.DeviceState,
+            new AdbServerStateChangedEvent(new AdbServerStateChanged(AdbServerPhase.Unavailable, null, 0, 1)), at);
+        Assert.Equal(GraceCommandKind.Schedule, lost.Grace.Kind);
+        Assert.Single(lost.Snapshot.Devices);
+        var again = StateReducer.ReduceWithDeviceState(lost.Snapshot, lost.DeviceState, new DeviceTrackerFailedEvent("retry"), at);
+        Assert.Equal(GraceCommandKind.None, again.Grace.Kind);
+        Assert.Equal(lost.Grace.Generation, again.DeviceState.ActiveGraceGeneration);
+        var expired = StateReducer.ReduceWithDeviceState(again.Snapshot, again.DeviceState,
+            new DeviceTrackerGraceExpiredEvent(lost.Grace.Generation), at.AddSeconds(2));
+        Assert.Empty(expired.Snapshot.Devices);
+        var recovered = StateReducer.ReduceWithDeviceState(expired.Snapshot, expired.DeviceState,
+            new DeviceListReceivedEvent(ImmutableArray.Create(ConnectedPhone()), at.AddSeconds(3)), at.AddSeconds(3));
+        var nextLoss = StateReducer.ReduceWithDeviceState(recovered.Snapshot, recovered.DeviceState,
+            new DeviceTrackerFailedEvent("new outage"), at.AddSeconds(4));
+        Assert.True(nextLoss.Grace.Generation > lost.Grace.Generation);
+        var stale = StateReducer.ReduceWithDeviceState(nextLoss.Snapshot, nextLoss.DeviceState,
+            new DeviceTrackerGraceExpiredEvent(lost.Grace.Generation), at.AddSeconds(4));
+        Assert.Single(stale.Snapshot.Devices);
+    }
+
+    [Fact]
+    public void ProducerSequenceAcceptsDisconnectAfterClockRollbackAndRejectsStaleSequence() {
+        var at = DateTimeOffset.UtcNow;
+        var connected = StateReducer.ReduceWithDeviceState(StateEngine.CreateDefaultSnapshot(), DeviceEngineState.Empty,
+            new DeviceListReceivedEvent(ImmutableArray.Create(ConnectedPhone()), at, 1), at);
+        var disconnected = StateReducer.ReduceWithDeviceState(connected.Snapshot, connected.DeviceState,
+            new DeviceListReceivedEvent(ImmutableArray<RawDevice>.Empty, at.AddMinutes(-5), 2), at.AddMinutes(-5));
+        Assert.Empty(disconnected.Snapshot.Devices);
+        var stale = StateReducer.ReduceWithDeviceState(disconnected.Snapshot, disconnected.DeviceState,
+            new DeviceListReceivedEvent(ImmutableArray.Create(ConnectedPhone()), at.AddMinutes(5), 1), at);
+        Assert.Empty(stale.Snapshot.Devices);
+    }
+
+    [Fact]
+    public void FallbackIdentityAndWorkingTransportAreSharedWithMetadataTargets() {
+        var at = DateTimeOffset.UtcNow;
+        var state = DeviceEngineState.Empty with { LatestFallbackServices = ImmutableArray.Create(ConnectService()) };
+        var result = StateReducer.ReduceWithDeviceState(StateEngine.CreateDefaultSnapshot(), state,
+            new DeviceListReceivedEvent(ImmutableArray.Create(ConnectedPhone("192.0.2.10:39001", 6), ConnectedPhone()), at), at);
+        var card = Assert.Single(result.Snapshot.Devices);
+        Assert.Equal(DeviceStateKind.Connected, card.State);
+        Assert.Equal("wifi:A", card.Id);
+        var target = Assert.Single(StateEngine.BuildMetadataTargets(result.Snapshot, result.DeviceState));
+        Assert.Equal("192.0.2.10:40123", target.AdbSerial);
+    }
+
+    [Fact]
+    public void RepeatedDiscoveryFailuresDoNotRestartUnavailableDeadline() {
+        var at = DateTimeOffset.UtcNow;
+        var failed = StateReducer.ReduceWithDeviceState(StateEngine.CreateDefaultSnapshot(), DeviceEngineState.Empty,
+            new MdnsTrackerFailedEvent("first"), at);
+        var retried = StateReducer.ReduceWithDeviceState(failed.Snapshot, failed.DeviceState,
+            new MdnsTrackerFailedEvent("second"), at.AddSeconds(30));
+        Assert.Equal(GraceCommandKind.None, retried.WirelessUnavailable.Kind);
+        var unavailable = StateReducer.ReduceWithDeviceState(retried.Snapshot, retried.DeviceState,
+            new WirelessDiscoveryUnavailableExpiredEvent(failed.WirelessUnavailable.Generation), at.AddSeconds(60));
+        Assert.Equal(Vocabulary.Wireless.UnavailableTitle, Assert.Single(unavailable.Snapshot.Warnings).Title);
+    }
+
     [Fact]
     public async Task ScenarioJ_QueuedEvents_ProcessInOrder() {
         var clockTime = new DateTimeOffset(2026, 9, 18, 12, 0, 0, TimeSpan.Zero);

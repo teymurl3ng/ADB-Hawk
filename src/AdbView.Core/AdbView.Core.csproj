@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <RootNamespace>AdbView</RootNamespace>
+    <AssemblyName>AdbView.Core</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="QRCoder" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.File" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AdbView" />
+    <InternalsVisibleTo Include="AdbView.Tests" />
+    <InternalsVisibleTo Include="AdbView.WinUiMigration" />
+  </ItemGroup>
+</Project>

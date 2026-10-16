@@ -119,7 +119,9 @@ internal sealed class MdnsBrowserHarness : IAsyncDisposable {
     }
 
     public async Task StepAsync(double seconds) {
-        Now = Epoch.AddSeconds(seconds);
+        // Decimal test times represent exact clock ticks; AddSeconds(double) can round a
+        // deadline one tick early (for example 1.4 versus 0.4 + 1).
+        Now = Epoch.AddTicks((long)Math.Round(seconds * TimeSpan.TicksPerSecond));
         var release = _release;
         _entered = NewSignal();
         release.SetResult();

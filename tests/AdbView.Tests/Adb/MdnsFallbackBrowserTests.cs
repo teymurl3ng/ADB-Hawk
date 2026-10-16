@@ -12,6 +12,90 @@ using Xunit;
 public sealed class MdnsFallbackBrowserTests {
     private static readonly DateTimeOffset T0 = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);
 
+    [Fact]
+    public void SharedHostAddressResolvesEveryServiceInEitherPacketOrder() {
+        var browser = CreateBrowser();
+        browser.Absorb(DnsTestMessages.Response(DnsTestMessages.A("phone.local", 120, "192.0.2.10")), T0);
+        browser.Absorb(DnsTestMessages.Response(
+            DnsTestMessages.Srv("adb-C._adb-tls-connect._tcp.local", 120, 40123, "phone.local"),
+            DnsTestMessages.Srv("adb-P._adb-tls-pairing._tcp.local", 120, 40124, "phone.local")), T0);
+        Assert.Equal(2, browser.Instances.Count);
+        Assert.All(browser.Instances.Values, instance => Assert.Equal("192.0.2.10", instance.Ipv4));
+        var rows = MdnsFallbackMapper.Map(browser.Instances.Values.ToImmutableArray());
+        Assert.Equal(40124, Assert.Single(rows, row => row.Kind == AdbView.Adb.Model.MdnsServiceKind.Pairing).Port);
+    }
+
+    [Fact]
+    public void LongPtrRefreshDoesNotExtendExpiredAddressOrPort() {
+        var browser = CreateBrowser();
+        browser.Absorb(DnsTestMessages.Response(
+            DnsTestMessages.Srv("adb-C._adb-tls-connect._tcp.local", 120, 40123, "phone.local"),
+            DnsTestMessages.A("phone.local", 120, "192.0.2.10")), T0);
+        browser.Absorb(DnsTestMessages.Response(
+            DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", 4500, "adb-C._adb-tls-connect._tcp.local")), T0);
+        Assert.True(browser.SweepExpired(T0.AddSeconds(121)));
+        var instance = Assert.Single(browser.Instances.Values);
+        Assert.Null(instance.Ipv4);
+        Assert.Equal(0, instance.Port);
+    }
+
+    [Fact]
+    public void AddressGoodbyeRemovesAddressWithoutInventingLongerTtl() {
+        var browser = CreateBrowser();
+        browser.Absorb(DnsTestMessages.Response(
+            DnsTestMessages.Srv("adb-C._adb-tls-connect._tcp.local", 120, 40123, "phone.local"),
+            DnsTestMessages.A("phone.local", 120, "192.0.2.10")), T0);
+        browser.Absorb(DnsTestMessages.Response(DnsTestMessages.A("phone.local", 0, "192.0.2.10")), T0.AddSeconds(1));
+        Assert.Null(Assert.Single(browser.Instances.Values).Ipv4);
+    }
+
+    [Fact]
+    public void ShortLivedRecordsRefreshBeforeExpiryAndEmptyCacheKeepsQuietFloor() {
+        var cache = new MdnsRecordCache();
+        var records = new List<DnsMessageCodec.DnsRecord>();
+        Assert.True(DnsMessageCodec.TryCollectRecords(DnsTestMessages.Response(
+            DnsTestMessages.Ptr("_adb-tls-connect._tcp.local", 10, "adb-C._adb-tls-connect._tcp.local"),
+            DnsTestMessages.Srv("adb-C._adb-tls-connect._tcp.local", 10, 40123, "phone.local"),
+            DnsTestMessages.A("phone.local", 10, "192.0.2.10"),
+            DnsTestMessages.Txt("adb-C._adb-tls-connect._tcp.local", 10)), records));
+        cache.Absorb(records, T0);
+        Assert.Equal(TimeSpan.FromSeconds(8), cache.RefreshDelay(T0));
+        cache.MarkRefreshSent(T0.AddSeconds(8));
+        Assert.Equal(TimeSpan.FromMilliseconds(500), cache.RefreshDelay(T0.AddSeconds(8)));
+        cache.Clear();
+        Assert.Equal(MdnsFallbackBrowser.RequeryFloor, cache.RefreshDelay(T0));
+    }
+
+    [Fact]
+    public void MissingRecordsProduceSpecificResolutionQuestions() {
+        var cache = new MdnsRecordCache();
+        cache.Absorb(new[] { DnsMessageCodec.DnsRecord.Ptr("_adb-tls-pairing._tcp.local", 120,
+            "adb-P._adb-tls-pairing._tcp.local") }, T0);
+        var questions = cache.TakeDueQuestions(T0.AddSeconds(1));
+        Assert.Contains(questions, question => question.Type == DnsMessageCodec.TypeSrv);
+        Assert.Contains(questions, question => question.Type == DnsMessageCodec.TypeTxt);
+        Assert.Empty(cache.TakeDueQuestions(T0.AddSeconds(1.5)));
+    }
+
+    [Fact]
+    public void NewUniqueAddressSupersedesOldAddressAndIpv6SurvivesProjection() {
+        var cache = new MdnsRecordCache();
+        var records = new List<DnsMessageCodec.DnsRecord>();
+        DnsMessageCodec.TryCollectRecords(DnsTestMessages.Response(
+            DnsTestMessages.Srv("adb-C._adb-tls-connect._tcp.local", 120, 40123, "phone.local"),
+            DnsTestMessages.A("phone.local", 120, "192.0.2.10")), records);
+        cache.Absorb(records, T0);
+        var next = new DnsMessageCodec.DnsRecord("phone.local", DnsMessageCodec.TypeA, 120,
+            null, null, null, null, System.Net.IPAddress.Parse("192.0.2.11"), CacheFlush: true);
+        var ipv6 = next with { Type = DnsMessageCodec.TypeAaaa, Address = System.Net.IPAddress.Parse("2001:db8::1") };
+        cache.Absorb(new[] { next, ipv6 }, T0.AddSeconds(2));
+        Assert.Equal("192.0.2.11", Assert.Single(cache.Instances.Values).Ipv4);
+        cache.Sweep(T0.AddSeconds(3.1));
+        var row = Assert.Single(MdnsFallbackMapper.Map(cache.Instances.Values.ToImmutableArray()));
+        Assert.Equal("192.0.2.11", row.Ipv4);
+        Assert.Equal("2001:db8::1", Assert.Single(row.Ipv6));
+    }
+
     [Theory]
     [InlineData("adb-R8VXA02SNKH._adb-tls-connect._tcp.local", "adb-R8VXA02SNKH", "_adb-tls-connect._tcp")]
     [InlineData("adb-abc123._adb-tls-pairing._tcp.local.", "adb-abc123", "_adb-tls-pairing._tcp")]

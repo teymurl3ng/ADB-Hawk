@@ -118,6 +118,35 @@ public sealed class HostConnectClientTests {
 }
 
 public sealed class PostPairConnectCoordinatorTests {
+    [Fact]
+    public async Task TriesActualUnattemptedPortsAndAdvancesAfterFailure() {
+        var attempts = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var client = new FakeHostConnectClient((_, port) => {
+            if (port == 40124) {
+                attempts.TrySetResult();
+            }
+            return Task.FromResult(new HostConnectResult(HostConnectOutcome.Failed, "synthetic failure"));
+        });
+        using var coordinator = new PostPairConnectCoordinator(client);
+        var first = ConnectRow("192.0.2.10", 40123) with { InstanceName = "first" };
+        var second = ConnectRow("192.0.2.10", 40124) with { InstanceName = "second" };
+        var state = StateWith("192.0.2.10", first, second);
+        coordinator.OnSnapshotPublished(WaitingSnapshot(), state);
+        await attempts.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        Assert.Collection(client.SeenPorts, port => Assert.Equal(40123, port), port => Assert.Equal(40124, port));
+        coordinator.OnSnapshotPublished(WaitingSnapshot(), state);
+        Assert.Equal(2, client.CallCount);
+    }
+
+    [Fact]
+    public void Ipv6DiscoveryAddressCanTriggerConnection() {
+        var harness = new Harness();
+        var service = ConnectRow("", 40123) with { Ipv4 = null, Ipv6 = ImmutableArray.Create("2001:db8::1") };
+        harness.Coordinator.OnSnapshotPublished(WaitingSnapshot(), StateWith("2001:db8::1", service));
+        Assert.Equal("2001:db8::1", Assert.Single(harness.Client.SeenHosts));
+        Assert.Equal(40123, Assert.Single(harness.Client.SeenPorts));
+    }
+
     // The snapshot projection type lives in AdbView.State; disambiguate explicitly.
     private const AdbView.State.PairingPhase WaitingPhase = AdbView.State.PairingPhase.PairedWaitingForDevice;
     private static readonly DateTimeOffset T0 = new(2026, 10, 1, 12, 0, 0, TimeSpan.Zero);

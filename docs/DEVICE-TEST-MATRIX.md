@@ -580,3 +580,46 @@ Legend: **LIVE PASS** / **AUTOMATED PASS** / **NOT EXERCISED**
 | Owner runs a current build: installed copy at `AppData\Local\Programs\ADBView` repackaged and reinstalled (it was from 2026-10-06) | **LIVE PASS** | 2026-10-10: `scripts/package.ps1 -Rid win-x64` (verify gate green inside the packaging; self-contained single-file + ZIP + Inno installer + manifest + SHA256SUMS in `artifacts\release\0.1.0`), installer run `/VERYSILENT` over the 06/10 install (same frozen AppId, per-user `PrivilegesRequired=lowest`). Installed exe last-write 2026-10-10 19:16; identity log line verified live: `path=...AppData\Local\Programs\ADBView\AdbView.exe built=2026-10-10 19:16`; slide pacing verified on the installed binary (opens 7-8 frames / 31-32 ms under first-paint + metadata load, closes 5 frames / 16 ms) |
 | Installer artifacts integrity | **AUTOMATED PASS** | `ADBView-0.1.0-SHA256SUMS.txt` + `ADBView-0.1.0-manifest.json` (gitCommit, builtAtUtc, per-artifact SHA-256) in `artifacts\release\0.1.0`; sums: zip `78380a6e…`, setup `5cd852eb…`, manifest `a3332931…` |
 | If the evenly-paced slide still reads jerky, the remaining cause is the shadowed-HWND slide (Microsoft's AnimateWindow warning) — rollback is instant open/close (decision 0013), an owner-facing DESIGN §24 decision | **NOT EXERCISED** | Owner perception call after testing a current build |
+# 2026-10-15 connection reliability repair acceptance
+
+The following rows supplement existing acceptance; fake-server results do not establish live-device behavior.
+
+| Scenario | Status | Evidence / remaining work |
+|---|---|---|
+| Mixed ADB/fallback discovery with spare builder capacity, then a device disconnect | AUTOMATED PASS | MdnsEffectiveSetTests and StateEngineTests; state loop continues and removes the device |
+| Server unavailable before tracker failure; repeated failures do not prolong grace; stale outage expiry cannot remove a new session | AUTOMATED PASS | ServerLossArmsGraceOnceAndNewOutageGetsFreshToken |
+| Device event after UTC rollback and a stale sequence afterward | AUTOMATED PASS | ProducerSequenceAcceptsDisconnectAfterClockRollbackAndRejectsStaleSequence |
+| Offline duplicate followed by working transport; fallback hardware identity used by metadata | AUTOMATED PASS | FallbackIdentityAndWorkingTransportAreSharedWithMetadataTargets |
+| Late connect-service advertisement received through FakeAdbServer without a visible snapshot change | AUTOMATED PASS | FakeDiscoveryStreamTriggersConnectionAfterPairingWithoutVisibleDelta; no fabricated connected device |
+| Multiple endpoint attempts use their actual ports and advance after failure | AUTOMATED PASS | TriesActualUnattemptedPortsAndAdvancesAfterFailure |
+| Pairing client reports cancellation when the coordinator deadline expires; unexpected launch/client failure then retry | AUTOMATED PASS | PairingCoordinatorTests; timeout failure and immediate retry |
+| Empty CLI discovery document while its pipe remains open; bounded diagnostic retention drains all bytes | AUTOMATED PASS | MdnsTrackerTests |
+| Shared-host and reversed/split DNS records, independent TTL expiry, missing-record resolution, short-TTL refresh, address withdrawal/cache flush | AUTOMATED PASS | MdnsFallbackBrowserTests and MdnsRecordCache |
+| Network rejoin clears endpoints from the old network | AUTOMATED PASS | NetworkRejoinInvalidatesPreviousNetworkEndpoints |
+| Recovery executable launch failure; explicit wake interrupts a long supervisor delay; status refresh at unchanged protocol version | AUTOMATED PASS | AdbServerSupervisorTests; no kill command |
+| Failed repair exit or exception publishes a terminal failure; successful reversible repair retains undo after card clearing | AUTOMATED PASS | RepairCoordinatorTests; fake commands only |
+| Native unavailable/restoring and wireless warnings; current operation retry target; same-operation code preservation | AUTOMATED PASS | NativeShellViewModelTests; four health fixtures added |
+| Live: turn wireless debugging off while connected, then on; cards follow actual ADB truth and pairing recovers | NOT EXERCISED | Requires controlled phone interaction |
+| Live: phone changes Wi-Fi network or connection port; shared-host discovery and connection recover | NOT EXERCISED | Requires real network/phone observation |
+| Live: Windows sleep/resume and lock/unlock with a connected phone and an ongoing outage | NOT EXERCISED | Fake supervisor wake is covered; physical cycle remains pending |
+| Live: IPv6-only multicast network and scoped link-local discovery | NOT EXERCISED / LIMITED | Current browser multicast transport remains IPv4; IPv6 records and ADB-provided endpoints are covered |
+| Live: explicit repair and subsequent undo after discovery recovers | NOT EXERCISED | No machine service, adapter, or real ADB restart was performed as a test |
+| 24-hour pinned/hidden reliability and resource soak | NOT EXERCISED | Phase 11 acceptance remains open |
+
+## 2026-10-16 M06 shell action migration
+
+| Scenario | Status | Evidence / remaining work |
+| --- | --- | --- |
+| WinUI manual pairing, retry/cancel, Back/hide, offer replacement and waiting without inferred connection | AUTOMATED FIXTURE PASS | M06 actual-XAML pairing driver and BackendShellActionsTests; existing backend/WPF sources unchanged. Live candidate composition remains M08. |
+| WinUI QR decode/invalidation, QR-to-manual overlap and stale decode completion | AUTOMATED FIXTURE PASS | Pinned QRCoder output for a fixed noncredential payload; local native SVG decoder. This is not a phone scanning result. |
+| WinUI diagnosis, explicit repair and undo command identities | AUTOMATED FIXTURE PASS | Synthetic actions only; no machine service, adapter or ADB repair executed. |
+| Real phone code/QR pairing through the integrated WinUI shell, then disconnect while waiting and cancel after Back/hide | NOT EXERCISED | M08 integration prerequisite; M12 real-device regression. Existing real-device/soak acceptance stays open. |
+| Real discovery repair/undo and notification opening through integrated WinUI native delivery | NOT EXERCISED | M08 native integration and M12 controlled acceptance; fixture command routing does not pass these rows. |
+
+## 2026-10-16 M07 presentation lifecycle
+
+| Scenario | Status | Evidence / remaining work |
+| --- | --- | --- |
+| Actual WinUI navigation interruption, snapshot churn, motion disable/re-enable, hide/reopen and suspend boundaries | AUTOMATED FIXTURE PASS | M07 motion-scenarios; real native objects, immediate truth/input, no hidden presentation clocks; no physical suspend or Windows preference was changed. |
+| 500 animated navigation cycles with matched native-control warmup, handler disposal and owned animation/subscription cleanup | AUTOMATED PASS | Final M07 gate: process handles 2513→2519; private bytes 141262848→144609280; no forced GC. This is a candidate-only workload, not integrated resource/soak qualification. |
+| Real system motion-toggle, physical sleep/resume and hardware presentation qualification in the integrated shell | NOT EXERCISED | Actual UISettings subscription is implemented; injected event-source and lifecycle tests do not pass physical M08/M09/M12 acceptance. |

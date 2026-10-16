@@ -399,7 +399,7 @@ public sealed class MetadataProbeTests {
         string text = System.IO.File.ReadAllText(
             System.IO.Path.Combine(
                 AdbView.Tests.Boundaries.Repo.Root,
-                "src", "AdbView", "Adb", "MetadataDeviceShellClient.cs"));
+                "src", "AdbView.Core", "Adb", "MetadataDeviceShellClient.cs"));
         Assert.DoesNotContain("adb.exe", text, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("ProcessStartInfo", text, StringComparison.Ordinal);
         Assert.DoesNotContain("System.Diagnostics.Process", text, StringComparison.Ordinal);
@@ -407,7 +407,7 @@ public sealed class MetadataProbeTests {
         string probeText = System.IO.File.ReadAllText(
             System.IO.Path.Combine(
                 AdbView.Tests.Boundaries.Repo.Root,
-                "src", "AdbView", "Adb", "MetadataProbe.cs"));
+                "src", "AdbView.Core", "Adb", "MetadataProbe.cs"));
         Assert.DoesNotContain("ProcessStartInfo", probeText, StringComparison.Ordinal);
     }
 

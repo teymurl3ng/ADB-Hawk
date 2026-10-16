@@ -17,9 +17,9 @@ namespace AdbView.Tests.Boundaries;
 public sealed class BoundaryTests {
     private static readonly string[] CSharpExtensions = [".cs"];
 
-    private static string AppSourceRoot => RootFile("src", "AdbView");
+    private static string AppSourceRoot => RootFile("src");
     private static string HostBoundary => RootFile("src", "AdbView", "Host");
-    private static string SystemClockFile => RootFile("src", "AdbView", "App", "SystemClock.cs");
+    private static string SystemClockFile => RootFile("src", "AdbView.Core", "App", "SystemClock.cs");
 
     private static string ReadText(string path) => File.ReadAllText(path);
 
@@ -60,6 +60,12 @@ public sealed class BoundaryTests {
                 .Replace(".Label", ".MEMBER_LABEL", StringComparison.Ordinal);
 
             foreach (Match match in pattern.Matches(scrubbedText)) {
+                // Decision 0029 permits native WinUI controls in the replacement shell.
+                // Resolve only names actually provided by that imported namespace; Form,
+                // NotifyIcon and other WinForms-only types remain forbidden here.
+                if (IsExplicitWinUiControlImport(text, match.Value)) {
+                    continue;
+                }
                 violations.Add($"{Path.GetRelativePath(Root, file)}: WinForms type '{match.Value}' outside Host/");
             }
 
@@ -69,6 +75,32 @@ public sealed class BoundaryTests {
         }
 
         AssertNoViolations(violations);
+    }
+
+    private static bool IsExplicitWinUiControlImport(string source, string typeName) {
+        var winUiTypes = new HashSet<string>(StringComparer.Ordinal) {
+            "Control", "Button", "TextBox", "CheckBox", "RadioButton", "ComboBox",
+            "ListBox", "Panel", "ToolTip",
+        };
+        if (!winUiTypes.Contains(typeName) || source.Contains("System.Windows.Forms", StringComparison.Ordinal)) {
+            return false;
+        }
+
+        return Regex.IsMatch(source, @"(?m)^\s*(?:global\s+)?using\s+(?:global::)?Microsoft\.UI\.Xaml\.Controls\s*;")
+            || Regex.IsMatch(source, $@"(?m)^\s*using\s+{Regex.Escape(typeName)}\s*=\s*(?:global::)?Microsoft\.UI\.Xaml\.Controls\.{Regex.Escape(typeName)}\s*;");
+    }
+
+    [Theory]
+    [InlineData("using Microsoft.UI.Xaml.Controls;\npublic class View : Control { }", "Control", true)]
+    [InlineData("using Button = Microsoft.UI.Xaml.Controls.Button;\nnew Button();", "Button", true)]
+    [InlineData("using Microsoft.UI.Xaml.Controls;\nnew Form();", "Form", false)]
+    [InlineData("using Microsoft.UI.Xaml.Controls;\nnew System.Windows.Forms.Button();", "Button", false)]
+    [InlineData("using Forms = System.Windows.Forms;\nnew Forms.Button();", "Button", false)]
+    [InlineData("public class View : Control { }", "Control", false)]
+    public void MigrationAllowsResolvedWinUiControlsWithoutAllowingWinForms(string source, string typeName, bool expected) {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(typeName);
+        Assert.Equal(expected, IsExplicitWinUiControlImport(source, typeName));
     }
 
     [Fact]
@@ -213,6 +245,7 @@ public sealed class BoundaryTests {
             ["Microsoft.Windows.CsWin32"] = "0.3.333",
             ["QRCoder"] = "1.8.0",
             ["xunit.v3.mtp-v2"] = "4.0.0",
+            ["Microsoft.WindowsAppSDK"] = "2.5.1",
         };
 
         var doc = XDocument.Load(RootFile("Directory.Packages.props"));
@@ -302,7 +335,7 @@ public sealed class BoundaryTests {
     // 15. Adb.Protocol does not reference forbidden layers (R-04, Phase 4 Wave 4A/4B).
     [Fact]
     public void AdbProtocolDoesNotReferenceForbiddenLayers() {
-        var protocolDir = RootFile("src", "AdbView", "Adb", "Protocol");
+        var protocolDir = RootFile("src", "AdbView.Core", "Adb", "Protocol");
         var forbiddenTokens = new[]
         {
             "AdbView.State",
@@ -338,8 +371,8 @@ public sealed class BoundaryTests {
     public void AdbCapabilityLayerDoesNotReferenceForbiddenLayers() {
         var capabilityFiles = new[]
         {
-            RootFile("src", "AdbView", "Adb", "AdbCapabilities.cs"),
-            RootFile("src", "AdbView", "Adb", "AdbServerStatus.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "AdbCapabilities.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "AdbServerStatus.cs"),
         };
         var forbiddenTokens = new[]
         {
@@ -374,12 +407,12 @@ public sealed class BoundaryTests {
     public void AdbLifecycleLayerDoesNotReferenceForbiddenLayers() {
         var lifecycleFiles = new[]
         {
-            RootFile("src", "AdbView", "Adb", "AdbExecutableLocator.cs"),
-            RootFile("src", "AdbView", "Adb", "AdbProcessRunner.cs"),
-            RootFile("src", "AdbView", "Adb", "AdbServerSupervisor.cs"),
-            RootFile("src", "AdbView", "Adb", "Backoff.cs"),
-            RootFile("src", "AdbView", "Adb", "Model", "AdbServerPhase.cs"),
-            RootFile("src", "AdbView", "Adb", "Model", "AdbServerStateChanged.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "AdbExecutableLocator.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "AdbProcessRunner.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "AdbServerSupervisor.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "Backoff.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "Model", "AdbServerPhase.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "Model", "AdbServerStateChanged.cs"),
         };
 
         var forbiddenTokens = new[]
@@ -402,7 +435,7 @@ public sealed class BoundaryTests {
             "host:kill",
             "kill-server",
         };
-        var killExemptFile = RootFile("src", "AdbView", "Adb", "AdbProcessRunner.cs");
+        var killExemptFile = RootFile("src", "AdbView.Core", "Adb", "AdbProcessRunner.cs");
 
         var violations = new List<string>();
         foreach (var file in lifecycleFiles) {
@@ -434,12 +467,12 @@ public sealed class BoundaryTests {
     public void StateCoreDoesNotReferenceForbiddenLayers() {
         var stateFiles = new[]
         {
-            RootFile("src", "AdbView", "State", "StateReducer.cs"),
-            RootFile("src", "AdbView", "State", "StateEngine.cs"),
-            RootFile("src", "AdbView", "State", "Vocabulary.cs"),
-            RootFile("src", "AdbView", "State", "AdbViewEvent.cs"),
-            RootFile("src", "AdbView", "State", "DeviceViewMapper.cs"),
-            RootFile("src", "AdbView", "State", "TrayStatusAggregator.cs"),
+            RootFile("src", "AdbView.Core", "State", "StateReducer.cs"),
+            RootFile("src", "AdbView.Core", "State", "StateEngine.cs"),
+            RootFile("src", "AdbView.Core", "State", "Vocabulary.cs"),
+            RootFile("src", "AdbView.Core", "State", "AdbViewEvent.cs"),
+            RootFile("src", "AdbView.Core", "State", "DeviceViewMapper.cs"),
+            RootFile("src", "AdbView.Core", "State", "TrayStatusAggregator.cs"),
         };
 
         var forbiddenTokens = new[]
@@ -475,11 +508,11 @@ public sealed class BoundaryTests {
     public void DeviceTrackerLayerDoesNotReferenceForbiddenLayers() {
         var trackerFiles = new[]
         {
-            RootFile("src", "AdbView", "Adb", "DeviceTracker.cs"),
-            RootFile("src", "AdbView", "Adb", "DevicesProtoParser.cs"),
-            RootFile("src", "AdbView", "Adb", "TrackDevicesLParser.cs"),
-            RootFile("src", "AdbView", "Adb", "DeviceTrackerBackoff.cs"),
-            RootFile("src", "AdbView", "Adb", "Model", "RawDevice.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "DeviceTracker.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "DevicesProtoParser.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "TrackDevicesLParser.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "DeviceTrackerBackoff.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "Model", "RawDevice.cs"),
         };
 
         var forbiddenTokens = new[]
@@ -519,14 +552,14 @@ public sealed class BoundaryTests {
     public void MdnsTrackerLayerDoesNotReferenceForbiddenLayers() {
         var trackerFiles = new[]
         {
-            RootFile("src", "AdbView", "Adb", "MdnsTracker.cs"),
-            RootFile("src", "AdbView", "Adb", "MdnsTrackerBackoff.cs"),
-            RootFile("src", "AdbView", "Adb", "MdnsServicesProtoParser.cs"),
-            RootFile("src", "AdbView", "Adb", "MdnsServicesProtoTextParser.cs"),
-            RootFile("src", "AdbView", "Adb", "MdnsServicesListParser.cs"),
-            RootFile("src", "AdbView", "Adb", "MdnsServiceTypes.cs"),
-            RootFile("src", "AdbView", "Adb", "MdnsTrackServicesCli.cs"),
-            RootFile("src", "AdbView", "Adb", "Model", "RawMdnsService.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MdnsTracker.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MdnsTrackerBackoff.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MdnsServicesProtoParser.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MdnsServicesProtoTextParser.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MdnsServicesListParser.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MdnsServiceTypes.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MdnsTrackServicesCli.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "Model", "RawMdnsService.cs"),
         };
 
         var forbiddenTokens = new[]
@@ -566,12 +599,12 @@ public sealed class BoundaryTests {
     public void PairingCoordinatorLayerDoesNotReferenceForbiddenLayers() {
         var files = new[]
         {
-            RootFile("src", "AdbView", "Adb", "PairingCoordinator.cs"),
-            RootFile("src", "AdbView", "Adb", "HostPairClient.cs"),
-            RootFile("src", "AdbView", "Adb", "PairCliFallback.cs"),
-            RootFile("src", "AdbView", "Adb", "PairingEndpoint.cs"),
-            RootFile("src", "AdbView", "Adb", "PairingCode.cs"),
-            RootFile("src", "AdbView", "Adb", "Model", "PairingProgressed.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "PairingCoordinator.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "HostPairClient.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "PairCliFallback.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "PairingEndpoint.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "PairingCode.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "Model", "PairingProgressed.cs"),
         };
 
         var forbiddenTokens = new[]
@@ -610,10 +643,10 @@ public sealed class BoundaryTests {
     public void MetadataProbeLayerDoesNotReferenceForbiddenLayers() {
         var files = new[]
         {
-            RootFile("src", "AdbView", "Adb", "MetadataProbe.cs"),
-            RootFile("src", "AdbView", "Adb", "MetadataDeviceShellClient.cs"),
-            RootFile("src", "AdbView", "Adb", "MetadataParsers.cs"),
-            RootFile("src", "AdbView", "Adb", "Model", "MetadataProbeModels.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MetadataProbe.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MetadataDeviceShellClient.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MetadataParsers.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "Model", "MetadataProbeModels.cs"),
         };
 
         var forbiddenTokens = new[]
@@ -652,7 +685,7 @@ public sealed class BoundaryTests {
     // 19g. Phase 8A notification domain stays free of Host/ADB protocol/Windows UI.
     [Fact]
     public void NotificationDomainDoesNotReferenceForbiddenLayers() {
-        var dir = RootFile("src", "AdbView", "Notifications");
+        var dir = RootFile("src", "AdbView.Core", "Notifications");
         var files = Directory.Exists(dir)
             ? Directory.GetFiles(dir, "*.cs", SearchOption.AllDirectories)
             : Array.Empty<string>();
@@ -691,7 +724,7 @@ public sealed class BoundaryTests {
     public void DeviceMetadataLifecycleDoesNotReferenceForbiddenLayers() {
         var files = new[]
         {
-            RootFile("src", "AdbView", "Host", "DeviceMetadataLifecycle.cs"),
+            RootFile("src", "AdbView.Core", "Host", "DeviceMetadataLifecycle.cs"),
         };
 
         var forbiddenTokens = new[]
@@ -724,9 +757,9 @@ public sealed class BoundaryTests {
     public void Phase6CAdbTrackersStillDoNotReferenceState() {
         var files = new[]
         {
-            RootFile("src", "AdbView", "Adb", "MdnsTracker.cs"),
-            RootFile("src", "AdbView", "Adb", "PairingCoordinator.cs"),
-            RootFile("src", "AdbView", "Adb", "HostPairClient.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "MdnsTracker.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "PairingCoordinator.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "HostPairClient.cs"),
         };
         var forbidden = new[] { "AdbView.State", "StateEngine", "AppSnapshot", "PairingOfferView" };
         var violations = new List<string>();
@@ -745,7 +778,7 @@ public sealed class BoundaryTests {
     // 20. Adb.Protocol still must not reference DeviceTracker / RawDevice (Phase 5A).
     [Fact]
     public void AdbProtocolDoesNotReferenceDeviceTrackerOrRawDevice() {
-        var protocolDir = RootFile("src", "AdbView", "Adb", "Protocol");
+        var protocolDir = RootFile("src", "AdbView.Core", "Adb", "Protocol");
         var forbiddenTokens = new[] { "DeviceTracker", "RawDevice", "DevicesProtoParser", "TrackDevicesLParser", "MdnsTracker", "RawMdnsService", "MdnsServicesProtoParser" };
         var violations = new List<string>();
         foreach (var file in SourceFiles(protocolDir, CSharpExtensions)) {
@@ -764,8 +797,8 @@ public sealed class BoundaryTests {
     public void DeviceIdentityLayerDoesNotReferenceForbiddenLayers() {
         var identityFiles = new[]
         {
-            RootFile("src", "AdbView", "Adb", "DeviceIdentity.cs"),
-            RootFile("src", "AdbView", "Adb", "Model", "NormalizedDevice.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "DeviceIdentity.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "Model", "NormalizedDevice.cs"),
         };
 
         var forbiddenTokens = new[]
@@ -800,7 +833,7 @@ public sealed class BoundaryTests {
     // 22. Adb.Protocol still must not reference DeviceIdentity / NormalizedDevice (Phase 5B).
     [Fact]
     public void AdbProtocolDoesNotReferenceDeviceIdentity() {
-        var protocolDir = RootFile("src", "AdbView", "Adb", "Protocol");
+        var protocolDir = RootFile("src", "AdbView.Core", "Adb", "Protocol");
         var forbiddenTokens = new[] { "DeviceIdentity", "NormalizedDevice", "DeviceSemanticState", "DeviceTransport" };
         var violations = new List<string>();
         foreach (var file in SourceFiles(protocolDir, CSharpExtensions)) {
@@ -819,10 +852,10 @@ public sealed class BoundaryTests {
     public void DeviceTrackerDoesNotReferenceStateEngine() {
         var files = new[]
         {
-            RootFile("src", "AdbView", "Adb", "DeviceTracker.cs"),
-            RootFile("src", "AdbView", "Adb", "DevicesProtoParser.cs"),
-            RootFile("src", "AdbView", "Adb", "TrackDevicesLParser.cs"),
-            RootFile("src", "AdbView", "Adb", "DeviceIdentity.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "DeviceTracker.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "DevicesProtoParser.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "TrackDevicesLParser.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "DeviceIdentity.cs"),
         };
 
         var forbidden = new[] { "StateEngine", "StateReducer", "AppSnapshot", "AdbView.State", "BridgeCoordinator" };
@@ -844,19 +877,19 @@ public sealed class BoundaryTests {
     public void StateReducerDoesNotReferenceSocketsOrFraming() {
         var files = new[]
         {
-            RootFile("src", "AdbView", "Adb", "DeviceIdentity.cs"), // identity ok
-            RootFile("src", "AdbView", "State", "StateReducer.cs"),
-            RootFile("src", "AdbView", "State", "DeviceViewMapper.cs"),
-            RootFile("src", "AdbView", "State", "TrayStatusAggregator.cs"),
+            RootFile("src", "AdbView.Core", "Adb", "DeviceIdentity.cs"), // identity ok
+            RootFile("src", "AdbView.Core", "State", "StateReducer.cs"),
+            RootFile("src", "AdbView.Core", "State", "DeviceViewMapper.cs"),
+            RootFile("src", "AdbView.Core", "State", "TrayStatusAggregator.cs"),
         };
 
         // Only assert State files for socket/framing tokens.
         var stateFiles = new[]
         {
-            RootFile("src", "AdbView", "State", "StateReducer.cs"),
-            RootFile("src", "AdbView", "State", "DeviceViewMapper.cs"),
-            RootFile("src", "AdbView", "State", "TrayStatusAggregator.cs"),
-            RootFile("src", "AdbView", "State", "Vocabulary.cs"),
+            RootFile("src", "AdbView.Core", "State", "StateReducer.cs"),
+            RootFile("src", "AdbView.Core", "State", "DeviceViewMapper.cs"),
+            RootFile("src", "AdbView.Core", "State", "TrayStatusAggregator.cs"),
+            RootFile("src", "AdbView.Core", "State", "Vocabulary.cs"),
         };
 
         var forbidden = new[]

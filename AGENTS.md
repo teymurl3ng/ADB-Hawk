@@ -4,6 +4,8 @@
 
 ADB View is a tiny Windows 11 tray utility that answers one question: *what is ADB doing right now?* Its value is that it is correct, quiet, and still working in six months. Your job is to implement the frozen design inside the frozen architecture — not to improve either.
 
+**Authorized shell migration (2026-10-15, decision 0029):** the owner approved executing `docs/WINUI-REBUILD-RUNBOOK.md`. Its M00–M12 track and the explicit DESIGN §41 / ENGINEERING §23 amendments govern the replacement shell. The existing WPF application stays supported until the WinUI feasibility gate passes and cutover is verified. This authorization does not relax backend, security, failure-reporting or verification invariants.
+
 Rules marked **[auto]** are enforced by `scripts/verify.ps1`. The others are enforced by review, and violating them is a defect regardless of whether the build passes.
 
 ---
@@ -11,16 +13,16 @@ Rules marked **[auto]** are enforced by `scripts/verify.ps1`. The others are enf
 ## The rules
 
 **R-01 · `DESIGN.md` is law.**
-Never edit `DESIGN.md`. It is the frozen product and visual authority; where any Stitch export disagrees with it, `DESIGN.md` wins, and Pass B.1 is the visual master among the exports. If implementation reveals a genuinely missing state or a real usability problem: stop, write `docs/decisions/NNNN-<slug>.md` describing the issue and the proposed contract change, get the design contract updated, and only then implement. **[auto: DESIGN.md hash check]**
+`DESIGN.md` is the product and visual authority; where any Stitch export disagrees, the written contract wins. Decision 0029 explicitly authorizes the shell migration contract in §41 and its deliberate hash update; it supersedes only the listed old shell mechanics. Other design changes require a decision and an explicit contract amendment before implementation. Never change the authority hash merely to make tests pass. **[auto: DESIGN.md hash check]**
 
 **R-02 · No redesign.**
-No new component variants, no compact/dense/mini/pinned card, no alternate layout for multiple devices, no substituted visual language, no "tidied" spacing, no extra chrome, no settings/refresh/reconnect/close/help/hamburger in the header, no `Retry ADB` button. When density increases, **scroll**. When state changes, change semantic content — not component architecture. Only the four approved motion durations (0 / 83 / 167 / 333 ms) may appear in the shell. Structural easing is `cubic-bezier(0.55, 0.55, 0, 1)`. **[auto: forbidden component names, motion-token scan]**
+Implement the adopted shell contract: stable list/detail/pairing region, fixed outer dimensions while open, Back navigation and stationary bubble. No extra product features, compact/dense/mini/pinned card variants, settings/refresh/reconnect/help/hamburger in the header or `Retry ADB` button. Increased density scrolls. New app-owned motion uses DESIGN §41's named 0/83/167 ms recipes and live reduced motion; platform control behavior retains its native defaults. The legacy WPF shell retains its existing token/curve checks until replaced; no second WPF motion rewrite. **[auto: forbidden component names, migration/source checks]**
 
 **R-03 · No product-scope expansion.**
 Observe → explain → notify → pair. Nothing else. No shell, terminal, logcat, APK install, file transfer, screen mirroring, reboot, port forwarding, screenshots, process/app management, connection history, charts, analytics, dashboards, or settings screens. The tray context menu is **Open ADB View**, **Start with Windows**, **Notifications**, **Status bubble**, **Theme** (System / Light / Dark), and **Exit** — nothing else (see `DESIGN.md` §33 / decisions 0006, 0020).
 
 **R-04 · Architecture boundaries are fixed.**
-One application project (`src/AdbView`) and one C# test project (`tests/AdbView.Tests`). There is no second UI project: the native WPF shell is the product's only UI (decision 0022). Do not add projects. Do not add a DI container, a generic host, or a message-bus library. WinForms exists only as the message loop and the tray icon. The product's two windows — the flyout and the status bubble — are WPF and live in `src/AdbView/NativeUi/`. No other control renders product UI, and no third surface may be added without a `docs/decisions/` note (`DESIGN.md` §4). No product state in `Host/`. No Windows API calls from `State/`. No ADB knowledge in the shell (`NativeUi/`). Code belongs in the folder that owns the concern (`ENGINEERING.md §3.1`). **[auto: source-boundary tests]**
+The migration target is three permanent projects: `src/AdbView.Core`, WinUI executable `src/AdbView`, and `tests/AdbView.Tests`. M02 permits a nonshipping `prototypes/WinUiShellProbe` outside the release solution; M04–M10 permit one temporary `src/AdbView.WinUiMigration` candidate. Keep the existing WPF/WinForms shell working until cutover, then remove it and the temporary candidate project. The two product windows remain flyout and bubble; native tray/context-menu plumbing is allowed. No DI container, generic host, message bus, third product surface or browser UI. Core has no WPF/WinForms/WinUI/native window dependency; no Windows API calls from State; no ADB knowledge in NativeUi; no product truth in Host. **[auto: source-boundary tests]**
 
 **R-05 · No polling where an event or stream exists.**
 Device state comes from a persistent `track-devices` stream; wireless discovery comes from a streaming mDNS service tracker. Do not add a timer to "refresh" either. The only sanctioned periodic work in the entire product is: the ADB server probe backoff, the 120 s metadata tick while pinned **and visible**, and the shell's 1 s age ticker while visible. A new timer requires an `ENGINEERING.md` edit and a `research/` note proving no event mechanism exists. **[auto: timer scan in `Adb/` and `State/`]**
@@ -56,7 +58,7 @@ The ADB server is shared with every other tool on the machine. Never kill it (`h
 `Vocabulary` owns dynamic semantic/state wording shared across flyout, tooltip, and notifications. Frozen static interface copy may live in the shell when it comes directly from `DESIGN.md`. No technical jargon in any user-visible surface: no TLS, security token, daemon, mDNS, transport id, protocol, enum name, or exception text in the flyout, the tooltip, or a notification. Human-readable, sentence case, exactly as `DESIGN.md` writes it.
 
 **R-16 · Small, verifiable increments.**
-Work the phases in `PHASES.md` order. Do not start a phase whose predecessor's acceptance criteria are unmet. Do not refactor outside the declared scope of the current phase. Prefer the smallest change that satisfies the phase, and leave the architecture smaller than the temptation.
+Work the authorized M00–M12 shell track in order, alongside explicitly open release acceptance. Do not start production migration before M02 passes, and do not mark the old real-device/soak/release criteria complete through a shell change. Each package's allowed scope and gate are binding. Keep increments reviewable; preserve all assertions through the migration map.
 
 ---
 
