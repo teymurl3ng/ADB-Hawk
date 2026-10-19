@@ -1,8 +1,18 @@
 # ADB View shell rebuild: execution runbook
 
+**Latest implementation checkpoint, 2026-10-17 19:18 Asia/Karachi (NOT PASS):** isolated startup/forwarding owner and candidate-only Run adapter implemented; build/format/1,102 C# cases and actual multi-process probe pass. Full gate fails unchanged M07 handle bound (+33 then +15 versus +10); native startup-menu checks/publish smoke/capture remain open. Stop this scope; keep resource criterion categorized for separate decision. No M09 advance or threshold change; see top of status. Prior verified checkpoints below are historical.
+
+**Latest verified checkpoint, 2026-10-17 17:34 Asia/Karachi:** isolated preference slice passes the full unchanged gate: 1,090 C# cases, 29 headed fixtures / 954 assertions, 293 native assertions / 11 input observations and publish smoke. Source/binary hashes match actual Release preference probe/captures; production identity unchanged. M08 remains incomplete; next separate scope is startup/forwarding, with remaining adapters/environment/physical rows open. Deferred visual/resource findings stay M09. Earlier pending records below are historical; see the top of status.
+
+**Latest follow-up, 2026-10-17:** owner-click full recheck passes 1,090 C# cases and added native preference/bubble checks, then fails unchanged external bubble-action assertion. Latest helper cause unknown; approval-review usage limit blocks further elevated diagnostics. M08 stays incomplete; see the status follow-up before resuming. No new implementation or assertion change.
+
+**Pending preference checkpoint (2026-10-17):** isolated candidate preference implementation and actual saved-value probe are present, but the full gate is blocked by ShellExperienceHost covering the guarded bubble target. Resume the final gate after the requested desktop prerequisite; do not mark preferences/M08 passed or start another implementation scope. See status and `m08/preferences/`.
+
 Date: 2026-10-15. Status: **ready as an implementation plan; no migration step executed**.
 
 **Execution checkpoint (2026-10-17):** M00–M07 passed; M08 is in progress; the final native-owner full gate passes after the owner-click recheck (see status). Its isolated native-owner slice is verified: full gate 1,067 cases, 29 headed fixtures / 833 assertions, 172 native assertions, 11 guarded real-input observations and two inspected final-binary captures. All 86 prior C# test files, prior backend/WPF/prototype sources and 824 mapped methods retained. Live composition, startup/instance/persisted preferences, actual environment sources and physical checks remain M08; no M09 advance. Production remains WPF. See [status](WINUI-REBUILD-STATUS.md) for the next exact work and limits.
+
+**Latest M08 partial checkpoint (2026-10-17):** live lifetime/action/notification composition redo verified; direct mailbox, actual live clock and unchanged reconciliation, full gate 1,076 cases / 29 fixtures / 833 assertions and an isolated non-smoke Release USB list/open/normal shutdown. No production preference/Run write or Core/WPF/prototype change. Next bounded scope is isolated candidate preferences; remaining adapters/startup/forwarding/environment/physical rows stay M08. See status and `m08/live-redo/checkpoint.json`; M08 is not PASS.
 
 This is the current plan for the user's unconstrained redesign request. It replaces the implementation direction in `MOTION-SYSTEM-PLAN.md` and decision 0028. Those files remain useful audit evidence. The existing WPF application, reliability repairs, design authority and package pins have not been changed by writing this plan.
 

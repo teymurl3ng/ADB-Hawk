@@ -21,6 +21,8 @@
         <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     </PropertyGroup>
     <ItemGroup>
+        <Compile Include="..\AdbView\Host\UserPreferences.cs" Link="Host\UserPreferences.cs" />
+        <Compile Include="..\AdbView\Host\StartupRegistration.cs" Link="Host\StartupRegistration.cs" />
         <EmbeddedResource Include="..\..\assets\icons\*.ico" LogicalName="AdbView.WinUiMigration.Resources.%(Filename)%(Extension)" />
         <ProjectReference Include="..\AdbView.Core\AdbView.Core.csproj" />
         <PackageReference Include="Microsoft.WindowsAppSDK" />

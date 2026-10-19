@@ -41,27 +41,21 @@ public sealed class CandidateHarnessTests {
         string program = File.ReadAllText(Repo.RootFile("src", "AdbView.WinUiMigration", "Program.cs"));
         Assert.True(program.IndexOf("CandidateOptions.Parse", StringComparison.Ordinal) < program.IndexOf("new Mutex", StringComparison.Ordinal));
         string[] sources = Repo.SourceFiles(Repo.RootFile("src", "AdbView.WinUiMigration"), [".cs"]).ToArray();
-        // M08 live-composition amendment: the backend runtime may be constructed ONLY by the
-        // explicit live path (Host/LiveShell.cs). Fixtures still compose no backend anywhere.
-        Assert.DoesNotContain(
-            sources.Where(source => !source.EndsWith("LiveShell.cs", StringComparison.Ordinal)),
-            source => File.ReadAllText(source).Contains("new BackendRuntime", StringComparison.Ordinal));
         Assert.All(sources, source => {
             string text = File.ReadAllText(source);
-            Assert.DoesNotContain("Microsoft.Win32.Registry", text, StringComparison.Ordinal);
+            if (Path.GetRelativePath(Repo.RootFile("src", "AdbView.WinUiMigration"), source).Replace('\\', '/') != "Host/LiveBackendSession.cs") {
+                Assert.DoesNotContain("new BackendRuntime", text, StringComparison.Ordinal);
+            }
+            if (Path.GetRelativePath(Repo.RootFile("src", "AdbView.WinUiMigration"), source).Replace('\\', '/') is not ("Host/CandidateRegistryPreferenceStore.cs" or "Host/CandidateRegistryRunKeyStore.cs")) {
+                Assert.DoesNotContain("Microsoft.Win32.Registry", text, StringComparison.Ordinal);
+            }
             Assert.DoesNotContain("System.Windows.Forms", text, StringComparison.Ordinal);
         });
-    }
-
-    [Fact]
-    public void LiveOptionsUseTheFixedIdentityAndExcludeFixtures() {
-        CandidateOptions live = CandidateOptions.Parse(["--live"]);
-        Assert.True(live.Live);
-        Assert.Equal("AdbView.WinUiMigration.Live", live.InstanceName);
-        Assert.Null(live.ResultPath);
-
-        // A fixture snapshot or per-launch suffix can never ride along with the live backend.
-        Assert.Throws<ArgumentException>(() => CandidateOptions.Parse(["--live", "--fixture=empty"]));
-        Assert.Throws<ArgumentException>(() => CandidateOptions.Parse(["--live", "--instance=" + Guid.NewGuid().ToString("N")]));
+        string window = File.ReadAllText(Repo.RootFile("src", "AdbView.WinUiMigration", "CandidateWindow.xaml.cs"));
+        Assert.Contains("if (options.Live)", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("new LiveBackendSession", File.ReadAllText(Repo.RootFile("src", "AdbView.WinUiMigration", "NativeUi", "DeviceFixtures.cs")), StringComparison.Ordinal);
+        Assert.Contains("new UserPreferences(new CandidateRegistryPreferenceStore())", window, StringComparison.Ordinal);
+        Assert.DoesNotContain("new UserPreferences()", window, StringComparison.Ordinal);
+        Assert.Equal(["..\\AdbView\\Host\\UserPreferences.cs", "..\\AdbView\\Host\\StartupRegistration.cs"], project.Descendants("Compile").Select(node => (string?)node.Attribute("Include")));
     }
 }

@@ -21,6 +21,13 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\AdbView.WinUiMigration\Host\CandidateOptions.cs" Link="Candidate\CandidateOptions.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\CandidateControlChannel.cs" Link="Candidate\CandidateControlChannel.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\CandidateRegistryRunKeyStore.cs" Link="Candidate\CandidateRegistryRunKeyStore.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\CandidatePreferenceController.cs" Link="Candidate\CandidatePreferenceController.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\CandidateRegistryPreferenceStore.cs" Link="Candidate\CandidateRegistryPreferenceStore.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\CandidateClock.cs" Link="Candidate\CandidateClock.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\LiveBackendSession.cs" Link="Candidate\LiveBackendSession.cs" />
+    <Compile Include="..\..\src\AdbView.WinUiMigration\Host\DispatchedNotificationSink.cs" Link="Candidate\DispatchedNotificationSink.cs" />
     <Compile Include="..\..\src\AdbView.WinUiMigration\Host\BubbleVisibility.cs" Link="Candidate\BubbleVisibility.cs" />
     <Compile Include="..\..\src\AdbView.WinUiMigration\NativeUi\Motion\MotionPolicy.cs" Link="Candidate\MotionPolicy.cs" />
     <Compile Include="..\..\src\AdbView.WinUiMigration\NativeUi\Motion\SurfaceTransitionController.cs" Link="Candidate\SurfaceTransitionController.cs" />

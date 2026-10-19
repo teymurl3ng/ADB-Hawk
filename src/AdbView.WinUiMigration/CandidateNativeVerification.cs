@@ -8,6 +8,7 @@ using AdbView.WinUiMigration.NativeUi;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.Win32;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.Shell;
@@ -65,6 +66,7 @@ internal sealed partial class CandidateWindow {
                 && balloon.szInfo.ToString() == AdbView.Host.BalloonText.TruncateBody(intent.Body)
                 && (balloon.dwInfoFlags & NOTIFY_ICON_INFOTIP_FLAGS.NIIF_ICON_MASK) == expectedSeverity);
         }
+        VerifyPersistedNativeMenu(tray);
         VerifyNativeMenu(tray, false, true, false, AdbView.Host.ThemePreference.System, 0);
         tray.Select(2); tray.Select(3); tray.Select(4); tray.Select(12);
         VerifyNativeMenu(tray, true, false, true, AdbView.Host.ThemePreference.Dark, 2);
@@ -187,6 +189,63 @@ internal sealed partial class CandidateWindow {
         Check("native-owner-disposal-removes-icon-and-both-owned-hwnds", native.Disposed && !tray.Registered && !PInvoke.IsWindow(receiver) && !PInvoke.IsWindow(bubble));
         Check("queued-environment-and-expiry-cannot-revive-disposed-owner", native.EnvironmentRecomputations == settled && native.CaptionRegionCount == 0);
         ShowSurface();
+    }
+    private void VerifyPersistedNativeMenu(NativeTray tray) {
+        var store = new NativePreferenceVerificationStore();
+        store.Values["NotificationsEnabled"] = 0; store.Values["Theme"] = "Light";
+        bool? policy = null; AdbView.Host.ThemePreference? appliedTheme = null;
+        var startupStore = new NativeStartupVerificationStore();
+        var startup = new AdbView.Host.StartupRegistration(startupStore, () => Path.GetFullPath("candidate.exe"));
+        var owner = new Host.CandidatePreferenceController(new AdbView.Host.UserPreferences(store),
+            value => policy = value, value => appliedTheme = value, startup);
+        try {
+            tray.BindPreferences(owner.Execute);
+            VerifyNativeMenu(tray, false, false, false, AdbView.Host.ThemePreference.Light, 1);
+            Check("persisted-menu-applies-saved-policy-without-write", policy == false && appliedTheme == AdbView.Host.ThemePreference.Light && store.Writes.Count == 0);
+            tray.Select(3);
+            VerifyNativeMenu(tray, false, true, false, AdbView.Host.ThemePreference.Light, 1);
+            Check("persisted-notification-command-writes-only-notifications", store.Writes.SequenceEqual(["NotificationsEnabled"]) && policy == true);
+            store.Values["NotificationsEnabled"] = 0; store.Values["Theme"] = "Dark";
+            VerifyNativeMenu(tray, false, false, false, AdbView.Host.ThemePreference.Dark, 2);
+            Check("menu-opening-refreshes-external-store-without-writes", store.Writes.Count == 1 && policy == false && appliedTheme == AdbView.Host.ThemePreference.Dark);
+            tray.Select(11);
+            VerifyNativeMenu(tray, false, false, false, AdbView.Host.ThemePreference.Light, 1);
+            Check("persisted-theme-command-writes-only-theme", store.Writes.SequenceEqual(["NotificationsEnabled", "Theme"]));
+            tray.Select(4);
+            VerifyNativeMenu(tray, false, false, true, AdbView.Host.ThemePreference.Light, 1);
+            Check("persisted-bubble-command-writes-only-bubble", store.Writes.SequenceEqual(["NotificationsEnabled", "Theme", "StatusBubbleEnabled"]));
+            Check("persisted-bubble-retains-visible-flyout-suppression", !_nativeOwner!.Bubble.AppWindow.IsVisible);
+            tray.BindPreferences(new Host.CandidatePreferenceController(new AdbView.Host.UserPreferences(store), _ => { }, _ => { }, startup).Execute);
+            VerifyNativeMenu(tray, false, false, true, AdbView.Host.ThemePreference.Light, 1);
+            Check("native-menu-controller-reload-preserves-saved-checks", store.Writes.Count == 3);
+            Check("non-startup-menu-commands-never-write-registration", startupStore.Writes == 0);
+            tray.Select(2);
+            VerifyNativeMenu(tray, true, false, true, AdbView.Host.ThemePreference.Light, 1);
+            Check("startup-menu-persists-registration-only-on-own-command", startupStore.Writes == 1 && store.Writes.Count == 3);
+            tray.Select(2);
+            VerifyNativeMenu(tray, false, false, true, AdbView.Host.ThemePreference.Light, 1);
+            Check("startup-menu-disable-reads-back-unchecked", startupStore.Writes == 2 && startupStore.Value is null && store.Writes.Count == 3);
+        }
+        finally {
+            tray.BindPreferences(_ => Host.TrayPreferenceState.Default);
+            tray.BindPreferences(null);
+        }
+    }
+    private sealed class NativePreferenceVerificationStore : AdbView.Host.IPreferenceStore {
+        public Dictionary<string, object> Values { get; } = [];
+        public List<string> Writes { get; } = [];
+        public object? GetValue(string name) => Values.GetValueOrDefault(name);
+        public void SetValue(string name, object value, RegistryValueKind kind) {
+            Writes.Add(name); Values[name] = value;
+        }
+    }
+    private sealed class NativeStartupVerificationStore : AdbView.Host.IRunKeyStore {
+        public string? Value { get; private set; }
+        public int Writes { get; private set; }
+        public string? GetValue(string name) => Value;
+        public void SetValue(string name, string value) { Writes++; Value = value; }
+        public void DeleteValue(string name) { Writes++; Value = null; }
+        public string[] GetValueNames() => Value is null ? [] : [AdbView.Host.StartupRegistrationContract.ValueName];
     }
     private void VerifyNativeMenu(NativeTray tray, bool startup, bool notifications, bool bubble, AdbView.Host.ThemePreference theme, int themeIndex) {
         HMENU menu = tray.CreateMenu();

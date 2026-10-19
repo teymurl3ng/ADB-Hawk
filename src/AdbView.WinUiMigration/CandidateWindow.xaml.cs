@@ -1,7 +1,7 @@
 namespace AdbView.WinUiMigration;
 
 using System.Text.Json;
-using System.Threading;
+using AdbView.Host;
 using AdbView.Presentation;
 using AdbView.State;
 using AdbView.WinUiMigration.Host;
@@ -27,14 +27,15 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
     private readonly MotionPreferenceSubscription _motionSubscription;
     private readonly SurfaceTransitionController _surface;
     private readonly NativeShellOwner? _nativeOwner;
+    private readonly LiveBackendSession? _liveSession;
+    private readonly DispatchedNotificationSink? _liveNotifications;
+    private readonly CandidatePreferenceController? _livePreferences;
     private readonly List<TaskCompletionSource> _bubbleDeadlines = [];
     private readonly System.Diagnostics.Stopwatch _fixtureClock = System.Diagnostics.Stopwatch.StartNew();
     public event Action<ShellAppearanceChangedEvent>? AppearanceChangedRequested;
     private Control? _initialFocus;
     private TextBox? _codeInput => _presenter.Pairing?.CodeInput;
     private readonly FixtureShellActions _fixtureActions = new();
-    private LiveShell? _liveShell;
-    private bool _liveVisible;
     private bool _verificationStarted;
     private bool _disposed;
     private ScrollViewer BodyScroll => _presenter.ListScroll;
@@ -66,58 +67,43 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
         Stage("native placement complete");
         _motionSource = new SystemMotionPreferenceSource();
         _motionPolicy = new MotionPolicy(_motionSource.Enabled);
-        LiveShell? liveShell = null;
+        _mailbox = new SnapshotMailbox(action => DispatcherQueue.TryEnqueue(() => action()), RenderSnapshot);
+        UserPreferences? preferences = null;
         if (options.Live) {
-            // M08 live-composition slice: created before the presenter because the presenter's
-            // actions come from the backend adapter; its events fire only after Start(), which
-            // this constructor never performs.
-            liveShell = new LiveShell(
-                () => Volatile.Read(ref _liveVisible),
-                PublishLiveSnapshot,
-                work => DispatcherQueue.TryEnqueue(() => work()));
-            _liveShell = liveShell;
+            preferences = new UserPreferences(new CandidateRegistryPreferenceStore());
+            bool notificationsEnabled = preferences.NotificationsEnabled;
+            _liveNotifications = new DispatchedNotificationSink(action => DispatcherQueue.TryEnqueue(() => action()),
+                intent => _nativeOwner!.Tray.ShowBalloon(intent), FatalLiveDelivery);
+            _liveSession = new LiveBackendSession(_mailbox, _liveNotifications, FatalLiveDelivery,
+                notificationsEnabled: notificationsEnabled);
+            Serilog.Log.Information("Candidate live notification policy initialized: {NotificationsEnabled}", notificationsEnabled);
         }
         _presenter = new SnapshotPresenter(Root, PageHost, BackButton, PinButton,
             options.Fixture == "text-200" ? 2 : 1, options.ResultPath is null ? NativeClipboard.Copy : RecordFixtureCopy,
-            liveShell is not null ? liveShell.Actions : _fixtureActions,
-            _motionPolicy, () => AdbView.Bridge.FixtureSnapshotProvider.T0 + _fixtureClock.Elapsed);
+            _liveSession?.Actions ?? _fixtureActions,
+            _motionPolicy, () => CandidateClock.Read(options.Live, _fixtureClock.Elapsed));
         _motionSubscription = new MotionPreferenceSubscription(_motionSource, DispatcherQueue, ApplyMotionPreference);
         _surface = new SurfaceTransitionController(() => { AppWindow.Show(); Activate(); }, () => AppWindow.Hide(), interactive => {
             Root.IsHitTestVisible = interactive;
             _presenter.SetPresentationVisible(interactive);
         });
-        _mailbox = new SnapshotMailbox(action => DispatcherQueue.TryEnqueue(() => action()), RenderSnapshot);
         if (options.Live || options.Fixture is "native-scenarios" or "native-bubble") {
             _nativeOwner = new NativeShellOwner(this, Root, _presenter, _windowController, () => _presenter.Snapshot,
-                ShowSurface, HideSurface,
-                options.Live ? CandidateOptions.LiveTrayIdentity : Guid.Parse(options.InstanceName[CandidateOptions.IdentityPrefix.Length..]),
-                () => AdbView.Bridge.FixtureSnapshotProvider.T0 + _fixtureClock.Elapsed,
+                ShowSurface, HideSurface, options.Live ? CandidateOptions.LiveTrayIdentity : Guid.Parse(options.InstanceName[CandidateOptions.IdentityPrefix.Length..]),
+                () => CandidateClock.Read(options.Live, _fixtureClock.Elapsed),
                 options.ResultPath is null ? Task.Delay : HoldBubbleDeadline);
-            if (liveShell is not null) {
-                liveShell.AttachTray(_nativeOwner.Tray);
-                // Pin stays snapshot-owned: the request rounds trips through the reducer.
-                _presenter.PinRequested += OnLivePinRequested;
-                // Reduced-motion changes are backend truth, not only local presentation.
-                AppearanceChangedRequested += OnLiveAppearanceChanged;
-            }
         }
-        _mailbox.Publish(liveShell is not null ? liveShell.InitialSnapshot : DeviceFixtures.Snapshot(options.Fixture));
+        if (_liveSession is not null) {
+            _livePreferences = new CandidatePreferenceController(preferences!, _liveSession.SetNotificationsEnabled, ApplyLiveThemePreference,
+                new StartupRegistration(new CandidateRegistryRunKeyStore(), () => Environment.ProcessPath ?? throw new InvalidOperationException("Candidate executable path unavailable.")));
+            _presenter.PinRequested += OnLivePin;
+            AppearanceChangedRequested += _liveSession.PostAppearance;
+            _nativeOwner!.Tray.BindPreferences(_livePreferences.Execute);
+        }
+        _mailbox.Publish(_liveSession?.InitialSnapshot ?? DeviceFixtures.Snapshot(options.Fixture));
         Stage("initial snapshot published");
         Root.Loaded += OnLoaded;
         Closed += OnClosed;
-    }
-
-    private void PublishLiveSnapshot(AppSnapshot snapshot) {
-        if (!_disposed) { _mailbox.Publish(snapshot); }
-    }
-
-    private void OnLivePinRequested() {
-        bool? pinned = _presenter.Snapshot?.Shell.Pinned;
-        if (pinned is { } current) { _liveShell?.PostPinned(!current); }
-    }
-
-    private void OnLiveAppearanceChanged(ShellAppearanceChangedEvent appearance) {
-        _liveShell?.PostAppearance(appearance);
     }
 
     private readonly List<string> _fixtureCopies = [];
@@ -126,6 +112,26 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
         if (_options.ResultPath is not null) { File.AppendAllText(_options.ResultPath + ".startup.log", value + Environment.NewLine); }
     }
     private bool RecordFixtureCopy(string text) { _fixtureCopies.Add(text); return _fixtureCopySucceeds; }
+    private static void FatalLiveDelivery(Exception exception) {
+        Serilog.Log.Fatal(exception, "Live candidate cannot continue after failed delivery");
+        Console.Error.WriteLine(exception); Environment.Exit(1);
+    }
+    private void OnLivePin() => _liveSession!.RequestPin();
+    private void ApplyLiveThemePreference(ThemePreference preference) {
+        ThemeKind system = Application.Current.RequestedTheme == ApplicationTheme.Light ? ThemeKind.Light : ThemeKind.Dark;
+        var shell = _liveSession!.InitialSnapshot.Shell;
+        _liveSession.PostAppearance(new ShellAppearanceChangedEvent(EffectiveTheme.Resolve(preference, system),
+            shell.TransparencyEnabled, shell.ForcedColors, !_motionSource.Enabled));
+    }
+    internal void StartLiveBackend() {
+        _livePreferences!.Execute(0);
+        _liveSession!.Start();
+    }
+    internal void ToggleFromSecondaryLaunch() {
+        if (_disposed) { Serilog.Log.Warning("Candidate toggle arrived during shutdown"); return; }
+        _nativeOwner!.Toggle();
+        Serilog.Log.Information("Candidate secondary toggle applied; visible {Visible}", AppWindow.IsVisible);
+    }
     private void ApplyMotionPreference(bool enabled) {
         if (_disposed) { return; }
         _motionPolicy.SetSystemEnabled(enabled);
@@ -134,19 +140,8 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
             AppearanceChangedRequested?.Invoke(new ShellAppearanceChangedEvent(shell.Theme, shell.TransparencyEnabled, shell.ForcedColors, !enabled));
         }
     }
-    public void ShowSurface() {
-        _liveVisible = true;
-        _surface.Open();
-        _nativeOwner?.VisibilityChanged();
-        _liveShell?.SetPresentationState(LivePinned);
-    }
-    public void HideSurface() {
-        _liveVisible = false;
-        _surface.Close();
-        _nativeOwner?.VisibilityChanged();
-        _liveShell?.SetPresentationState(LivePinned);
-    }
-    private bool LivePinned => _presenter.Snapshot?.Shell.Pinned ?? false;
+    public void ShowSurface() { _surface.Open(); _nativeOwner?.VisibilityChanged(); _liveSession?.SetVisible(true); }
+    public void HideSurface() { _surface.Close(); _nativeOwner?.VisibilityChanged(); _liveSession?.SetVisible(false); }
     public void SuspendPresentation() => _surface.Suspend();
     public void ResumePresentation() => _surface.Resume();
 
@@ -311,15 +306,16 @@ internal sealed partial class CandidateWindow : Window, IDisposable {
         Dispose();
     }
 
-    /// <summary>Starts the live backend after the window exists. Fixtures never call this: they
-    /// own their snapshots and must not touch ADB.</summary>
-    internal void StartLiveBackend() => _liveShell?.Start();
-
     public void Dispose() {
         if (_disposed) { return; }
         _disposed = true;
         Root.Loaded -= OnLoaded; Closed -= OnClosed;
-        _liveShell?.Dispose();
+        if (_liveSession is not null) {
+            _presenter.PinRequested -= OnLivePin;
+            AppearanceChangedRequested -= _liveSession.PostAppearance;
+            _nativeOwner!.Tray.BindPreferences(null);
+        }
+        _liveNotifications?.Dispose(); _liveSession?.Dispose();
         _nativeOwner?.Dispose();
         _motionSubscription.Dispose(); _motionSource.Dispose(); _surface.Dispose();
         _mailbox.Dispose(); _presenter.Dispose();

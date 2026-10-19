@@ -34,6 +34,20 @@ internal sealed class NativeTray : IDisposable {
     public bool Registered => _registered;
     public string Tooltip => _data.szTip.ToString();
     public event Action? PreferencesChanged;
+    private Func<uint, TrayPreferenceState>? _preferenceOwner;
+    public void BindPreferences(Func<uint, TrayPreferenceState>? owner) {
+        _preferenceOwner = owner;
+        if (owner is not null) { RefreshPreferences(); }
+    }
+    private void ApplyPreferences(TrayPreferenceState state) {
+        bool changed = StartupEnabled != state.Startup || Notifications != state.Notifications
+            || BubbleEnabled != state.Bubble || Theme != state.Theme;
+        StartupEnabled = state.Startup; Notifications = state.Notifications; BubbleEnabled = state.Bubble; Theme = state.Theme;
+        if (changed) { PreferencesChanged?.Invoke(); }
+    }
+    public void RefreshPreferences() {
+        if (!_disposed && _preferenceOwner is { } owner) { ApplyPreferences(owner(0)); }
+    }
     public event Action? BalloonClicked;
     public NativeTray(NativeReceiver receiver, Guid identity, Action toggle, Action open, Action exit) {
         _receiver = receiver; _toggle = toggle; _open = open; _exit = exit;
@@ -118,6 +132,7 @@ internal sealed class NativeTray : IDisposable {
         return new LRESULT(0);
     }
     public unsafe HMENU CreateMenu() {
+        RefreshPreferences();
         HMENU menu = PInvoke.CreatePopupMenu();
         if (menu.IsNull) { throw new InvalidOperationException("Native tray: menu creation failed."); }
         try {
@@ -148,6 +163,9 @@ internal sealed class NativeTray : IDisposable {
     }
     public void Select(uint command) {
         if (_disposed) { return; }
+        if (_preferenceOwner is { } owner && command is 2 or 3 or 4 or 10 or 11 or 12) {
+            ApplyPreferences(owner(command)); return;
+        }
         switch (command) {
             case 0: return;
             case 1: _open(); return;
@@ -192,7 +210,7 @@ internal sealed class NativeTray : IDisposable {
     }
     public void Dispose() {
         if (_disposed) { return; }
-        _disposed = true; _receiver.Message -= Handle;
+        _disposed = true; _preferenceOwner = null; _receiver.Message -= Handle;
         if (_registered && !PInvoke.Shell_NotifyIcon(NOTIFY_ICON_MESSAGE.NIM_DELETE, in _data)) { Log.Warning("Native tray: icon deletion failed"); }
         _registered = false;
         foreach (HICON icon in _icons.Values) { if (!PInvoke.DestroyIcon(icon)) { Log.Warning("Native tray: icon resource destruction failed"); } }

@@ -1,5 +1,14 @@
 # Device test matrix
 
+## 2026-10-17 M08 startup/forwarding implementation
+
+| Scenario | Status | Evidence / remaining work |
+| --- | --- | --- |
+| Startup primary hidden, duplicate startup silent, manual secondary open/hide without second backend, normal primary open | LIVE OBSERVED | `artifacts/winui-rebuild/m08/startup/live-probe/`, Windows 26100 / 125%. Opened current USB list with foreground; normal owned cleanup/exit 0. This is an explicit startup-command observation, not a frame trace or actual login/reboot. Production executable/Run/preferences and candidate Run value unchanged. |
+| Pipe protocol/lifetime and candidate-only startup intent mapping | AUTOMATED PASS | 12 new CandidateStartupTests, real local current-user pipes plus fake registration stores; total 1,102 C# cases pass. No actual Run enable/disable test was performed. |
+| Final full gate and native startup menu checks | FAILED / NOT REACHED | Unchanged M07 500-cycle handle bound fails +33, then +15 against +10; private bytes decrease. Native startup-menu fixture and publish smoke not reached. No thresholds or resource implementation changed. |
+| Actual Run enable/disable, login/upgrade/uninstall, physical environment and long-running resource/device acceptance | NOT EXERCISED | Remain M08/M09/M11/M12 as applicable. No machine startup registration, real pairing/repair or shared ADB restart in this probe. |
+
 ## Multicast-host discovery (2026-10-12, decision 0026)
 
 | Scenario | Result | Notes |
@@ -623,3 +632,20 @@ The following rows supplement existing acceptance; fake-server results do not es
 | Actual WinUI navigation interruption, snapshot churn, motion disable/re-enable, hide/reopen and suspend boundaries | AUTOMATED FIXTURE PASS | M07 motion-scenarios; real native objects, immediate truth/input, no hidden presentation clocks; no physical suspend or Windows preference was changed. |
 | 500 animated navigation cycles with matched native-control warmup, handler disposal and owned animation/subscription cleanup | AUTOMATED PASS | Final M07 gate: process handles 2513→2519; private bytes 141262848→144609280; no forced GC. This is a candidate-only workload, not integrated resource/soak qualification. |
 | Real system motion-toggle, physical sleep/resume and hardware presentation qualification in the integrated shell | NOT EXERCISED | Actual UISettings subscription is implemented; injected event-source and lifecycle tests do not pass physical M08/M09/M12 acceptance. |
+
+## 2026-10-17 M08 live composition slice
+
+| Scenario | Status | Evidence / remaining work |
+| --- | --- | --- |
+| Isolated non-smoke WinUI Release candidate starts hidden, opens a currently connected USB device list, then exits normally | LIVE OBSERVED | Windows 10.0.26100, 125% scale; `artifacts/winui-rebuild/m08/live-redo/launch-final/`. Existing device stream and read-only metadata requests; no device identity/serial copied here. Owned receiver callback is synthetic, not a physical tray-input claim. Normal backend/native disposal, exit 0, installed executable and exact production Run entry unchanged. |
+| Live ages, one-slot publication, unchanged visual reconciliation, notification dispatch failure and disposal | AUTOMATED PASS | Nine CandidateLiveCompositionTests exercise the actual Host session with BackendRuntime/StateEngine and FakeAdbServer. Short live observation does not establish long-running age correctness or device pairing. |
+| Real code/QR pairing, repair/undo, notification delivery, aged metadata, physical environment changes and integrated resource/soak qualification | NOT EXERCISED | Separate remaining M08/M09/M12 and Phase 11 acceptance; this composition slice closes none of those rows. |
+
+## 2026-10-17 M08 preference implementation
+
+| Scenario | Status | Evidence / remaining work |
+| --- | --- | --- |
+| Isolated candidate reads saved notifications off before backend start and renders saved Light theme | LIVE OBSERVED | `artifacts/winui-rebuild/m08/preferences/live-probe/`; current USB list, synthetic receiver open, normal close/exit 0. Exact temporary candidate values/key restored; production preferences/executable/Run unchanged. No login/autostart, physical input, pairing or repair was exercised. |
+| Native menu external refresh and per-command preference writes/reload | AUTOMATED PASS | 14 C# preference cases and final native checks pass, including persisted bubble/suppression/reload; final native driver has 293 assertions plus all 11 guarded external-input observations. No actual startup registration or physical environment acceptance implied. |
+| Full required UI gate | PASS | `preferences/verify-final-resumption.log`: pinned toolchain/format/build, 1,090 C# cases, 29 headed fixtures / 954 assertions, publish smoke. No implementation, assertion or threshold changed for this pass. Earlier failures retained; their exact causes are not inferred from the passing recheck. |
+| Light theme visual qualification | DEFERRED TO M09 | Near-white device outline has poor contrast on the Light card in the inspected live capture. Cause not established; no rendering fix in preference scope. |
