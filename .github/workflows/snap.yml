@@ -1,0 +1,44 @@
+name: Build Snap Package
+
+on:
+  push:
+    branches: [ main, linux ]
+  pull_request:
+    branches: [ main, linux ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build & Verify Snap
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install verification dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            g++ \
+            pkg-config \
+            libgtk-3-dev \
+            libglib2.0-dev \
+            libx11-dev \
+            libasan8 \
+            libubsan1
+
+      - name: Run verification test harness (9 gates)
+        run: |
+          ./tools/verify.sh --strict
+
+      - name: Build Snap Package
+        uses: snapcore/action-build@v1
+        id: snapcraft
+        with:
+          snapcraft-args: --classic
+
+      - name: Upload Snap artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: adb-hawk-snap
+          path: ${{ steps.snapcraft.outputs.snap }}

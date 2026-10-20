@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=ADB Hawk
+GenericName=Android Debug Bridge Monitor
+Comment=Observe, explain, notify, and pair ADB connections
+Exec=adb-hawk
+Icon=adb-hawk
+Terminal=false
+Type=Application
+Categories=Development;
+StartupNotify=false

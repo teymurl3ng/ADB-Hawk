@@ -369,7 +369,7 @@ DeviceStateKind MapRawDeviceState(const RawDevice& raw) {
 
 std::string BuildDeviceId(TransportKind transport,
                           std::string_view hardware_serial,
-                          std::optional<std::string_view> usb_devpath) {
+                          std::string_view usb_devpath) {
   std::string prefix;
   switch (transport) {
     case TransportKind::Usb:
@@ -382,9 +382,8 @@ std::string BuildDeviceId(TransportKind transport,
       prefix = "unk:";
       break;
   }
-  if (hardware_serial == "(no serial number)" && usb_devpath.has_value() &&
-      !usb_devpath->empty()) {
-    return prefix + std::string(*usb_devpath);
+  if (hardware_serial == "(no serial number)" && !usb_devpath.empty()) {
+    return prefix + std::string(usb_devpath);
   }
   return prefix + std::string(hardware_serial);
 }
@@ -398,10 +397,9 @@ std::vector<NormalizedDevice> SelectNormalizedTransports(
   for (const auto& raw : raw_devices) {
     TransportKind transport = MapTransport(raw.connection_type);
     std::string hw_serial = ResolveHardwareSerial(raw.serial, mdns_services);
-    std::optional<std::string_view> usb_path =
-        raw.usb_devpath.has_value()
-            ? std::optional<std::string_view>(*raw.usb_devpath)
-            : std::nullopt;
+    std::string_view usb_path =
+        raw.usb_devpath.has_value() ? std::string_view(*raw.usb_devpath)
+                                    : std::string_view{};
     std::string id = BuildDeviceId(transport, hw_serial, usb_path);
     DeviceStateKind st = MapRawDeviceState(raw);
     auto given = FindConnectGivenName(raw.serial, hw_serial, mdns_services);

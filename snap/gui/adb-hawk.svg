@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E1E2E"/>
+      <stop offset="100%" stop-color="#11111B"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#60CDFF"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="dotGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6CCB5F"/>
+      <stop offset="100%" stop-color="#16A34A"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.4"/>
+    </filter>
+  </defs>
+
+  <!-- Background tile -->
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#bg)" filter="url(#shadow)"/>
+  <rect x="8.5" y="8.5" width="111" height="111" rx="27.5" fill="none" stroke="#313244" stroke-width="1"/>
+
+  <!-- Phone Silhouette -->
+  <rect x="36" y="24" width="56" height="80" rx="10" fill="#181825" stroke="url(#accent)" stroke-width="3.5"/>
+  
+  <!-- Screen Area -->
+  <rect x="42" y="34" width="44" height="60" rx="4" fill="#11111B" opacity="0.85"/>
+
+  <!-- Speaker/Camera pill -->
+  <rect x="56" y="28" width="16" height="3" rx="1.5" fill="#6C7086"/>
+
+  <!-- Hawk Eye / Debug Radar in Center -->
+  <path d="M 48 64 C 54 54, 74 54, 80 64 C 74 74, 54 74, 48 64 Z" fill="none" stroke="url(#accent)" stroke-width="2.5" stroke-linejoin="round"/>
+  <circle cx="64" cy="64" r="4.5" fill="url(#dotGrad)"/>
+
+  <!-- Connected Status Dot (Bottom-right badge) -->
+  <circle cx="88" cy="94" r="9" fill="#11111B"/>
+  <circle cx="88" cy="94" r="7" fill="url(#dotGrad)"/>
+</svg>

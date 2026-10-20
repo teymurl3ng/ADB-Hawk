@@ -1,0 +1,52 @@
+name: adb-hawk
+base: core24
+version: '1.0.0'
+summary: Observe, explain, notify, and pair ADB connections
+description: |
+  ADB Hawk is a system-tray utility for Linux that monitors ADB connections,
+  explains connection states, notifies on drops and authorizations, and
+  pairs wireless debugging devices.
+grade: stable
+confinement: classic
+
+platforms:
+  amd64:
+
+apps:
+  adb-hawk:
+    command: usr/bin/adb-hawk
+    desktop: snap/gui/adb-hawk.desktop
+    autostart: adb-hawk.desktop
+
+parts:
+  adb-hawk:
+    plugin: nil
+    source: .
+    build-packages:
+      - g++
+      - pkg-config
+      - libgtk-3-dev
+      - libglib2.0-dev
+      - libx11-dev
+    override-build: |
+      mkdir -p $CRAFT_PART_INSTALL/usr/bin
+      mkdir -p $CRAFT_PART_INSTALL/usr/share/applications
+      mkdir -p $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps
+
+      g++ -std=c++20 -O2 -g -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror \
+        -D_GLIBCXX_ASSERTIONS -fstack-protector-strong -D_FORTIFY_SOURCE=3 \
+        $(pkg-config --cflags gtk+-3.0 gio-2.0 glib-2.0 x11) -pthread -Isrc \
+        src/core/vocabulary.cpp src/core/adb_wire.cpp src/core/protobuf_lite.cpp \
+        src/core/mdns_wire.cpp src/core/mdns_cache.cpp src/core/reduce.cpp \
+        src/core/notify_policy.cpp src/core/qr.cpp src/core/motion.cpp \
+        src/core/tray_pixmap.cpp src/core/shell_placement.cpp \
+        src/platform/adb_locator.cpp src/platform/repair_restart_adb.cpp \
+        src/platform/adb_io.cpp src/platform/usb_sentinel.cpp \
+        src/platform/diagnostics.cpp src/platform/autostart.cpp \
+        src/platform/mdns_browser.cpp src/platform/dbus/session_dbus.cpp \
+        src/shell/gtk_shell.cpp src/app/main.cpp \
+        -o $CRAFT_PART_INSTALL/usr/bin/adb-hawk \
+        $(pkg-config --libs gtk+-3.0 gio-2.0 glib-2.0 x11)
+
+      install -m 644 packaging/adb-hawk.desktop $CRAFT_PART_INSTALL/usr/share/applications/adb-hawk.desktop
+      install -m 644 packaging/icons/adb-hawk.svg $CRAFT_PART_INSTALL/usr/share/icons/hicolor/scalable/apps/adb-hawk.svg
