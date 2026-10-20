@@ -15,7 +15,6 @@ platforms:
 apps:
   adb-hawk:
     command: usr/bin/adb-hawk
-    desktop: snap/gui/adb-hawk.desktop
     autostart: adb-hawk.desktop
 
 parts:
