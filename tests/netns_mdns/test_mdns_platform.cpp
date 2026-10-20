@@ -158,7 +158,7 @@ void TestAutostartAndPreferences() {
   REQUIRE((dir_st.st_mode & 0777) == 0700);
 
   struct stat file_st {};
-  REQUIRE(::stat((tmp_dir + "/autostart/adb-view.desktop").c_str(), &file_st) ==
+  REQUIRE(::stat((tmp_dir + "/autostart/adb-hawk.desktop").c_str(), &file_st) ==
           0);
   REQUIRE((file_st.st_mode & 0777) == 0600);
 
@@ -171,8 +171,24 @@ void TestAutostartAndPreferences() {
   REQUIRE(WriteUserPreferences(prefs, tmp_dir));
   REQUIRE(ReadUserPreferences(tmp_dir) == prefs);
 
+  // Test backward compatibility fallback from legacy adb-view paths
+  (void)::mkdir((tmp_dir + "/adb-view").c_str(), 0700);
+  FILE* fp = ::fopen((tmp_dir + "/adb-view/prefs.ini").c_str(), "w");
+  if (fp != nullptr) {
+    std::fputs("[Preferences]\ntheme=dark\nstatus_bubble=true\n", fp);
+    std::fclose(fp);
+  }
+  // Remove adb-hawk prefs to force fallback
+  (void)::unlink((tmp_dir + "/adb-hawk/prefs.ini").c_str());
+  UserPreferences fallback_prefs = ReadUserPreferences(tmp_dir);
+  REQUIRE(fallback_prefs.theme == ThemePreference::Dark);
+  REQUIRE(fallback_prefs.show_status_bubble == true);
+
+  (void)::unlink((tmp_dir + "/autostart/adb-hawk.desktop").c_str());
   (void)::unlink((tmp_dir + "/autostart/adb-view.desktop").c_str());
   (void)::rmdir((tmp_dir + "/autostart").c_str());
+  (void)::unlink((tmp_dir + "/adb-hawk/prefs.ini").c_str());
+  (void)::rmdir((tmp_dir + "/adb-hawk").c_str());
   (void)::unlink((tmp_dir + "/adb-view/prefs.ini").c_str());
   (void)::rmdir((tmp_dir + "/adb-view").c_str());
   (void)::rmdir(tmp_dir.c_str());

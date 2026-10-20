@@ -190,10 +190,13 @@ bool ReadAutostartEnabled(std::string_view config_home_override) {
   if (config_home.empty()) {
     return false;
   }
-  std::string path = config_home + "/autostart/adb-view.desktop";
+  std::string path = config_home + "/autostart/adb-hawk.desktop";
   std::string content = ReadSmallFile(path);
   if (content.empty()) {
-    return false;
+    content = ReadSmallFile(config_home + "/autostart/adb-view.desktop");
+    if (content.empty()) {
+      return false;
+    }
   }
 
   bool has_exec = false;
@@ -262,7 +265,8 @@ bool WriteAutostartEnabled(bool enabled,
                         "Hidden=" +
                         (enabled ? "false" : "true") + "\n";
 
-  return WriteFileAtomically0600(dir_path, "adb-view.desktop", content);
+  (void)::unlink((dir_path + "/adb-view.desktop").c_str());
+  return WriteFileAtomically0600(dir_path, "adb-hawk.desktop", content);
 }
 
 UserPreferences ReadUserPreferences(std::string_view config_home_override) {
@@ -271,9 +275,12 @@ UserPreferences ReadUserPreferences(std::string_view config_home_override) {
   if (config_home.empty()) {
     return prefs;
   }
-  std::string content = ReadSmallFile(config_home + "/adb-view/prefs.ini");
+  std::string content = ReadSmallFile(config_home + "/adb-hawk/prefs.ini");
   if (content.empty()) {
-    return prefs;
+    content = ReadSmallFile(config_home + "/adb-view/prefs.ini");
+    if (content.empty()) {
+      return prefs;
+    }
   }
 
   size_t pos = 0;
@@ -326,7 +333,7 @@ bool WriteUserPreferences(const UserPreferences& prefs,
                         "\n"
                         "status_bubble=" +
                         (prefs.show_status_bubble ? "true" : "false") + "\n";
-  return WriteFileAtomically0600(config_home + "/adb-view", "prefs.ini",
+  return WriteFileAtomically0600(config_home + "/adb-hawk", "prefs.ini",
                                  content);
 }
 

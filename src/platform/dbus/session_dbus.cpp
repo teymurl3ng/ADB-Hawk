@@ -279,7 +279,7 @@ struct SessionDbusManager::Impl {
       return g_variant_new_string("Hardware");
     }
     if (std::strcmp(property_name, "Id") == 0) {
-      return g_variant_new_string("adb-view");
+      return g_variant_new_string("adb-hawk");
     }
     if (std::strcmp(property_name, "Title") == 0) {
       return g_variant_new_string("ADB Hawk");
@@ -813,7 +813,7 @@ uint32_t SessionDbusManager::SendNotification(
   g_variant_builder_add(&hints_b, "{sv}", "transient",
                         g_variant_new_boolean(TRUE));
   g_variant_builder_add(&hints_b, "{sv}", "desktop-entry",
-                        g_variant_new_string("adb-view"));
+                        g_variant_new_string("adb-hawk"));
   g_variant_builder_add(
       &hints_b, "{sv}", "urgency",
       g_variant_new_byte(static_cast<guchar>(urgency_critical ? 2 : 1)));
